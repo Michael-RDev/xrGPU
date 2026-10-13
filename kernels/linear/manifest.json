@@ -1,0 +1,20 @@
+{
+  "contract_version": 1,
+  "operation": "linear",
+  "semantics": "Y = X @ W.T + bias",
+  "inputs": {"X": "[1,M,K]", "W": "[N,K]", "bias": "[N]"},
+  "output": "[1,M,N]",
+  "dtypes": ["fp32"],
+  "candidate_shapes": [[384,1536],[1536,384]],
+  "layout": "ExecuTorch width-packed vec4; upstream weight prepacking",
+  "variants": [
+    {"id": 0, "name": "stock", "description": "Unmodified upstream dispatch"},
+    {"id": 1, "name": "m4n8", "tile_m": 4, "tile_n": 8, "workgroup": [4,4,1], "weight_storage": "texture2d"},
+    {"id": 2, "name": "m2n8", "tile_m": 2, "tile_n": 8, "workgroup": [8,4,1], "weight_storage": "texture2d"},
+    {"id": 3, "name": "m4n8_buffer", "tile_m": 4, "tile_n": 8, "workgroup": [8,4,1], "weight_storage": "buffer"}
+  ],
+  "eligibility": "Explicit experiment or validated local selection; batch=1; M in 32,128,256; K,N match candidate_shapes; fp32; Vulkan workgroup limits support 32 invocations.",
+  "fallback": "stock for all other shapes, dtypes, devices and unvalidated selections",
+  "correctness": {"rtol": 0.0001, "atol": 0.0001},
+  "status": "experimental; no measured device speedup"
+}

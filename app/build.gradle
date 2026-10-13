@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'org.xrgpu'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'org.xrgpu'
+        minSdk 29
+        targetSdk 32
+        versionCode 1
+        versionName '0.1.0'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    signingConfigs {
+        debug { storeFile rootProject.file('artifacts/cache/android/debug.keystore') }
+    }
+    sourceSets.main {
+        assets.srcDirs = [rootProject.file('artifacts/bundle-parent')]
+        jniLibs.srcDirs = [rootProject.file('artifacts/install/lib')]
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging { jniLibs { useLegacyPackaging = true } }
+    androidResources { noCompress 'pte', 'bin' }
+}
+
+tasks.register('verifyOfflineBundle') {
+    doLast {
+        def bundle = rootProject.file('artifacts/bundle-parent/bundle/bundle.json')
+        if (!bundle.exists() || !rootProject.file('artifacts/install/lib/arm64-v8a/libxrgpu.so').exists()) {
+            throw new GradleException('Run python -m runtime.build first; model assets and native libraries are required.')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyOfflineBundle' }
