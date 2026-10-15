@@ -21,6 +21,7 @@ public final class MainActivity extends Activity {
     private TextView status;
     private EditText query;
     private Spinner length, variant;
+    private int[] variantIds = {0};
     private CheckBox sustained;
     private interface Work { void run() throws Exception; }
     @Override public void onCreate(Bundle state) {
@@ -30,30 +31,50 @@ public final class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(32, 24, 32, 24); scroll.addView(panel); setContentView(scroll);
         TextView heading = new TextView(this); heading.setText("xrGPU\nModel layers on your headset"); heading.setTextSize(26); panel.addView(heading);
         TextView description = new TextView(this);
-        description.setText("Offline MiniLM search and experiments. Candidate kernels are experimental until this device passes correctness, paired, and sustained checks."); panel.addView(description);
+        description.setText("Offline MiniLM search and device-specific kernel experiments. Quest 3 is the first target. Candidates require correctness, paired, and sustained checks on the detected device profile."); panel.addView(description);
         length = spinner(panel, new String[]{"32 tokens", "128 tokens", "256 tokens"}); length.setSelection(1);
-        variant = spinner(panel, new String[]{"Candidate 1: 4×8 tiles", "Candidate 2: 2×8 tiles", "Candidate 3: buffer weights"});
+        variant = spinner(panel, new String[]{"Stock kernels only"});
         sustained = new CheckBox(this); sustained.setText("Include ten-minute sustained comparison (required to enable a candidate)"); sustained.setChecked(true); panel.addView(sustained);
         addButton(panel, "Inspect headset", () -> submit(() -> show(new JSONObject(Native.capabilities()).toString(2))));
         addButton(panel, "Check model correctness", () -> { int n = selectedLength(); submit(() -> {
             try (Native.Model model = new Native.Model(assets.model("vulkan", n), 0)) { Validation.embeddings(assets, model, n); }
             show("Tokenizer, embeddings, and labeled retrieval passed at " + n + " tokens.");
         }); });
-        addButton(panel, "Benchmark layer candidates", () -> { int v = variant.getSelectedItemPosition() + 1;
+        addButton(panel, "Benchmark layer candidates", () -> { int v = selectedCandidate();
             submit(() -> { File report = runner().layers(v); show(report.getName() + "\n" + Results.summary(read(report))); }); });
-        addButton(panel, "Benchmark model in isolation", () -> { int n = selectedLength(), v = variant.getSelectedItemPosition() + 1; boolean longRun = sustained.isChecked();
+        addButton(panel, "Benchmark model in isolation", () -> { int n = selectedLength(), v = selectedCandidate(); boolean longRun = sustained.isChecked();
             submit(() -> { File report = runner().paired(n, v, false, longRun); show(report.getName() + "\n" + Results.summary(read(report))); }); });
         addButton(panel, "Benchmark alongside VR scene", () -> {
             if (busy) { show("Finish or cancel the current run first."); return; }
             startActivity(new Intent(this, XrActivity.class).putExtra("length", selectedLength())
-                .putExtra("variant", variant.getSelectedItemPosition() + 1).putExtra("sustained", sustained.isChecked()));
+                .putExtra("variant", selectedCandidate()).putExtra("sustained", sustained.isChecked()));
         });
         addButton(panel, "Cancel current run", () -> { cancel.set(true); show("Stopping after the current inference..."); });
         query = new EditText(this); query.setHint("Search, e.g. ‘I need a light’"); query.setSingleLine(); panel.addView(query);
         addButton(panel, "Search local descriptions", () -> { String text = query.getText().toString(); int n = selectedLength(); submit(() -> search(text, n)); });
         addButton(panel, "View latest result", () -> submit(this::latest));
         status = new TextView(this); status.setTextIsSelectable(true); status.setTextSize(15); panel.addView(status);
-        submit(() -> { assets = new Assets(this); show("Offline assets verified. Ready.\n" + new JSONObject(Native.capabilities()).toString(2)); });
+        submit(() -> {
+            assets = new Assets(this); JSONObject caps = new JSONObject(Native.capabilities());
+            configureCandidates(caps); show("Offline assets verified. Ready.\n" + caps.toString(2));
+        });
+    }
+    private void configureCandidates(JSONObject caps) throws Exception {
+        JSONArray candidates = caps.getJSONArray("variants");
+        if (candidates.length() == 0) return;
+        int[] ids = new int[candidates.length()]; String[] labels = new String[candidates.length()];
+        for (int i=0; i<candidates.length(); i++) {
+            JSONObject c = candidates.getJSONObject(i); ids[i] = c.getInt("id");
+            labels[i] = "Candidate " + ids[i] + ": " + c.getString("label");
+        }
+        runOnUiThread(() -> {
+            variantIds = ids;
+            variant.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+        });
+    }
+    private int selectedCandidate() {
+        int position = variant.getSelectedItemPosition();
+        return position >= 0 && position < variantIds.length ? variantIds[position] : 0;
     }
     private Spinner spinner(LinearLayout panel, String[] items) {
         Spinner s = new Spinner(this); s.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, items)); panel.addView(s); return s;
@@ -78,15 +99,18 @@ public final class MainActivity extends Activity {
     }
     private int selectedVariant(int length) throws Exception {
         try {
-        File selection = new File(getFilesDir(), "selections/" + length + "-isolated.json");
+        BenchmarkRunner benchmark = runner();
+        if (!benchmark.caps.optBoolean("candidate_capable")) return 0;
+        File selection = benchmark.selectionFile(length, false);
         if (!selection.exists()) return 0;
-        JSONObject candidate = read(selection), current = runner().metadata(length, false);
-        for (String key : Acceptance.IDENTITY) if (!current.get(key).equals(candidate.opt(key))) return 0;
+        JSONObject candidate = read(selection), current = benchmark.metadata(length, false);
+        if (!Acceptance.matchesIdentity(current, candidate) || !Acceptance.allowsVariant(current, candidate.getInt("variant"))) return 0;
         File report = new File(getFilesDir(), "results/" + candidate.getString("report"));
         if (!report.exists() || !Assets.digest(report).equals(candidate.getString("report_sha256"))) return 0;
         JSONObject evidence = read(report);
         if (!Acceptance.evaluate(evidence, true).getBoolean("accepted")) return 0;
         JSONArray trials = evidence.getJSONArray("trials");
+        if (trials.length() == 0 || !Acceptance.matchesIdentity(current, trials.getJSONObject(0))) return 0;
         for (int i=0; i<trials.length(); i++) {
             JSONObject trial=trials.getJSONObject(i);
             if (trial.getString("arm").equals("candidate"))

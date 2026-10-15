@@ -39,6 +39,10 @@ public final class BenchmarkRunner {
     JSONObject metadata(int length, boolean vr) throws Exception {
         JSONObject manifest = assets.manifest;
         JSONObject out = new JSONObject().put("device", Build.MANUFACTURER + "/" + Build.MODEL)
+            .put("device_profile", caps.get("device_profile")).put("kernel_set", caps.get("kernel_set"))
+            .put("candidate_variants", caps.getJSONArray("candidate_variants"))
+            .put("gpu", caps.opt("gpu")).put("vendor_id", caps.opt("vendor_id"))
+            .put("device_id", caps.opt("device_id")).put("api_version", caps.opt("api_version"))
             .put("driver", caps.opt("driver")).put("os", Build.FINGERPRINT)
             .put("model_revision", manifest.get("model_revision"))
             .put("model_sha256", manifest.getJSONObject("files").get("minilm_vulkan_" + length + ".pte"))
@@ -49,6 +53,10 @@ public final class BenchmarkRunner {
             .put("inference_interval_ms", intervalMs).put("suite_revision", manifest.get("suite_revision"))
             .put("charging", context.getSystemService(BatteryManager.class).isCharging());
         return out;
+    }
+    File selectionFile(int length, boolean vr) throws Exception {
+        return new File(context.getFilesDir(), "selections/" + caps.getString("device_profile") +
+            "/" + length + "-" + (vr ? "vr" : "isolated") + ".json");
     }
     JSONObject trial(int pair, int variant, int length, boolean vr, double seconds, String backend) throws Exception {
         check(vr);
@@ -101,7 +109,7 @@ public final class BenchmarkRunner {
         return out;
     }
     public File paired(int length, int variant, boolean vr, boolean sustained) throws Exception {
-        if (variant < 1 || variant > 3) throw new IllegalArgumentException("Choose an experimental candidate 1–3");
+        if (!Acceptance.allowsVariant(caps, variant)) throw new IllegalArgumentException("No such candidate in this device profile");
         JSONObject report = new JSONObject().put("schema_version", 1).put("trials", new JSONArray());
         File output = new File(context.getFilesDir(), "results/" + System.currentTimeMillis() + "-" + (vr ? "vr" : "isolated") + ".json");
         try {
@@ -134,7 +142,7 @@ public final class BenchmarkRunner {
                 // Only on-device, evidence-backed profiles are eligible for selection.
                 JSONObject selection = metadata(length, vr).put("variant", variant)
                     .put("report", output.getName()).put("report_sha256", Assets.digest(output));
-                Assets.writeAtomic(new File(context.getFilesDir(), "selections/" + length + "-" + (vr ? "vr" : "isolated") + ".json"), selection);
+                Assets.writeAtomic(selectionFile(length, vr), selection);
             }
             progress.accept(report.getJSONObject("acceptance").toString(2));
             return output;
@@ -143,6 +151,7 @@ public final class BenchmarkRunner {
         }
     }
     public File layers(int variant) throws Exception {
+        if (!Acceptance.allowsVariant(caps, variant)) throw new IllegalArgumentException("No such candidate in this device profile");
         JSONArray cases = new JSONArray(assets.text("layers.json")), results = new JSONArray();
         File output = new File(context.getFilesDir(), "results/" + System.currentTimeMillis() + "-layers.json");
         JSONObject report = new JSONObject().put("schema_version", 1).put("kind", "layers")
@@ -163,7 +172,7 @@ public final class BenchmarkRunner {
                         samples.put(new JSONObject(model.stats())); Validation.layer(actual, expected);
                     }
                     long nodes = new JSONObject(model.stats()).getLong("custom_nodes");
-                    boolean shouldDispatch = v != 0 && c.getBoolean("candidate_eligible");
+                    boolean shouldDispatch = model.supportsLinear(rows, cols, c.getJSONArray("output_shape").getInt(2));
                     if ((nodes > 0) != shouldDispatch) throw new IllegalStateException("Unexpected kernel dispatch for " + id);
                     results.put(new JSONObject().put("case", id).put("variant", v).put("correctness", true)
                         .put("shape", c.get("shape")).put("output_shape", c.get("output_shape"))

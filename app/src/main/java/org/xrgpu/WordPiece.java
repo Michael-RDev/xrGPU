@@ -6,7 +6,6 @@ import java.text.Normalizer;
 import java.util.*;
 import java.util.regex.*;
 
-/** BERT uncased tokenization; validated against the bundled Hugging Face fixtures. */
 public final class WordPiece {
     private final Map<String, Integer> vocab = new HashMap<>();
     private static final Pattern SPECIAL = Pattern.compile("\\[(?:UNK|SEP|PAD|CLS|MASK)\\]");

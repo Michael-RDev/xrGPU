@@ -10,6 +10,8 @@ conversion and compilation; it is not needed while diagnostics run on the headse
 `uv.lock` pins Python dependencies. Use the same ExecuTorch version for model
 export and native execution. `runtime.prepare` checks the checkout commit and
 applies an idempotent patch without resetting source changes.
+The known earlier xrGPU dispatch patch is upgraded through a checked migration;
+unrecognized conflicting edits are left for review instead of resetting the checkout.
 
 `runtime.bootstrap_android` installs a macOS toolchain inside `artifacts/toolchain`.
 It verifies downloaded Android archives against repository checksums. Its shaderc
@@ -36,6 +38,18 @@ For native compilation only, pass `--native-only` to `runtime.build`. Source fil
 remain editable and intermediate products are under `artifacts/build`.
 
 ## Headset
+
+Use a **Quest 3** for the current custom kernel experiments. The native runtime
+rejects candidate loading on other models, including Quest 3S. Check that Inspect
+headset reports `device_model: Quest 3`, `device_profile: quest3`, and
+`candidate_capable: true` before testing
+candidates. An unknown model stays on stock execution until its identity and a
+separate device profile have been reviewed.
+
+Kernel implementation discovery uses `kernels/<operation>/vulkan/<implementation>/`.
+Shader filenames must be unique across implementations because ExecuTorch's shader
+registry is flat. A device must also be explicitly registered in
+`devices/registry.h`; staging shader files never enables another headset.
 
 Enable developer mode and USB debugging, connect the headset, and authorize this
 computer in the headset. Confirm it is listed as `device`, not `unauthorized`:

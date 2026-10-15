@@ -1,5 +1,6 @@
 #include "trace.h"
 #include "scene.h"
+#include "devices/registry.h"
 #include <executorch/backends/vulkan/runtime/graph/ops/impl/XrGpuDispatch.h>
 #include <executorch/extension/module/module.h>
 #include <executorch/extension/tensor/tensor.h>
@@ -7,6 +8,7 @@
 #include <jni.h>
 #include <vulkan/vulkan.h>
 #include <dlfcn.h>
+#include <sys/system_properties.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -28,7 +30,11 @@ void failure(JNIEnv* env, const std::exception& e) {
   env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), e.what());
 }
 Json capabilities() {
+  char model[PROP_VALUE_MAX]{};
+  __system_property_get("ro.product.model", model);
   Json result = {{"vulkan", false}, {"gpu_timestamps", false}, {"candidate_capable", false},
+                 {"device_model", model}, {"device_profile", "stock"}, {"kernel_set", "stock"},
+                 {"candidate_variants", Json::array()}, {"variants", Json::array()},
                  {"kernel_revision", XRGPU_KERNEL_REVISION}, {"runtime_revision", XRGPU_ET_REVISION}};
   void* lib = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
   if (!lib) { result["reason"] = "libvulkan.so unavailable"; return result; }
@@ -54,13 +60,25 @@ Json capabilities() {
     std::vector<VkQueueFamilyProperties> qp(nq); queues(devices[0], &nq, qp.data());
     bool timestamps = false;
     for (auto& q : qp) if (q.queueFlags & VK_QUEUE_COMPUTE_BIT) { timestamps = q.timestampValidBits > 0; break; }
+    const auto* profile = find_device_profile({model, p.vendorID,
+        p.limits.maxComputeWorkGroupInvocations,
+        p.limits.maxComputeWorkGroupSize[0], p.limits.maxComputeWorkGroupSize[1],
+        p.deviceID, p.apiVersion});
+    if (profile && profile->linear) {
+      result["device_profile"] = profile->id;
+      result["kernel_set"] = profile->linear->id;
+      for (size_t i = 0; i < profile->linear->variant_count; ++i) {
+        const auto& v = profile->linear->variants[i];
+        result["candidate_variants"].push_back(v.id);
+        result["variants"].push_back({{"id", v.id}, {"label", v.label}});
+      }
+    }
     result.update({{"vulkan", true}, {"gpu", p.deviceName}, {"vendor_id", p.vendorID},
       {"device_id", p.deviceID}, {"driver", p.driverVersion}, {"api_version", p.apiVersion},
       {"gpu_timestamps", timestamps && p.limits.timestampPeriod > 0},
       {"timestamp_period_ns", p.limits.timestampPeriod},
       {"max_workgroup_invocations", p.limits.maxComputeWorkGroupInvocations},
-      {"candidate_capable", p.vendorID == 0x5143 && p.limits.maxComputeWorkGroupInvocations >= 32 &&
-                            p.limits.maxComputeWorkGroupSize[0] >= 8 && p.limits.maxComputeWorkGroupSize[1] >= 4}});
+      {"candidate_capable", profile && profile->linear && profile->linear->variant_count > 0}});
   }
   destroy(instance, nullptr); dlclose(lib); return result;
 }
@@ -69,15 +87,16 @@ struct Session {
   Trace* trace;
   std::unique_ptr<Module> module;
   int variant;
+  const DeviceProfile* profile;
   uint64_t nodes;
   double last_ms = 0, load_ms;
   explicit Session(const std::string& path, int requested) : variant(requested) {
-    if (requested < 0 || requested > 3) throw std::runtime_error("Unknown variant");
     auto caps = capabilities();
-    if (requested && !caps["candidate_capable"].get<bool>())
-      throw std::runtime_error("Candidate kernels require a compatible Qualcomm GPU");
+    profile = profile_by_id(caps["device_profile"].get<std::string>());
+    if (requested && (!profile || !profile->linear || !profile->linear->variant(requested)))
+      throw std::runtime_error("Candidate is unavailable for this device profile; use stock execution");
     executorch::runtime::runtime_init();
-    experiment_variant = requested; selected_nodes = 0;
+    experiment_profile = profile; experiment_variant = requested; selected_nodes = 0;
     gpu_timestamps_supported = caps["gpu_timestamps"].get<bool>();
     auto t = std::make_unique<Trace>(); trace = t.get();
     const double begin = milliseconds();
@@ -88,7 +107,7 @@ struct Session {
     load_ms = milliseconds() - begin; nodes = selected_nodes;
   }
   std::vector<float> run(const std::vector<EValue>& input) {
-    experiment_variant = variant; trace->reset();
+    experiment_profile = profile; experiment_variant = variant; trace->reset();
     const double start = milliseconds();
     auto outputs = module->forward(input);
     last_ms = milliseconds() - start;
@@ -123,6 +142,14 @@ extern "C" JNIEXPORT jlong JNICALL Java_org_xrgpu_Native_create(JNIEnv* env, jcl
 }
 extern "C" JNIEXPORT void JNICALL Java_org_xrgpu_Native_destroy(JNIEnv*, jclass, jlong handle) {
   delete reinterpret_cast<Session*>(handle);
+}
+extern "C" JNIEXPORT jboolean JNICALL Java_org_xrgpu_Native_supportsLinear(
+    JNIEnv* env, jclass, jlong handle, jint rows, jint columns, jint outputs) {
+  try {
+    const auto& s = session(handle);
+    return s.profile && s.profile->linear && s.profile->linear->variant(s.variant) &&
+        s.profile->linear->supports(1, rows, columns, outputs, true);
+  } catch (const std::exception& e) { failure(env, e); return false; }
 }
 extern "C" JNIEXPORT jfloatArray JNICALL Java_org_xrgpu_Native_tokens(JNIEnv* env, jclass, jlong handle,
     jlongArray input, jlongArray mask) {

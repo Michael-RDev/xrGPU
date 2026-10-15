@@ -1,0 +1,38 @@
+--- a/backends/vulkan/runtime/graph/ops/impl/Linear.cpp
++++ b/backends/vulkan/runtime/graph/ops/impl/Linear.cpp
+@@ -35,7 +35,7 @@
+     const vkapi::ShaderInfo& shader, const utils::uvec3& global,
+     const std::vector<ArgGroup>& args, const std::vector<ValueRef>& resize_args) {
+   if (xrgpu_eligible(graph, args.at(1).refs.at(0), args.at(0).refs.at(0))) {
+-    return {static_cast<uint32_t>(xrgpu::workgroup_x()), 4u, 1u};
++    return {xrgpu::workgroup_x(), xrgpu::workgroup_y(), xrgpu::workgroup_z()};
+   }
+   return pick_hw_square_wg_size(graph, shader, global, args, resize_args);
+ }
+@@ -78,7 +78,7 @@
+                               : base;
+   }
+   if (xrgpu_eligible(graph, input, out)) {
+-    kernel_name = std::string("xrgpu_linear_m") + std::to_string(xrgpu::tile_m()) +
++    kernel_name = std::string(xrgpu::shader_prefix()) + "_m" + std::to_string(xrgpu::tile_m()) +
+         (has_bias ? "_bias" : "");
+     ++xrgpu::selected_nodes;
+   }
+@@ -102,7 +102,7 @@
+   uint32_t B = graph->dim_of(out) >= 3 ? graph->size_at<uint32_t>(-3, out) : 1;
+   uint32_t tile_m = pick_matmul_tile_m(graph, out);
+   if (xrgpu_eligible(graph, args.at(1).refs.at(0), out)) {
+-    return {utils::div_up(N, 8u), utils::div_up(M, static_cast<uint32_t>(xrgpu::tile_m())), B};
++    return {utils::div_up(N, static_cast<uint32_t>(xrgpu::tile_n())), utils::div_up(M, static_cast<uint32_t>(xrgpu::tile_m())), B};
+   }
+   return {utils::div_up_4(N), utils::div_up(M, tile_m), B};
+ }
+@@ -194,7 +194,7 @@
+       weight_data,
+       /*is_transposed=*/true,
+       /*B=*/1,
+-      /*force_buffer=*/use_coopmat || (candidate && xrgpu::experiment_variant == 3));
++      /*force_buffer=*/use_coopmat || (candidate && xrgpu::buffer_weights()));
+ 
+   ValueRef packed_bias = kDummyValueRef;
+   if (has_bias) {

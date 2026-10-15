@@ -32,6 +32,9 @@ OpenXR, thermal, or whole-model speedup measurements.
   odd-row and odd-channel inputs with `atol=1e-4`, `rtol=1e-4`. Non-finite output is a failure.
 - Unsupported shapes must use stock dispatch. Shader compilation is necessary,
   but is not proof of on-device numerical correctness.
+- Host dispatch checks cover profile matching, unknown-device fallback, shape
+  limits, and a synthetic unregistered profile with different tuning and variant
+  IDs. This fixture tests extensibility; it is not another supported device.
 
 ## Timing
 
@@ -61,10 +64,18 @@ pair. VR additionally requires p95 frame time within 5% and missed-frame rate
 within one percentage point of baseline. Missing telemetry, incomplete runs,
 changed software, and mixed candidates cannot establish a pass.
 
+Profile ID, kernel-set ID, available variant IDs, GPU vendor/device/API identity,
+and driver are part of the evidence identity. Mixed profiles or kernel sets and
+legacy reports without those fields cannot enable a selection, including when
+the hardware happens to share a GPU vendor. Each new device starts with its own
+correctness and performance measurements.
+
 The range of per-trial speedups is reported alongside the aggregate. It is not
 a statistical confidence interval. Collect more independent sessions before
 making general claims. Record headset model, OS/driver versions, charging state,
 room conditions, and other active applications when sharing results manually.
 
-The first milestone remains open until a real Quest completes this protocol.
-Quest 3 results do not automatically validate Quest 3S.
+The first milestone remains open until a real Quest 3 completes this protocol.
+Current candidate kernels are restricted to Quest 3. Adding Quest 3S or another
+chip requires a separate device profile and the complete validation protocol;
+Quest 3 results cannot be reused as evidence for that device.

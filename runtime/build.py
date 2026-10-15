@@ -1,4 +1,3 @@
-"""Build native code, verify assets, and package the offline debug APK."""
 import argparse
 import hashlib
 import json
@@ -16,35 +15,56 @@ def main():
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
     from runtime.prepare import apply_patch
+
     apply_patch()
     ndk = os.environ.get("ANDROID_NDK")
     if not ndk or not shutil.which("glslc"):
-        raise SystemExit("Source artifacts/toolchain/env.sh or set ANDROID_NDK and put glslc on PATH")
+        raise SystemExit(
+            "Source artifacts/toolchain/env.sh or set ANDROID_NDK and put glslc on PATH"
+        )
     build = ROOT / "artifacts/build/android"
     install = ROOT / "artifacts/install"
     cmake = str(ROOT / ".venv/bin/cmake") if (ROOT / ".venv/bin/cmake").exists() else "cmake"
-    subprocess.run([cmake, "-S", str(ROOT), "-B", str(build),
-                    f"-DCMAKE_TOOLCHAIN_FILE={ndk}/build/cmake/android.toolchain.cmake",
-                    "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-29",
-                    "-DANDROID_STL=c++_shared", "-DCMAKE_BUILD_TYPE=Release",
-                    f"-DCMAKE_INSTALL_PREFIX={install}"], check=True)
-    subprocess.run([cmake, "--build", str(build), "--target", "xrgpu", "-j", str(args.jobs)], check=True)
+    subprocess.run(
+        [
+            cmake,
+            "-S",
+            str(ROOT),
+            "-B",
+            str(build),
+            f"-DCMAKE_TOOLCHAIN_FILE={ndk}/build/cmake/android.toolchain.cmake",
+            "-DANDROID_ABI=arm64-v8a",
+            "-DANDROID_PLATFORM=android-29",
+            "-DANDROID_STL=c++_shared",
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DCMAKE_INSTALL_PREFIX={install}",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [cmake, "--build", str(build), "--target", "xrgpu", "-j", str(args.jobs)], check=True
+    )
     # Shader generation order determines registry names. Verify the actual
     # compiled registry matches every name our C++ dispatch can request.
     registry = (build / "vulkan_compute_shaders/spv.cpp").read_text()
-    for rows in (2, 4):
-        for bias in ("", "_bias"):
-            for storage in ("texture3d", "buffer"):
-                for weight in ("texture2d", "buffer"):
-                    name = f"xrgpu_linear_m{rows}{bias}_{storage}_{weight}_float"
-                    if f'"{name}"' not in registry:
-                        raise RuntimeError(f"Compiled shader missing from registry: {name}")
+    for spec_path in (ROOT / "kernels/linear/vulkan").glob("*/manifest.json"):
+        spec = json.loads(spec_path.read_text())
+        for rows in {v["tile_m"] for v in spec["variants"]}:
+            for bias in ("", "_bias"):
+                for storage in ("texture3d", "buffer"):
+                    for weight in ("texture2d", "buffer"):
+                        name = f'{spec["shader_prefix"]}_m{rows}{bias}_{storage}_{weight}_float'
+                        if f'"{name}"' not in registry:
+                            raise RuntimeError(f"Compiled shader missing from registry: {name}")
     # Only install our targets, not the SDK's development archives.
     dest = install / "lib/arm64-v8a"
     dest.mkdir(parents=True, exist_ok=True)
     for name in ("libxrgpu.so", "libopenxr_loader.so"):
         shutil.copy2(next(build.rglob(name)), dest / name)
-    libcxx = Path(ndk) / "toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+    libcxx = (
+        Path(ndk)
+        / "toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+    )
     shutil.copy2(libcxx, dest / libcxx.name)
     if args.native_only:
         return

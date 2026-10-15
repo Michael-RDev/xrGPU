@@ -1,4 +1,3 @@
-"""Numerical oracle; shader implementations must preserve this contract."""
 import numpy as np
 
 

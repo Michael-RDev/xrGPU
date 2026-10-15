@@ -3,7 +3,6 @@ package org.xrgpu;
 import org.json.*;
 import java.util.*;
 
-/** A compact headset view of the raw local report; never invents missing metrics. */
 public final class Results {
     private static String number(double value) { return String.format(Locale.ROOT, "%.3f", value); }
     private static String distribution(JSONArray samples, String key) throws Exception {

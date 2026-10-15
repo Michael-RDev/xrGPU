@@ -20,6 +20,7 @@ set(EXECUTORCH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_EXECUTOR_RUNNER OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_VULKAN_SHADER_COMPILE_NTHREADS 4 CACHE STRING "" FORCE)
 add_subdirectory(artifacts/deps/executorch)
+target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
 set(BUILD_LOADER ON CACHE BOOL "" FORCE)
@@ -27,7 +28,8 @@ set(DYNAMIC_LOADER ON CACHE BOOL "" FORCE)
 add_subdirectory(artifacts/deps/openxr)
 
 file(GLOB_RECURSE revision_sources CONFIGURE_DEPENDS
-  kernels/*.glsl kernels/*.yaml kernels/*.json runtime/native/*.h runtime/native/*.cpp
+  kernels/*.glsl kernels/*.yaml kernels/*.json kernels/*.h devices/*.h
+  runtime/native/*.h runtime/native/*.cpp
   runtime/patches/*.patch app/src/main/*.java app/src/main/*.xml)
 list(APPEND revision_sources "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
   "${CMAKE_CURRENT_SOURCE_DIR}/app/build.gradle" "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json")
@@ -44,7 +46,7 @@ string(JSON et_revision GET "${dependencies}" executorch commit)
 
 add_library(xrgpu SHARED runtime/native/jni.cpp runtime/native/scene.cpp
   "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
-target_include_directories(xrgpu PRIVATE runtime/native
+target_include_directories(xrgpu PRIVATE runtime/native "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps"
   "${EXECUTORCH_ROOT}/third-party/json/single_include"
   "${EXECUTORCH_ROOT}/backends/vulkan/third-party/Vulkan-Headers/include"

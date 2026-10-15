@@ -1,4 +1,3 @@
-"""Optional integration: execute the actual exported CPU programs on this host."""
 import json
 from pathlib import Path
 
@@ -28,13 +27,14 @@ def test_cpu_program_matches_pytorch_references():
             expected = np.array(case["embedding"])
             assert actual.shape == (384,)
             assert np.isfinite(actual).all()
-            assert abs(np.linalg.norm(actual) - 1) <= .001
+            assert abs(np.linalg.norm(actual) - 1) <= 0.001
             cosine = np.dot(actual, expected) / (np.linalg.norm(actual) * np.linalg.norm(expected))
-            assert cosine >= .999, (length, case["text"], cosine)
+            assert cosine >= 0.999, (length, case["text"], cosine)
 
 
 def test_linear_oracle_shape_validation():
     from kernels.linear.reference import linear
+
     assert np.allclose(linear(np.ones((1, 3, 5)), np.ones((7, 5)), np.ones(7)), 6)
     with pytest.raises(ValueError):
         linear(np.ones((1, 3, 5)), np.ones((7, 6)), np.ones(7))

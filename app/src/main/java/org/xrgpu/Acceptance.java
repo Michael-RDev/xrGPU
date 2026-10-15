@@ -2,11 +2,23 @@ package org.xrgpu;
 import org.json.*;
 import java.util.*;
 
-/** The device gate uses the same thresholds as analysis/report.py. */
 public final class Acceptance {
-    public static final String[] IDENTITY = {"device", "driver", "os", "model_revision", "model_sha256",
+    public static final String[] IDENTITY = {"device", "device_profile", "kernel_set", "candidate_variants",
+        "gpu", "vendor_id", "device_id", "api_version", "driver", "os", "model_revision", "model_sha256",
         "runtime_revision", "kernel_revision", "precision", "sequence_length", "mode", "scene_revision",
         "refresh_hz", "inference_interval_ms", "suite_revision", "charging"};
+    public static boolean matchesIdentity(JSONObject a, JSONObject b) {
+        for (String key : IDENTITY)
+            if (!a.has(key) || a.isNull(key) || !b.has(key) || b.isNull(key) ||
+                !a.opt(key).toString().equals(b.opt(key).toString())) return false;
+        return true;
+    }
+    public static boolean allowsVariant(JSONObject metadata, int variant) {
+        JSONArray variants = metadata.optJSONArray("candidate_variants");
+        if (variant <= 0 || variants == null || metadata.optString("device_profile", "stock").equals("stock")) return false;
+        for (int i=0; i<variants.length(); i++) if (variants.optInt(i, 0) == variant) return true;
+        return false;
+    }
     public static double percentile(List<Double> input, double q) {
         if (input.isEmpty()) throw new IllegalArgumentException("Missing measurements");
         ArrayList<Double> values = new ArrayList<>(input); Collections.sort(values);
@@ -34,10 +46,10 @@ public final class Acceptance {
         int candidateVariant = -1;
         for (int i = 0; i < trials.length(); i++) {
             JSONObject t = trials.getJSONObject(i);
-            for (String key : IDENTITY) if (!t.has(key) || !t.get(key).equals(identity.opt(key))) reasons.add("incomparable metadata");
+            if (!matchesIdentity(t, identity)) reasons.add("incomparable metadata");
             if (t.getString("arm").equals("candidate")) {
                 if (candidateVariant < 0) candidateVariant = t.getInt("variant");
-                if (candidateVariant <= 0 || candidateVariant > 3 || candidateVariant != t.getInt("variant")) reasons.add("invalid candidate attribution");
+                if (!allowsVariant(t, candidateVariant) || candidateVariant != t.getInt("variant")) reasons.add("invalid candidate attribution");
             } else if (!t.getString("arm").equals("stock") || t.getInt("variant") != 0) reasons.add("invalid stock attribution");
             Map<String, JSONObject> pair = pairs.computeIfAbsent(t.getInt("pair"), k -> new HashMap<>());
             if (pair.put(t.getString("arm"), t) != null) reasons.add("duplicate trial arm");
@@ -84,7 +96,7 @@ public final class Acceptance {
                 JSONArray longTrials = sustained.getJSONArray("trials");
                 for (int i=0; i<longTrials.length(); i++) {
                     JSONObject t=longTrials.getJSONObject(i); duration += t.optDouble("measurement_seconds",0);
-                    for (String key : IDENTITY) matches &= t.has(key) && t.get(key).equals(identity.opt(key));
+                    matches &= matchesIdentity(t, identity);
                     if (t.optString("arm").equals("candidate")) matches &= t.optInt("variant") == candidateVariant;
                 }
             }

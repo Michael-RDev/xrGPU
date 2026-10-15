@@ -21,6 +21,27 @@ public final class HostTests {
         require(Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Valid evidence rejected");
         evidence.getJSONArray("trials").getJSONObject(1).put("custom_nodes",0);
         require(!Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Undispatched candidate accepted");
+        evidence=new JSONObject(Files.readString(Path.of(args[1])));
+        JSONObject candidate=evidence.getJSONArray("trials").getJSONObject(1);
+        JSONObject changed=new JSONObject(candidate.toString()).put("device_profile","another-headset");
+        require(!Acceptance.matchesIdentity(candidate,changed),"Cross-profile selection accepted");
+        changed=new JSONObject(candidate.toString()).put("kernel_set","another-kernel-set");
+        require(!Acceptance.matchesIdentity(candidate,changed),"Cross-kernel-set selection accepted");
+        candidate.put("device_profile","another-headset");
+        require(!Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Mixed profiles accepted");
+        evidence=new JSONObject(Files.readString(Path.of(args[1])));
+        for (JSONObject run : new JSONObject[]{evidence,evidence.getJSONObject("sustained")}) {
+            JSONArray trials=run.getJSONArray("trials");
+            for(int i=0;i<trials.length();i++) {
+                JSONObject t=trials.getJSONObject(i);
+                t.put("device_profile","test-only").put("kernel_set","test-only.linear")
+                    .put("candidate_variants",new JSONArray().put(7).put(19));
+                if(t.getString("arm").equals("candidate")) t.put("variant",7);
+            }
+        }
+        require(Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Profile-specific variant IDs rejected");
+        evidence.getJSONArray("trials").getJSONObject(1).remove("device_profile");
+        require(!Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Legacy evidence accepted without profile");
         System.out.println("PASS: "+references.length()+" Hugging Face tokenizer cases; acceptance gate checks");
     }
 }
