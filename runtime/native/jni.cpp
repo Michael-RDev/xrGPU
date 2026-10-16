@@ -147,10 +147,8 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_xrgpu_Native_supportsLinear(
     JNIEnv* env, jclass, jlong handle, jint rows, jint columns, jint outputs) {
   try {
     const auto& s = session(handle);
-    if(!s.profile || !s.profile->linear) return false;
-    const auto* variant=s.profile->linear->variant(s.variant);
-    return variant && (variant->shape_override ? variant->shape_override(1,rows,columns,outputs,true) :
-        s.profile->linear->supports(1, rows, columns, outputs, true));
+    return s.profile && s.profile->linear && s.profile->linear->variant(s.variant) &&
+        s.profile->linear->supports(1, rows, columns, outputs, true);
   } catch (const std::exception& e) { failure(env, e); return false; }
 }
 extern "C" JNIEXPORT jfloatArray JNICALL Java_org_xrgpu_Native_tokens(JNIEnv* env, jclass, jlong handle,

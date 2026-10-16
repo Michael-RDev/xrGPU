@@ -1,37 +1,10 @@
 # Build and run
 
-The original reference build host is an Apple Silicon Mac with JDK 17 or newer. The
+The reference build host is an Apple Silicon Mac with JDK 17 or newer. The
 application target is Android arm64-v8a, API 29 minimum. The desktop does model
 conversion and compilation; it is not needed while diagnostics run on the headset.
 
 ## Dependencies
-
-### Windows
-
-Open a Visual Studio 2022 Developer PowerShell configured for x64 host tools.
-Run these commands from the repository root. Bootstrap downloads verified Android
-archives and a portable JDK 17, and builds a pinned shaderc release and ExecuTorch's
-pinned host flatc. Everything is kept under `artifacts/`; SDK registry changes and
-global PATH changes are not needed. The shaderc source pin and JDK checksum live
-in `runtime/windows-toolchain.json`.
-
-```powershell
-uv sync --locked --extra export --python 3.12 --cache-dir artifacts/cache/uv
-$env:PATH = "$PWD\.venv\Scripts;" + $env:PATH
-$env:PYTHONUTF8 = '1'
-.venv/Scripts/python.exe -m runtime.prepare
-.venv/Scripts/python.exe -m runtime.bootstrap_android
-. artifacts/toolchain/env.ps1
-.venv/Scripts/python.exe -m models.export
-.venv/Scripts/python.exe -m runtime.build --jobs 4
-```
-
-`runtime.bootstrap_android --adb-only` installs just the verified Windows platform
-tools for checking the connection while the rest of the build is being prepared.
-USB debugging must be enabled and the headset must authorize this PC. A USB/PC VR
-connection without an authorized ADB device cannot run the diagnostics.
-
-### macOS
 
 `dependencies.json` pins native source commits and Android build versions.
 `uv.lock` pins Python dependencies. Use the same ExecuTorch version for model

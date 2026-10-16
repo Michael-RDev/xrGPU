@@ -14,9 +14,7 @@ inline const LinearVariant* selected_variant() {
       ? experiment_profile->linear->variant(experiment_variant) : nullptr;
 }
 inline bool eligible(int64_t batch, int64_t m, int64_t k, int64_t n, bool fp32) {
-  const auto* variant=selected_variant();
-  return variant && (variant->shape_override ? variant->shape_override(batch,m,k,n,fp32) :
-      experiment_profile->linear->supports(batch, m, k, n, fp32));
+  return selected_variant() && experiment_profile->linear->supports(batch, m, k, n, fp32);
 }
 // Called by the delegate only after eligible() passes.
 inline int tile_m() { return selected_variant()->tile_m; }

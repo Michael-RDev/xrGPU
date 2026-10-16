@@ -1,8 +1,7 @@
 # Validation protocol
 
-The [2026-10-15 Quest 3 feasibility result](quest3-feasibility-2026-10-15.md)
-records real 128-token measurements. Synthetic data used in unit tests is only
-a test of rejection and acceptance logic.
+No headset performance numbers are bundled with the repository. Synthetic data
+used in unit tests is only a test of rejection and acceptance logic.
 
 ## Build-host validation
 
@@ -23,58 +22,7 @@ The initial implementation was checked on Apple Silicon macOS:
 These checks validate the build and CPU path. No Quest was connected for GPU,
 OpenXR, thermal, or whole-model speedup measurements.
 
-### Windows host validation, 2026-10-15
-
-- Native Android arm64 libraries and the candidate shader catalog compile on Windows.
-- The signed debug APK builds; all 103 bundled asset hashes, packaged native
-  fingerprints, debug command activity, and absence of Internet permission pass
-  `python -m runtime.verify_apk`. The record is `artifacts/build-validation.json`.
-- All 54 Python tests pass, including actual exported CPU inference, native
-  device/dispatch checks, CRLF shader preprocessing, and diagnostic failure handling.
-- Android Java sources compile, including the debug-only activity; all 69 tokenizer
-  fixtures and host acceptance checks pass.
-- The authorized Quest 3 completed baseline, layer, and paired model checks for
-  all three candidates. Candidate 2 repeated a 2.83% and 2.60% median end-to-end
-  reduction in two sessions. See the linked result for raw-evidence locations,
-  p95 latency, dispatch checks, exclusions, and profiling. This is a smaller
-  repeatable gain, not full acceptance.
-
 ## Correctness
-
-### Short-run feasibility diagnostics
-
-The Windows/ADB workflow is `python -m runtime.device_benchmark --length 128`.
-The debug-only command activity reuses the normal benchmark runner, preserving
-precision, model semantics, cadence, warmups, and paired trial counts. It does not
-run sustained or VR comparisons. The host checks both model and end-to-end p95
-separately, rejects incomplete/confounded evidence, and repeats the best valid
-candidate in a fresh app process. Thermal/charging-confounded comparisons receive
-at most two retries after stable conditions return.
-
-`python -m analysis.report RUN.json --feasibility` analyzes one short report.
-It cannot be combined with `--selection`; full acceptance still requires the
-matching sustained report. A strong preliminary result requires at least 10%
-median end-to-end reduction in both sessions, improvement in every pair, and
-neither model nor end-to-end p95 worsening by more than 5%. Smaller repeatable
-gains, no demonstrated gain, and inconclusive runs are reported distinctly.
-
-Individual commands are available with `--command inspect|correctness|baseline|layers|paired`,
-`--variant ID`, and optional `--serial SERIAL`. Each request has a unique run ID;
-the host retrieves that run's files rather than whichever result happens to be
-newest. Completed trial data and periodic current-trial snapshots survive failures.
-Keeping the headset awake and the diagnostic activity focused is required.
-
-Use `--keep-awake` to apply Meta's temporary developer proximity override when
-testing with the headset on a desk. The host returns control to the physical wear
-sensor in its exit handler and records restoration in `power-control.json`.
-After a host crash or USB disconnect, restore it manually with
-`adb -s SERIAL shell am broadcast -a com.oculus.vrpowermanager.automation_disable`.
-This follows [Meta's device test instructions](https://developers.meta.com/vr/documentation/unity/meta-xr-operator/quest/).
-
-These measurements establish feasibility for the tested workload only. Summed GPU
-operation times are not critical-path or end-to-end latency measurements.
-
-### Numerical checks
 
 - CPU exported programs are executed on the build host against PyTorch references.
 - The Android tokenizer must match every bundled token ID and attention mask.

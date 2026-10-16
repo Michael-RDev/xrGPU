@@ -14,18 +14,14 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def export_model(module, inputs, destination, vulkan, options=None):
+def export_model(module, inputs, destination, vulkan):
     import torch
     from executorch.exir import to_edge_transform_and_lower
     from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
     from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
 
     exported = torch.export.export(module.eval(), inputs, strict=True)
-    partitions = (
-        [VulkanPartitioner({"force_fp16": False, **(options or {})})]
-        if vulkan
-        else [XnnpackPartitioner()]
-    )
+    partitions = [VulkanPartitioner({"force_fp16": False})] if vulkan else [XnnpackPartitioner()]
     edge = to_edge_transform_and_lower(exported, partitioner=partitions)
     # Keep the graph for diagnosis of CPU fallbacks and layout conversions
     destination.with_suffix(".graph.txt").write_text(str(edge.exported_program().graph))
@@ -40,9 +36,6 @@ def main():
     parser.add_argument("--references-only", action="store_true")
     args = parser.parse_args()
     os.environ.setdefault("HF_HOME", str(ROOT / "artifacts/cache/huggingface"))
-    flatc = ROOT / "artifacts/build/flatbuffers-host/flatc.exe"
-    if os.name == "nt" and flatc.exists():
-        os.environ.setdefault("FLATC_EXECUTABLE", str(flatc))
     import numpy as np
     import torch
     from transformers import AutoModel, AutoTokenizer
@@ -78,8 +71,8 @@ def main():
 
     model = Embedding(encoder).eval()
     tokenizer.save_pretrained(out / "tokenizer")
-    corpus = json.loads((ROOT / "models/corpus.json").read_text(encoding="utf-8"))
-    suite = json.loads((ROOT / "benchmarks/suite.json").read_text(encoding="utf-8"))
+    corpus = json.loads((ROOT / "models/corpus.json").read_text())
+    suite = json.loads((ROOT / "benchmarks/suite.json").read_text())
     texts = [d["text"] for d in corpus["documents"]] + [q["text"] for q in corpus["queries"]]
     texts += corpus["validation_texts"] + ["headset " * 300]
     fixtures = []
@@ -178,7 +171,7 @@ def main():
         "suite_revision": sha256(out / "suite.json"),
         "references_only": args.references_only,
         "files": {
-            p.relative_to(out).as_posix(): sha256(p)
+            str(p.relative_to(out)): sha256(p)
             for p in sorted(out.rglob("*"))
             if p.is_file() and p.name != "bundle.json"
         },

@@ -19,7 +19,7 @@ int main() {
   experiment_variant = 1;
   assert(!eligible(1, 128, 384, 1536, true));  // No profile, no custom dispatch.
   experiment_profile = &quest3::profile;
-  for (int variant : {1, 2, 3, 4}) {
+  for (int variant : {1, 2, 3}) {
     experiment_variant = variant;
     for (int rows : {32, 128, 256}) {
       assert(eligible(1, rows, 384, 1536, true));
@@ -30,10 +30,8 @@ int main() {
     assert(!eligible(1, 128, 13, 17, true));
     assert(!eligible(2, 128, 384, 1536, true));
     assert(!eligible(1, 128, 384, 1536, false));
-    assert(eligible(1,128,384,384,true)==(variant==4));
-    assert(eligible(1,128,384,1152,true)==(variant==4));
   }
-  for (int variant : {0, -1, 5}) {
+  for (int variant : {0, -1, 4}) {
     experiment_variant = variant;
     assert(!eligible(1, 128, 384, 1536, true));
   }

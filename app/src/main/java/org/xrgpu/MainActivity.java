@@ -120,10 +120,8 @@ public final class MainActivity extends Activity {
         } catch (Exception invalidEvidence) { return 0; }
     }
     private void search(String text, int length) throws Exception {
-        JSONObject optimized=selectedOptimizedModel(length);
-        int v = optimized==null?selectedVariant(length):optimized.getInt("variant");
-        String path=optimized==null?assets.model("vulkan",length):optimized.getString("path");
-        try (Native.Model model = new Native.Model(path, v)) {
+        int v = selectedVariant(length);
+        try (Native.Model model = new Native.Model(assets.model("vulkan", length), v)) {
             float[] needle = model.encode(assets.tokenizer.encode(text, length));
             JSONArray docs = new JSONObject(assets.text("corpus.json")).getJSONArray("documents");
             double best = -2; String match = "";
@@ -134,33 +132,8 @@ public final class MainActivity extends Activity {
                 if (score > best) { best = score; match = d.getString("text"); }
             }
             show(match + "\nSimilarity: " + String.format(Locale.ROOT, "%.3f", best) + "\n" +
-                (optimized!=null?"Validated optimized MiniLM ("+optimized.getString("profile")+")":
-                    (v == 0 ? "Stock Vulkan" : "Validated local candidate " + v)) + " · input limit " + length + " tokens");
+                (v == 0 ? "Stock Vulkan" : "Validated local candidate " + v) + " · input limit " + length + " tokens");
         }
-    }
-    private JSONObject selectedOptimizedModel(int length) {
-        try {
-            BenchmarkRunner benchmark=runner(); File selectionFile=benchmark.modelSelectionFile(length);
-            if(!selectionFile.isFile()) return null;
-            JSONObject selection=read(selectionFile), current=benchmark.metadata(length,false);
-            if(!Acceptance.matchesIdentity(current,selection)) return null;
-            JSONObject spec=assets.manifest.getJSONObject("optimization_profiles").getJSONObject(selection.getString("profile"));
-            JSONObject entry=spec.getJSONObject("lengths").getJSONObject(Integer.toString(length));
-            JSONObject hashes=assets.manifest.getJSONObject("files");
-            String model=entry.getString("model");
-            if(!hashes.getString(model).equals(selection.getString("candidate_sha256"))) return null;
-            File reportFile=new File(getFilesDir(),"results/"+selection.getString("report"));
-            if(!reportFile.isFile() || !Assets.digest(reportFile).equals(selection.getString("report_sha256"))) return null;
-            JSONObject evidence=read(reportFile);
-            if(!evidence.getString("profile").equals(selection.getString("profile")) ||
-                evidence.getInt("candidate_variant")!=selection.getInt("variant") ||
-                !evidence.getString("candidate_sha256").equals(hashes.getString(model)) ||
-                !evidence.getString("candidate_precision").equals(spec.getString("precision")) ||
-                !evidence.getJSONObject("layer_audit").getString("audit_model_sha256").equals(hashes.getString(entry.getString("audit_model"))) ||
-                !Acceptance.matchesIdentity(current,evidence.getJSONArray("trials").getJSONObject(0)) ||
-                !ModelAcceptance.evaluate(evidence,true).getBoolean("selection_eligible")) return null;
-            return selection.put("path",new File(assets.root,model).getPath());
-        } catch(Exception invalid) { return null; }
     }
     private static JSONObject read(File f) throws Exception { return new JSONObject(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)); }
     private void latest() throws Exception {

@@ -38,14 +38,3 @@ def test_linear_oracle_shape_validation():
     assert np.allclose(linear(np.ones((1, 3, 5)), np.ones((7, 5)), np.ones(7)), 6)
     with pytest.raises(ValueError):
         linear(np.ones((1, 3, 5)), np.ones((7, 6)), np.ones(7))
-
-
-@pytest.mark.skipif(not (BUNDLE / "bundle.json").exists(), reason="Run models.export first")
-def test_exported_manifest_uses_android_asset_paths():
-    manifest = json.loads((BUNDLE / "bundle.json").read_text(encoding="utf-8"))
-    assert not manifest["references_only"]
-    assert "tokenizer/vocab.txt" in manifest["files"]
-    for name in manifest["files"]:
-        assert "\\" not in name
-        assert not name.startswith("/") and ".." not in name.split("/")
-        assert (BUNDLE / name).is_file()

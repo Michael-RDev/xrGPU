@@ -6,10 +6,7 @@ if(NOT ANDROID OR NOT ANDROID_ABI STREQUAL "arm64-v8a")
   message(FATAL_ERROR "xrGPU native app targets Android arm64-v8a. See docs/setup.md.")
 endif()
 set(EXECUTORCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps/executorch")
-if(NOT PYTHON_EXECUTABLE)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}" CACHE FILEPATH "Export environment")
-endif()
+set(PYTHON_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python" CACHE FILEPATH "Export environment")
 set(EXECUTORCH_BUILD_VULKAN ON CACHE BOOL "" FORCE)
 set(EXECUTORCH_ENABLE_EVENT_TRACER ON CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_DEVTOOLS ON CACHE BOOL "" FORCE)
@@ -22,23 +19,20 @@ set(EXECUTORCH_BUILD_KERNELS_OPTIMIZED OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_EXECUTOR_RUNNER OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_VULKAN_SHADER_COMPILE_NTHREADS 4 CACHE STRING "" FORCE)
-add_subdirectory(artifacts/deps/executorch et)
+add_subdirectory(artifacts/deps/executorch)
 target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-target_sources(vulkan_backend PRIVATE runtime/native/model_ops.cpp)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
 set(BUILD_LOADER ON CACHE BOOL "" FORCE)
 set(DYNAMIC_LOADER ON CACHE BOOL "" FORCE)
-add_subdirectory(artifacts/deps/openxr xr)
+add_subdirectory(artifacts/deps/openxr)
 
 file(GLOB_RECURSE revision_sources CONFIGURE_DEPENDS
   kernels/*.glsl kernels/*.yaml kernels/*.json kernels/*.h devices/*.h
   runtime/native/*.h runtime/native/*.cpp
-  runtime/patches/*.patch app/src/main/*.java app/src/main/*.xml
-  app/src/debug/*.java app/src/debug/*.xml)
+  runtime/patches/*.patch app/src/main/*.java app/src/main/*.xml)
 list(APPEND revision_sources "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
-  "${CMAKE_CURRENT_SOURCE_DIR}/app/build.gradle" "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json"
-  "${CMAKE_CURRENT_SOURCE_DIR}/runtime/windows-toolchain.json")
+  "${CMAKE_CURRENT_SOURCE_DIR}/app/build.gradle" "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json")
 list(SORT revision_sources)
 set(revision_material "")
 foreach(source IN LISTS revision_sources)
@@ -49,8 +43,6 @@ endforeach()
 string(SHA256 kernel_revision "${revision_material}")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json" dependencies)
 string(JSON et_revision GET "${dependencies}" executorch commit)
-file(WRITE "${CMAKE_BINARY_DIR}/build-identity.json"
-  "{\"kernel_revision\":\"${kernel_revision}\",\"runtime_revision\":\"${et_revision}\"}\n")
 
 add_library(xrgpu SHARED runtime/native/jni.cpp runtime/native/scene.cpp
   "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
