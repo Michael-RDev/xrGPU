@@ -134,7 +134,7 @@ def compare(report, require_sustained=True):
     if speedup is None or speedup < 1 / 0.9:
         reasons.append("median latency reduction is below 10%")
     if baseline and candidate and percentile(candidate, 0.95) > percentile(baseline, 0.95) * 1.05:
-        reasons.append("model p95 regression exceeds 5%")
+        reasons.append("end-to-end p95 regression exceeds 5%")
     if ratios and min(ratios) <= 1:
         reasons.append("speedup did not repeat in every paired trial")
     if require_sustained:
@@ -164,16 +164,144 @@ def compare(report, require_sustained=True):
     }
 
 
+def distribution(samples, key):
+    values = [s.get(key) for s in samples]
+    if not values or any(v is None for v in values):
+        return None
+    return {"median": percentile(values, 0.5), "p95": percentile(values, 0.95)}
+
+
+def summarize_trial_group(trials):
+    samples = [s for trial in trials for s in trial.get("samples", [])]
+    return {
+        "samples": len(samples),
+        "correctness": bool(trials) and all(t.get("correctness") is True for t in trials),
+        "custom_nodes": sorted({t.get("custom_nodes", 0) for t in trials}),
+        "timings_ms": {
+            key: distribution(samples, key)
+            for key in (
+                "end_to_end_ms",
+                "model_ms",
+                "gpu_ms",
+                "input_staging_ms",
+                "output_staging_ms",
+                "submit_and_wait_ms",
+            )
+        },
+    }
+
+
+def feasibility(report):
+    """Short-run diagnostic only. This result can never authorize a selection."""
+    reasons = []
+    summary = {}
+    try:
+        comparison = compare(report, require_sustained=False)
+        performance = {
+            "median latency reduction is below 10%",
+            "end-to-end p95 regression exceeds 5%",
+            "speedup did not repeat in every paired trial",
+        }
+        reasons.extend(r for r in comparison["reasons"] if r not in performance)
+        trials = report.get("trials", [])
+        if report.get("status") != "complete":
+            reasons.append("report is not complete")
+        for t in trials:
+            if t.get("mode") != "isolated" or t.get("backend") != "vulkan":
+                reasons.append("feasibility requires isolated Vulkan comparisons")
+            if t.get("arm") == "stock" and t.get("custom_nodes") != 0:
+                reasons.append("stock baseline dispatched a custom kernel")
+            for sample in t.get("samples", []):
+                if sample.get("thermal_status") != t.get("thermal_start") or sample.get(
+                    "charging"
+                ) != t.get("charging"):
+                    reasons.append("sample thermal or charging state changed or is missing")
+                for key in ("model_ms", "end_to_end_ms"):
+                    value = sample.get(key)
+                    if (
+                        not isinstance(value, (float, int))
+                        or isinstance(value, bool)
+                        or not math.isfinite(value)
+                        or value <= 0
+                    ):
+                        reasons.append("missing or invalid model/end-to-end timings")
+        for arm in ("stock", "candidate"):
+            summary[arm] = summarize_trial_group([t for t in trials if t["arm"] == arm])
+        if "cpu_baseline" in report:
+            summary["cpu"] = summarize_trial_group([report["cpu_baseline"]])
+        tails_ok = True
+        for key in ("model_ms", "end_to_end_ms"):
+            a, b = (summary[arm]["timings_ms"][key] for arm in ("stock", "candidate"))
+            if a is None or b is None or b["p95"] > a["p95"] * 1.05:
+                tails_ok = False
+        repeatable = bool(comparison["paired_speedups"]) and min(comparison["paired_speedups"]) > 1
+        valid = not reasons
+        return {
+            "diagnostic_only": True,
+            "selection_eligible": False,
+            "valid_evidence": valid,
+            "reasons": sorted(set(reasons)),
+            "performance_reasons": [r for r in comparison["reasons"] if r in performance],
+            "median_speedup": comparison["median_speedup"],
+            "paired_speedups": comparison["paired_speedups"],
+            "tails_within_limits": tails_ok,
+            "repeatable_gain": valid and repeatable and tails_ok,
+            "meets_short_run_target": valid
+            and repeatable
+            and tails_ok
+            and comparison["median_speedup"] >= 1 / 0.9,
+            "summary": summary,
+        }
+    except (KeyError, TypeError, ValueError, ZeroDivisionError, OverflowError) as error:
+        return {
+            "diagnostic_only": True,
+            "selection_eligible": False,
+            "valid_evidence": False,
+            "repeatable_gain": False,
+            "meets_short_run_target": False,
+            "reasons": ["malformed or invalid measurements: " + str(error)],
+            "summary": {},
+        }
+
+
+def confirmed_verdict(first, repeat):
+    """Require independent command IDs and matching workload before confirming a gain."""
+    a, b = feasibility(first), feasibility(repeat)
+    if not a["valid_evidence"] or not b["valid_evidence"]:
+        return "inconclusive"
+    if (
+        not first.get("run_id")
+        or first["run_id"] == repeat.get("run_id")
+        or not repeat.get("run_id")
+    ):
+        return "inconclusive"
+    x, y = first["trials"][0], repeat["trials"][0]
+    vx = next(t["variant"] for t in first["trials"] if t["arm"] == "candidate")
+    vy = next(t["variant"] for t in repeat["trials"] if t["arm"] == "candidate")
+    if vx != vy or any(x[k] != y[k] for k in IDENTITY):
+        return "inconclusive"
+    if a["meets_short_run_target"] and b["meets_short_run_target"]:
+        return "strong preliminary result"
+    if a["repeatable_gain"] and b["repeatable_gain"]:
+        return "smaller repeatable gain"
+    return "no demonstrated gain"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path)
     parser.add_argument(
+        "--feasibility", action="store_true", help="Analyze short runs; never enable selection"
+    )
+    parser.add_argument(
         "--selection", type=Path, help="Write a local selection only after acceptance"
     )
     args = parser.parse_args()
+    if args.feasibility and args.selection:
+        parser.error("--feasibility cannot be combined with --selection")
     raw = args.report.read_bytes()
     report = json.loads(raw)
-    result = compare(report)
+    result = feasibility(report) if args.feasibility else compare(report)
     print(json.dumps(result, indent=2, allow_nan=False))
     if args.selection:
         if not result["accepted"]:

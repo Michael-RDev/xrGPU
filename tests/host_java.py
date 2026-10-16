@@ -28,6 +28,7 @@ def main():
     dest = ROOT / "artifacts/host-java"
     dest.mkdir(parents=True, exist_ok=True)
     sources = sorted((ROOT / "app/src/main/java/org/xrgpu").glob("*.java"))
+    sources += sorted((ROOT / "app/src/debug/java/org/xrgpu").glob("*.java"))
     subprocess.run(
         ["javac", "-Xlint:all", "-cp", str(android), "-d", str(dest), *map(str, sources)],
         check=True,
@@ -36,12 +37,15 @@ def main():
 
     fixture = ROOT / "artifacts/test-evidence.json"
     fixture.write_text(json.dumps(evidence("vr")))
+    from tests.test_model_comparison import model_evidence
+    model_fixture=ROOT / "artifacts/test-model-evidence.json"
+    model_fixture.write_text(json.dumps(model_evidence()))
     cp = os.pathsep.join(map(str, (jar, dest)))
     subprocess.run(
         ["javac", "-cp", cp, "-d", str(dest), str(ROOT / "tests/java/HostTests.java")], check=True
     )
     subprocess.run(
-        ["java", "-cp", cp, "org.xrgpu.HostTests", str(ROOT / "artifacts/bundle"), str(fixture)],
+        ["java", "-cp", cp, "org.xrgpu.HostTests", str(ROOT / "artifacts/bundle"), str(fixture), str(model_fixture)],
         check=True,
     )
 

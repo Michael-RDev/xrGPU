@@ -42,6 +42,18 @@ public final class HostTests {
         require(Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Profile-specific variant IDs rejected");
         evidence.getJSONArray("trials").getJSONObject(1).remove("device_profile");
         require(!Acceptance.evaluate(evidence,true).getBoolean("accepted"),"Legacy evidence accepted without profile");
-        System.out.println("PASS: "+references.length()+" Hugging Face tokenizer cases; acceptance gate checks");
+        JSONObject modelEvidence=new JSONObject(Files.readString(Path.of(args[2])));
+        require(ModelAcceptance.evaluate(modelEvidence,false).getBoolean("accepted"),"Valid model comparison rejected");
+        require(!ModelAcceptance.evaluate(modelEvidence,true).getBoolean("selection_eligible"),"Short model comparison enabled selection");
+        modelEvidence.put("sustained",new JSONObject(modelEvidence.toString()));
+        require(ModelAcceptance.evaluate(modelEvidence,true).getBoolean("selection_eligible"),"Valid sustained model comparison rejected");
+        for(String key:new String[]{"driver","model_sha256","precision","variant","charging","model_profile"}) {
+            JSONObject broken=new JSONObject(modelEvidence.toString());
+            broken.getJSONArray("trials").getJSONObject(1).put(key,"invalid");
+            require(!ModelAcceptance.evaluate(broken,true).getBoolean("selection_eligible"),"Invalid model identity accepted: "+key);
+        }
+        modelEvidence.getJSONObject("layer_audit").put("atol",.01);
+        require(!ModelAcceptance.evaluate(modelEvidence,true).getBoolean("selection_eligible"),"Relaxed checkpoint tolerance accepted");
+        System.out.println("PASS: "+references.length()+" Hugging Face tokenizer cases; kernel and model acceptance gates");
     }
 }

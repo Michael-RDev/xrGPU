@@ -64,7 +64,6 @@ def apply_patch():
         if fresh.returncode == 0:
             run("git", "apply", str(patch), cwd=dest)
         else:
-            # Upgrade the known previous xrGPU patch without resetting a checkout.
             migration = ROOT / "runtime/patches/migrations/0001-device-profiles.patch"
             run("git", "apply", "--check", str(migration), cwd=dest)
             run("git", "apply", str(migration), cwd=dest)
@@ -76,6 +75,15 @@ def apply_patch():
         ROOT / "runtime/native/dispatch.h",
         dest / "backends/vulkan/runtime/graph/ops/impl/XrGpuDispatch.h",
     )
+    for auxiliary in sorted((ROOT / "runtime/patches").glob("*.patch")):
+        if auxiliary == patch:
+            continue
+        applied = subprocess.run(
+            ["git", "apply", "--reverse", "--check", str(auxiliary)], cwd=dest, capture_output=True
+        )
+        if applied.returncode:
+            run("git", "apply", "--check", str(auxiliary), cwd=dest)
+            run("git", "apply", str(auxiliary), cwd=dest)
 
 
 def copy_if_changed(source, destination):
@@ -84,7 +92,6 @@ def copy_if_changed(source, destination):
 
 
 def vulkan_shader_sources(root=ROOT):
-    """ExecuTorch has a flat shader namespace; refuse colliding implementations."""
     sources = sorted((root / "kernels").glob("*/vulkan/*/*"))
     shaders = [p for p in sources if p.suffix in (".glsl", ".yaml")]
     names = [p.name for p in shaders]

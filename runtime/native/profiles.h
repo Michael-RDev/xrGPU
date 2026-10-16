@@ -17,6 +17,7 @@ struct LinearVariant {
   int tile_m, tile_n;
   uint32_t workgroup_x, workgroup_y, workgroup_z;
   bool buffer_weights;
+  bool (*shape_override)(int64_t, int64_t, int64_t, int64_t, bool) = nullptr;
 };
 
 struct LinearKernelSet {

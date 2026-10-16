@@ -88,7 +88,7 @@ public final class Acceptance {
         }
         double speedup = !allA.isEmpty() && !allB.isEmpty() && percentile(allB, .5) > 0 ? percentile(allA, .5) / percentile(allB, .5) : 0;
         if (speedup < 1 / .9) reasons.add("median latency reduction is below 10%");
-        if (!allA.isEmpty() && !allB.isEmpty() && percentile(allB, .95) > percentile(allA, .95) * 1.05) reasons.add("model p95 regression exceeds 5%");
+        if (!allA.isEmpty() && !allB.isEmpty() && percentile(allB, .95) > percentile(allA, .95) * 1.05) reasons.add("end-to-end p95 regression exceeds 5%");
         if (sustainedRequired) {
             JSONObject sustained = report.optJSONObject("sustained");
             double duration = 0; boolean matches = sustained != null;
