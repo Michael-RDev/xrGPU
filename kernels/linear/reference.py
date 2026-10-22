@@ -1,10 +1,11 @@
+"""Independent linear contract oracle."""
 import numpy as np
 
 
-def linear(x, weight, bias):
-    x, weight, bias = (np.asarray(t, dtype=np.float64) for t in (x, weight, bias))
-    if x.ndim != 3 or weight.ndim != 2 or bias.shape != (weight.shape[0],):
-        raise ValueError("expected X[B,M,K], W[N,K], bias[N]")
-    if x.shape[-1] != weight.shape[-1]:
-        raise ValueError("incompatible reduction dimension")
-    return (x @ weight.T + bias).astype(np.float32)
+def linear(x, weight, bias=None):
+    x, weight = np.asarray(x, dtype=np.float64), np.asarray(weight, dtype=np.float64)
+    if x.ndim < 2 or weight.ndim != 2 or x.shape[-1] != weight.shape[-1]:
+        raise ValueError('Expected [..., M, K] input and [N, K] weight')
+    if bias is not None and np.shape(bias) != (weight.shape[0],):
+        raise ValueError('Bias must have N elements')
+    return x @ weight.T + (0 if bias is None else np.asarray(bias, dtype=np.float64))
