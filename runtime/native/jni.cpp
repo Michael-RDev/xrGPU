@@ -2,7 +2,8 @@
 #include "scene.h"
 #include "trace.h"
 #include <dlfcn.h>
-#include <executorch/backends/vulkan/runtime/graph/ops/impl/XrGpuDispatch.h>
+#include "runtime/native/dispatch.h"
+#include "runtime/integration/xrgpu_kernel_package.h"
 #include <executorch/extension/module/module.h>
 #include <executorch/extension/tensor/tensor.h>
 #include <executorch/runtime/platform/runtime.h>
@@ -133,6 +134,7 @@ struct Session {
   int variant;
   const DeviceProfile *profile;
   uint64_t nodes;
+  xrgpu_package::Context selection;
   double last_ms = 0, load_ms;
   explicit Session(const std::string &path, int requested)
       : variant(requested) {
@@ -143,9 +145,13 @@ struct Session {
       throw std::runtime_error("Candidate is unavailable for this device "
                                "profile; use stock execution");
     executorch::runtime::runtime_init();
-    experiment_profile = profile;
-    experiment_variant = requested;
-    selected_nodes = 0;
+    // The demo explicitly requests candidates; stock remains an untouched
+    // baseline. Qualification and automatic production selection are separate.
+    selection.require_repairs = false;
+    if (requested)
+      selection.experiment = "linear:" + std::string(profile->linear->variant(requested)->label);
+    xrgpu_package::Scope selection_scope(selection);
+    xrgpu_package::selections = 0;
     gpu_timestamps_supported = caps["gpu_timestamps"].get<bool>();
     auto t = std::make_unique<Trace>();
     trace = t.get();
@@ -157,11 +163,10 @@ struct Session {
       throw std::runtime_error("ExecuTorch load failed, code " +
                                std::to_string(static_cast<int>(error)));
     load_ms = milliseconds() - begin;
-    nodes = selected_nodes;
+    nodes = xrgpu_package::selections;
   }
   std::vector<float> run(const std::vector<EValue> &input) {
-    experiment_profile = profile;
-    experiment_variant = variant;
+    xrgpu_package::Scope selection_scope(selection);
     trace->reset();
     const double start = milliseconds();
     auto outputs = module->forward(input);

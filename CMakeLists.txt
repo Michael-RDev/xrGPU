@@ -3,7 +3,7 @@ project(xrGPU LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(NOT ANDROID OR NOT ANDROID_ABI STREQUAL "arm64-v8a")
-  message(FATAL_ERROR "xrGPU native app targets Android arm64-v8a. See docs/setup.md.")
+  message(FATAL_ERROR "xrGPU native app targets Android arm64-v8a. See README.md.")
 endif()
 set(EXECUTORCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps/executorch")
 set(PYTHON_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python" CACHE FILEPATH "Export environment")
@@ -20,7 +20,11 @@ set(EXECUTORCH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_EXECUTOR_RUNNER OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_VULKAN_SHADER_COMPILE_NTHREADS 4 CACHE STRING "" FORCE)
 add_subdirectory(artifacts/deps/executorch)
-target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${EXECUTORCH_ROOT}/third-party/json/single_include")
+# The app is an explicit development runner. Build both users of the inline
+# selection header with the same policy to avoid differing inline definitions.
+target_compile_definitions(vulkan_backend PRIVATE XRGPU_ENABLE_EXPERIMENTS)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
 set(BUILD_LOADER ON CACHE BOOL "" FORCE)
@@ -30,6 +34,7 @@ add_subdirectory(artifacts/deps/openxr)
 file(GLOB_RECURSE revision_sources CONFIGURE_DEPENDS
   kernels/*.glsl kernels/*.yaml kernels/*.json kernels/*.h devices/*.h
   runtime/native/*.h runtime/native/*.cpp
+  runtime/integration/*.h runtime/integration/*.py
   runtime/patches/*.patch app/src/main/*.java app/src/main/*.xml)
 list(APPEND revision_sources "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
   "${CMAKE_CURRENT_SOURCE_DIR}/app/build.gradle" "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json")
@@ -51,7 +56,7 @@ target_include_directories(xrgpu PRIVATE runtime/native "${CMAKE_CURRENT_SOURCE_
   "${EXECUTORCH_ROOT}/third-party/json/single_include"
   "${EXECUTORCH_ROOT}/backends/vulkan/third-party/Vulkan-Headers/include"
   "${ANDROID_NDK}/sources/android/native_app_glue")
-target_compile_definitions(xrgpu PRIVATE XR_USE_PLATFORM_ANDROID XR_USE_GRAPHICS_API_OPENGL_ES
+target_compile_definitions(xrgpu PRIVATE XRGPU_ENABLE_EXPERIMENTS XR_USE_PLATFORM_ANDROID XR_USE_GRAPHICS_API_OPENGL_ES
   XRGPU_KERNEL_REVISION="${kernel_revision}" XRGPU_ET_REVISION="${et_revision}")
 target_link_libraries(xrgpu PRIVATE executorch extension_module extension_tensor
   portable_ops_lib vulkan_backend xnnpack_backend openxr_loader android log EGL GLESv3 dl)

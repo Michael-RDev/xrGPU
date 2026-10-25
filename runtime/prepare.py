@@ -1,7 +1,11 @@
 import json
+import hashlib
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
+
+from runtime.integration.hooks import TRANSFORMS, once
 
 ROOT = Path(__file__).resolve().parents[1]
 SUBMODULES = [
@@ -53,22 +57,7 @@ def apply_patch():
         if actual != lock[name]["commit"]:
             raise RuntimeError(f"Unexpected {name} commit {actual}; see dependencies.json")
     dest = ROOT / "artifacts/deps/executorch"
-    patch = ROOT / "runtime/patches/0001-xrgpu-linear.patch"
-    reverse = subprocess.run(
-        ["git", "apply", "--reverse", "--check", str(patch)], cwd=dest, capture_output=True
-    )
-    if reverse.returncode:
-        fresh = subprocess.run(
-            ["git", "apply", "--check", str(patch)], cwd=dest, capture_output=True
-        )
-        if fresh.returncode == 0:
-            run("git", "apply", str(patch), cwd=dest)
-        else:
-            # Upgrade the known previous xrGPU patch without resetting a checkout.
-            migration = ROOT / "runtime/patches/migrations/0001-device-profiles.patch"
-            run("git", "apply", "--check", str(migration), cwd=dest)
-            run("git", "apply", str(migration), cwd=dest)
-            run("git", "apply", "--reverse", "--check", str(patch), cwd=dest)
+    install_integration(dest)
     shader_dir = dest / "backends/vulkan/runtime/graph/ops/glsl"
     for file in vulkan_shader_sources():
         copy_if_changed(file, shader_dir / file.name)
@@ -76,6 +65,77 @@ def apply_patch():
         ROOT / "runtime/native/dispatch.h",
         dest / "backends/vulkan/runtime/graph/ops/impl/XrGpuDispatch.h",
     )
+    copy_if_changed(
+        ROOT / "runtime/integration/xrgpu_kernel_package.h",
+        dest / "backends/vulkan/runtime/graph/ops/impl/xrgpu_kernel_package.h",
+    )
+
+
+def timestamp_hook(source):
+    return '#include "graph/ops/impl/XrGpuDispatch.h"\n' + once(
+        source,
+        "config.enable_querypool = true;",
+        "config.enable_querypool = xrgpu::gpu_timestamps_supported;",
+    )
+
+
+def legacy_source(source, relative):
+    """Reconstruct the known old patch without modifying the dependency."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / relative
+        path.parent.mkdir(parents=True)
+        path.write_text(source)
+        subprocess.run(
+            [
+                "git",
+                "apply",
+                "--include=" + relative,
+                str(ROOT / "runtime/patches/0001-xrgpu-linear.patch"),
+            ],
+            cwd=folder,
+            check=True,
+            capture_output=True,
+        )
+        return path.read_text()
+
+
+def install_integration(dest):
+    """Migrate known legacy hooks; refuse unknown dependency edits before writing."""
+    prefix = "backends/vulkan/runtime/graph/ops/impl/"
+    transforms = {prefix + name: transform for name, transform in TRANSFORMS.items()}
+    transforms["backends/vulkan/runtime/VulkanBackend.cpp"] = timestamp_hook
+    state_path = ROOT / "artifacts/integration-sources.json"
+    previous = json.loads(state_path.read_text()) if state_path.exists() else {}
+    planned = {}
+    for relative, transform in transforms.items():
+        original = subprocess.check_output(
+            ["git", "show", "HEAD:" + relative],
+            cwd=dest,
+            text=True,
+        )
+        expected = transform(original)
+        current = (dest / relative).read_text()
+        known = {original, expected}
+        if relative.endswith(("Linear.cpp", "VulkanBackend.cpp")):
+            known.add(legacy_source(original, relative))
+        digest = hashlib.sha256(current.encode()).hexdigest()
+        if current not in known and digest != previous.get(relative):
+            raise RuntimeError("Refusing to overwrite unknown dependency edits: " + relative)
+        planned[relative] = expected
+    for relative, expected in planned.items():
+        path = dest / relative
+        if path.read_text() != expected:
+            path.write_text(expected)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = state_path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            {name: hashlib.sha256(source.encode()).hexdigest() for name, source in planned.items()},
+            indent=2,
+        )
+        + "\n"
+    )
+    temporary.replace(state_path)
 
 
 def copy_if_changed(source, destination):

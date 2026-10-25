@@ -30,6 +30,7 @@ def linear(source):
     helper = '''bool xrgpu_linear_pick(ComputeGraph* graph, ValueRef input, ValueRef out, bool bias) {
   const auto sizes = graph->sizes_of(input);
   const bool supported = (sizes.size() == 2 || sizes.size() == 3) &&
+      (sizes.size() == 2 || sizes.at(0) == 1) &&
       graph->dtype_of(out) == vkapi::kFloat && graph->dtype_of(input) == vkapi::kFloat &&
       graph->storage_type_of(out) == utils::kTexture3D &&
       graph->storage_type_of(input) == utils::kTexture3D &&
@@ -50,6 +51,8 @@ utils::uvec3 xrgpu_linear_local(ComputeGraph* graph, const vkapi::ShaderInfo& sh
 '''
     source = once(source, 'struct LinearIntParams final {', helper + 'struct LinearIntParams final {')
     # Both shader and global grid must select the same tile for the current node.
+    if source.count('uint32_t tile_m = pick_matmul_tile_m(graph, out);') != 2:
+        raise ValueError('Pinned linear tile selection anchors changed')
     source = source.replace('uint32_t tile_m = pick_matmul_tile_m(graph, out);',
         'uint32_t tile_m = xrgpu_linear_pick(graph, args.at(1).refs.at(0), out, graph->get_bool(resize_args.at(1))) ? xrgpu_package::tile_m : pick_matmul_tile_m(graph, out);')
     source = once(source, '  kernel_name.reserve(kShaderNameReserve);', '''  if (xrgpu_linear_pick(graph, input, out, has_bias)) {
@@ -73,8 +76,8 @@ def convolution(source):
     const int32_t co = utils::safe_downcast<int32_t>(ws.at(0));
     auto request = xrgpu_package::descriptor("grouped_conv2d", sizes, graph.sizes_of(out), "texture3d",
         {{"weight_shape", ws}, {"groups", groups_val}, {"bias", graph.val_is_not_none(bias)},
-         {"stride", graph.get_int_list(stride)}, {"padding", graph.get_int_list(padding)},
-         {"dilation", graph.get_int_list(dilation)}, {"transposed", transposed_val},
+         {"stride", *graph.get_int_list(stride)}, {"padding", *graph.get_int_list(padding)},
+         {"dilation", *graph.get_int_list(dilation)}, {"transposed", transposed_val},
          {"clamp", clamp_out}, {"out_min", out_min_val}, {"out_max", out_max_val}});
     const bool supported = !transposed_val && sizes.at(0) == 1 && graph.dtype_of(in) == vkapi::kFloat &&
         graph.storage_type_of(in) == utils::kTexture3D && graph.storage_type_of(out) == utils::kTexture3D &&

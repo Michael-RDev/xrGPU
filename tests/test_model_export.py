@@ -8,7 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "artifacts/bundle"
 
 
-@pytest.mark.skipif(not (BUNDLE / "minilm_cpu_128.pte").exists(), reason="Run models.export first")
+@pytest.mark.skipif(
+    not (BUNDLE / "minilm_cpu_128.pte").exists(),
+    reason="MiniLM CPU/reference bundle required in artifacts/bundle",
+)
 def test_cpu_program_matches_pytorch_references():
     torch = pytest.importorskip("torch")
     runtime = pytest.importorskip("executorch.runtime").Runtime.get()

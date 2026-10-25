@@ -28,18 +28,29 @@ def test_native_profiles_and_dispatch(tmp_path):
         check=True,
     )
     lines = subprocess.check_output([str(executable)], text=True).splitlines()
-    manifest = json.loads((ROOT / "kernels/linear/vulkan/quest3/manifest.json").read_text())
-    assert lines[:3] == ["quest3", manifest["kernel_set"], manifest["shader_prefix"]]
-    expected = [
-        [v["id"], v["tile_m"], v["tile_n"], *v["workgroup"], int(v["weight_storage"] == "buffer")]
-        for v in manifest["variants"]
-    ]
-    assert [[int(value) for value in line.split()] for line in lines[3:]] == expected
+    contract = json.loads((ROOT / "kernels/linear/contract.json").read_text())
+    assert lines[:3] == ["quest3", "quest3.linear.vulkan.fp32.v2", "xrgpu_linear"]
+    variants = {v["id"]: v for v in contract["variants"]}
+    for line in lines[3:]:
+        candidate, name, *values = line.split()
+        assert int(candidate) in (1, 2, 3)
+        spec = variants[name]
+        assert list(map(int, values)) == [
+            spec["tile_m"],
+            4,
+            *spec["workgroup"],
+            int(spec["weight_storage"] == "buffer"),
+        ]
+    assert len(lines[3:]) == 3
 
 
 def test_shader_discovery_and_namespace_collisions(tmp_path):
     sources = vulkan_shader_sources()
-    assert {p.name for p in sources} == {"xrgpu_linear.glsl", "xrgpu_linear.yaml"}
+    assert {p.name for p in sources} == {
+        f"xrgpu_{operation}.{extension}"
+        for operation in ("linear", "gelu", "grouped_conv2d")
+        for extension in ("glsl", "yaml")
+    }
     assert all(p.parent.name == "quest3" for p in sources)
     for device in ("one", "two"):
         folder = tmp_path / "kernels/linear/vulkan" / device

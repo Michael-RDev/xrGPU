@@ -9,6 +9,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def verify_shader_registry(registry, executorch=ROOT / "artifacts/deps/executorch"):
+    """Derive every registered name from the active YAML, not a deleted manifest."""
+    import runpy
+
+    from runtime.prepare import vulkan_shader_sources
+
+    generator = runpy.run_path(str(executorch / "backends/vulkan/runtime/gen_vulkan_spv.py"))
+    env = {**generator["DEFAULT_ENV"], **generator["TYPE_MAPPINGS"], **generator["UTILITY_FNS"]}
+    folders = sorted({str(p.parent) for p in vulkan_shader_sources()})
+    mapping = generator["SPVGenerator"](folders, env, None).output_file_map
+    names = {name for name, (source, _) in mapping.items() if Path(source).suffix == ".glsl"}
+    if not names:
+        raise RuntimeError("No xrGPU shader variants discovered")
+    missing = sorted(name for name in names if f'"{name}"' not in registry)
+    if missing:
+        raise RuntimeError("Compiled shaders missing from registry: " + ", ".join(missing))
+    return names
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-only", action="store_true")
@@ -47,15 +66,8 @@ def main():
     # Shader generation order determines registry names. Verify the actual
     # compiled registry matches every name our C++ dispatch can request.
     registry = (build / "vulkan_compute_shaders/spv.cpp").read_text()
-    for spec_path in (ROOT / "kernels/linear/vulkan").glob("*/manifest.json"):
-        spec = json.loads(spec_path.read_text())
-        for rows in {v["tile_m"] for v in spec["variants"]}:
-            for bias in ("", "_bias"):
-                for storage in ("texture3d", "buffer"):
-                    for weight in ("texture2d", "buffer"):
-                        name = f'{spec["shader_prefix"]}_m{rows}{bias}_{storage}_{weight}_float'
-                        if f'"{name}"' not in registry:
-                            raise RuntimeError(f"Compiled shader missing from registry: {name}")
+    names = verify_shader_registry(registry)
+    print(f"Verified {len(names)} xrGPU shaders in the native registry", flush=True)
     # Only install our targets, not the SDK's development archives.
     dest = install / "lib/arm64-v8a"
     dest.mkdir(parents=True, exist_ok=True)

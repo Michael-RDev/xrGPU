@@ -113,10 +113,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, url="http://localhost:8765"):
+    def __init__(self, url="http://localhost:8766"):
         parts = urllib.parse.urlsplit(url)
         if parts.scheme != "http" or parts.hostname not in {"localhost", "127.0.0.1"} or parts.username or parts.password or parts.path not in {"", "/"} or parts.query or parts.fragment:
-            raise ValueError("Use the local xrBench HTTP origin, for example http://localhost:8765")
+            raise ValueError("Use the local xrBench HTTP origin, for example http://localhost:8766")
         if parts.port is not None and not 1 <= parts.port <= 65535:
             raise ValueError("Invalid local port")
         self.url = url.rstrip("/")
@@ -171,7 +171,7 @@ class Client:
         return envelope
 
 
-def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8765"):
+def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766"):
     run_id = envelope.get("report", {}).get("run_id", "")
     report, receipt = verify(envelope, run_id)
     cache = Path(cache)
@@ -216,7 +216,7 @@ def main():
     listing = commands.add_parser("list", help="List committed runs")
     importing = commands.add_parser("import", help="Verify and cache reports and database receipts")
     for command in (listing, importing):
-        command.add_argument("--url", default="http://localhost:8765")
+        command.add_argument("--url", default="http://localhost:8766")
     selection = importing.add_mutually_exclusive_group(required=True)
     selection.add_argument("--run-id")
     selection.add_argument("--all", action="store_true")
