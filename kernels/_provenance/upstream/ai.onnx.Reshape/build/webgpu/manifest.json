@@ -1,0 +1,70 @@
+{
+  "domain": "ai.onnx",
+  "name": "Reshape",
+  "sinceVersion": 14,
+  "inputs": {
+    "data": { "dtype": "T" },
+    "shape": { "dtype": "S", "rank": 1, "storage": "int32", "narrowing": "checked" }
+  },
+  "outputs": { "reshaped": { "dtype": "T", "rank": "dim(shapes.shape, 0)" } },
+  "attributes": { "allowzero": { "default": 0 } },
+  "attributeConstraints": { "allowzero": { "values": [0, 1] } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "int16", "uint32", "uint8", "int8", "bool", "int64"],
+    "S": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "reshapeModeOk": "attrs.allowzero == 0 or attrs.allowzero == 1" },
+  "when": ["reshapeModeOk", "numel(shapes.data) == numel(shapes.reshaped)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "src": { "arg": "data", "elementType": "$vectorScalar" },
+    "dst": { "arg": "reshaped", "elementType": "$vectorScalar" },
+    "x": { "arg": "data", "elementType": "$scalar" },
+    "y": { "arg": "reshaped", "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "copy_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "numel(shapes.data) > 0", "numel(shapes.data) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Reshape.CopyVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.reshaped) / 4" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.reshaped) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Reshape",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.reshaped)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.reshaped)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "x", "output": "y" }]
+        }
+      ]
+    }
+  ]
+}

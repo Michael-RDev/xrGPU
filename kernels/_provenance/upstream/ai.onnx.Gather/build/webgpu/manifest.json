@@ -1,0 +1,84 @@
+{
+  "domain": "ai.onnx",
+  "name": "Gather",
+  "sinceVersion": 13,
+  "inputs": { "data": { "dtype": "T" }, "indices": { "dtype": "I" } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": "ranks.data + ranks.indices - 1",
+      "shape": "prefix(shapes.data, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.data) + shapes.indices + suffix(shapes.data, (attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.data) + 1)"
+    }
+  },
+  "attributes": { "axis": { "default": 0 } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "I": ["int32"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "indexScalar": "dtypes.I" },
+  "when": ["ranks.output == ranks.data + ranks.indices - 1", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "row_fast_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"vec2<u32>\"", "ranks.data >= 2", "(attrs.axis == 0 or attrs.axis + ranks.data == 0)", "numel(shapes.indices) > 0", "inner(shapes.data, 0) % 4 == 0", "numel(shapes.output) == numel(shapes.indices) * inner(shapes.data, 0)"],
+      "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gather.RowVec4",
+          "shader": "datamove-gather-row.wgsl.jinja",
+          "derive": {
+            "numIndices": "numel(shapes.indices)",
+            "axisDimSpec": "dim(shapes.data, 0)",
+            "rowVecs": "inner(shapes.data, 0) / 4"
+          },
+          "bindings": [
+            { "arg": "data", "elementType": "$vectorScalar" },
+            "indices",
+            { "arg": "output", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.indices), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "when": ["ranks.data >= 1", "attrs.axis + ranks.data >= 0", "attrs.axis < ranks.data"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gather",
+          "shader": "gather.wgsl.jinja",
+          "derive": {
+            "dataShape": "shapes.data",
+            "indicesShape": "shapes.indices",
+            "outputShape": "shapes.output",
+            "dataRank": "ranks.data",
+            "indicesRank": "ranks.indices",
+            "outputRank": "ranks.output",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.data"
+          },
+          "bindings": [
+            { "arg": "data", "elementType": "$scalar" },
+            "indices",
+            { "arg": "output", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

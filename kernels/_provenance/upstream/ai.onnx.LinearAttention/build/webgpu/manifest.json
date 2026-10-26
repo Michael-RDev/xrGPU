@@ -1,0 +1,581 @@
+{
+  "domain": "ai.onnx",
+  "name": "LinearAttention",
+  "sinceVersion": 27,
+  "inputs": {
+    "queryT": { "onnx": "query", "dtype": "T", "rank": 3 },
+    "keyT": { "onnx": "key", "dtype": "T", "rank": 3 },
+    "valueT": { "onnx": "value", "dtype": "T", "rank": 3 },
+    "pastStateT": {
+      "onnx": "past_state",
+      "dtype": "S",
+      "rank": 4,
+      "optional": true,
+      "shape": "[dim(shapes.queryT, 0), attrs.kv_num_heads, dim(shapes.queryT, 2) / attrs.q_num_heads, dim(shapes.valueT, 2) / max(1, attrs.kv_num_heads)]"
+    },
+    "decayT": { "onnx": "decay", "dtype": "T", "rank": 3, "optional": true },
+    "betaT": { "onnx": "beta", "dtype": "T", "rank": 3, "optional": true }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.queryT, 0), dim(shapes.queryT, 1), attrs.q_num_heads * (dim(shapes.valueT, 2) / max(1, attrs.kv_num_heads))]"
+    },
+    "presentStateT": {
+      "onnx": "present_state",
+      "dtype": "S",
+      "rank": 4,
+      "shape": "[dim(shapes.queryT, 0), attrs.kv_num_heads, dim(shapes.queryT, 2) / attrs.q_num_heads, dim(shapes.valueT, 2) / max(1, attrs.kv_num_heads)]"
+    }
+  },
+  "attributes": {
+    "chunk_size": { "default": 64 },
+    "scale": { "default": 0 },
+    "update_rule": { "default": "gated_delta" },
+    "kv_num_heads": {},
+    "q_num_heads": {}
+  },
+  "attributeConstraints": {
+    "kv_num_heads": { "required": true },
+    "q_num_heads": { "required": true },
+    "update_rule": { "values": ["linear", "gated", "delta", "gated_delta"] }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "S": ["float32", "float16"] },
+  "tunables": { "tileV": { "default": 8 }, "gatedTileV": { "default": 4 }, "dvGroups": { "default": 4 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "effRule": "attrs.update_rule if attrs.update_rule else \"gated_delta\"",
+    "headDimK": "dim(shapes.queryT, 2) / max(1, attrs.q_num_heads)",
+    "headDimV": "dim(shapes.valueT, 2) / max(1, attrs.kv_num_heads)",
+    "batchSequenceOk": "dim(shapes.keyT, 0) == dim(shapes.queryT, 0) and dim(shapes.keyT, 1) == dim(shapes.queryT, 1) and dim(shapes.valueT, 0) == dim(shapes.queryT, 0) and dim(shapes.valueT, 1) == dim(shapes.queryT, 1)",
+    "decayOk": "not present.decayT or (ranks.decayT == 3 and dim(shapes.decayT, 0) == dim(shapes.queryT, 0) and dim(shapes.decayT, 1) == dim(shapes.queryT, 1) and (dim(shapes.decayT, 2) == attrs.kv_num_heads or dim(shapes.decayT, 2) == attrs.kv_num_heads * headDimK) and tensorDtypes.decayT == tensorDtypes.queryT)",
+    "betaOk": "not present.betaT or (ranks.betaT == 3 and dim(shapes.betaT, 0) == dim(shapes.queryT, 0) and dim(shapes.betaT, 1) == dim(shapes.queryT, 1) and (dim(shapes.betaT, 2) == 1 or dim(shapes.betaT, 2) == attrs.kv_num_heads) and tensorDtypes.betaT == tensorDtypes.queryT)",
+    "queryDtype": "tensorDtypes.queryT",
+    "keyDtype": "tensorDtypes.queryT",
+    "valueDtype": "tensorDtypes.queryT",
+    "decayDtype": "tensorDtypes.queryT",
+    "betaDtype": "tensorDtypes.queryT",
+    "stateDtype": "tensorDtypes.presentStateT",
+    "queryElem": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "keyElem": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "valueScalar": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "decayScalar": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "betaScalar": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "outputScalar": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "stateScalar": "\"f16\" if tensorDtypes.presentStateT == \"float16\" else \"f32\"",
+    "vec4Lanes": "min(deviceWorkgroupCap, pow2ceil(ceil(headDimK / 4)))",
+    "vec4SubgroupExact": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == device.adapterInfo.subgroupMaxSize and vec4Lanes == device.adapterInfo.subgroupMinSize",
+    "vec4SubgroupsAvailable": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and vec4Lanes <= device.adapterInfo.subgroupMinSize",
+    "vec4DvGroups": "max(1, min(tunables.dvGroups, deviceWorkgroupCap / vec4Lanes)) if (vec4SubgroupExact or not vec4SubgroupsAvailable) else 1",
+    "vec4WorkgroupSize": "vec4Lanes * vec4DvGroups",
+    "vec4HeadDimFits": "ceilDiv(headDimK, 4) <= vec4Lanes and vec4WorkgroupSize <= deviceWorkgroupCap",
+    "vec4BindingsNonEmpty": "dim(shapes.queryT, 0) > 0 and dim(shapes.queryT, 1) > 0",
+    "vec4UseSubgroups": "vec4SubgroupsAvailable and (vec4DvGroups == 1 or vec4SubgroupExact)",
+    "vec4TileVPlain": "max(1, min(tunables.tileV, headDimV))",
+    "headLayoutOk": "attrs.q_num_heads > 0 and attrs.kv_num_heads > 0 and attrs.q_num_heads % attrs.kv_num_heads == 0 and dim(shapes.queryT, 2) > 0 and dim(shapes.valueT, 2) > 0 and dim(shapes.keyT, 2) > 0 and dim(shapes.queryT, 2) % attrs.q_num_heads == 0 and dim(shapes.valueT, 2) % attrs.kv_num_heads == 0 and dim(shapes.keyT, 2) == attrs.kv_num_heads * headDimK",
+    "presentStateOk": "ranks.presentStateT == 4 and dim(shapes.presentStateT, 0) == dim(shapes.queryT, 0) and dim(shapes.presentStateT, 1) == attrs.kv_num_heads and dim(shapes.presentStateT, 2) == headDimK and dim(shapes.presentStateT, 3) == headDimV",
+    "outputOk": "ranks.outputT == 3 and dim(shapes.outputT, 0) == dim(shapes.queryT, 0) and dim(shapes.outputT, 1) == dim(shapes.queryT, 1) and dim(shapes.outputT, 2) == attrs.q_num_heads * headDimV",
+    "pastStateOk": "not present.pastStateT or (ranks.pastStateT == 4 and dim(shapes.pastStateT, 0) == dim(shapes.queryT, 0) and dim(shapes.pastStateT, 1) == attrs.kv_num_heads and dim(shapes.pastStateT, 2) == headDimK and dim(shapes.pastStateT, 3) == headDimV)",
+    "gateInputsOk": "decayOk and betaOk and ((effRule == \"linear\" and not present.decayT and not present.betaT) or (effRule == \"gated\" and present.decayT and not present.betaT) or (effRule == \"delta\" and not present.decayT and present.betaT) or (effRule == \"gated_delta\" and present.decayT and present.betaT))",
+    "tensorDtypesOk": "(tensorDtypes.queryT == \"float16\" or tensorDtypes.queryT == \"float32\") and tensorDtypes.keyT == tensorDtypes.queryT and tensorDtypes.valueT == tensorDtypes.queryT and tensorDtypes.outputT == tensorDtypes.queryT and (tensorDtypes.presentStateT == \"float16\" or tensorDtypes.presentStateT == \"float32\") and ((present.pastStateT and tensorDtypes.pastStateT == tensorDtypes.presentStateT) or (not present.pastStateT and tensorDtypes.presentStateT == tensorDtypes.queryT)) and f16Ok(tensorDtypes.queryT) and f16Ok(tensorDtypes.presentStateT)",
+    "commonContract": "headLayoutOk and batchSequenceOk and gateInputsOk and tensorDtypesOk and outputOk and presentStateOk and pastStateOk",
+    "scalarHeadDimFits": "headDimK > 0 and headDimK <= deviceWorkgroupCap and headDimK <= 256",
+    "gatedVec4TileV": "max(1, min(tunables.gatedTileV, headDimV)) if vec4UseSubgroups else max(1, min(2, headDimV))",
+    "vec4SharedFitsPlain": "vec4UseSubgroups or vec4WorkgroupSize * vec4TileVPlain * 4 <= device.limits.maxComputeWorkgroupStorageSize",
+    "vec4SharedFitsGatedBeta": "vec4UseSubgroups or vec4WorkgroupSize * (gatedVec4TileV * 8 + 4) <= device.limits.maxComputeWorkgroupStorageSize"
+  },
+  "bindings": {
+    "query": { "arg": "queryT", "elementType": "$queryElem" },
+    "key": { "arg": "keyT", "elementType": "$keyElem" },
+    "value": { "arg": "valueT", "elementType": "$valueScalar" },
+    "output": { "arg": "outputT", "elementType": "$outputScalar" },
+    "present_state": { "arg": "presentStateT", "elementType": "$stateScalar" },
+    "params_linear": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "dim(shapes.queryT, 0)" },
+        { "name": "seqLength", "type": "u32", "value": "dim(shapes.queryT, 1)" },
+        { "name": "qNumHeads", "type": "u32", "value": "attrs.q_num_heads" },
+        { "name": "kvNumHeads", "type": "u32", "value": "attrs.kv_num_heads" },
+        { "name": "qPackedDim", "type": "u32", "value": "dim(shapes.queryT, 2)" },
+        { "name": "kPackedDim", "type": "u32", "value": "dim(shapes.keyT, 2)" },
+        { "name": "vPackedDim", "type": "u32", "value": "dim(shapes.valueT, 2)" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if attrs.scale else 0" }
+      ]
+    },
+    "past_state": { "arg": "pastStateT", "elementType": "$stateScalar" },
+    "decay": { "arg": "decayT", "elementType": "$decayScalar" },
+    "params_gated": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "dim(shapes.queryT, 0)" },
+        { "name": "seqLength", "type": "u32", "value": "dim(shapes.queryT, 1)" },
+        { "name": "qNumHeads", "type": "u32", "value": "attrs.q_num_heads" },
+        { "name": "kvNumHeads", "type": "u32", "value": "attrs.kv_num_heads" },
+        { "name": "qPackedDim", "type": "u32", "value": "dim(shapes.queryT, 2)" },
+        { "name": "kPackedDim", "type": "u32", "value": "dim(shapes.keyT, 2)" },
+        { "name": "vPackedDim", "type": "u32", "value": "dim(shapes.valueT, 2)" },
+        { "name": "decayPackedDim", "type": "u32", "value": "dim(shapes.decayT, 2) if present.decayT else 0" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if attrs.scale else 0" }
+      ]
+    },
+    "beta": { "arg": "betaT", "elementType": "$betaScalar" },
+    "params_delta": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "dim(shapes.queryT, 0)" },
+        { "name": "seqLength", "type": "u32", "value": "dim(shapes.queryT, 1)" },
+        { "name": "qNumHeads", "type": "u32", "value": "attrs.q_num_heads" },
+        { "name": "kvNumHeads", "type": "u32", "value": "attrs.kv_num_heads" },
+        { "name": "qPackedDim", "type": "u32", "value": "dim(shapes.queryT, 2)" },
+        { "name": "kPackedDim", "type": "u32", "value": "dim(shapes.keyT, 2)" },
+        { "name": "vPackedDim", "type": "u32", "value": "dim(shapes.valueT, 2)" },
+        { "name": "betaPackedDim", "type": "u32", "value": "dim(shapes.betaT, 2) if present.betaT else 0" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if attrs.scale else 0" }
+      ]
+    },
+    "params_gated_delta": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "dim(shapes.queryT, 0)" },
+        { "name": "seqLength", "type": "u32", "value": "dim(shapes.queryT, 1)" },
+        { "name": "qNumHeads", "type": "u32", "value": "attrs.q_num_heads" },
+        { "name": "kvNumHeads", "type": "u32", "value": "attrs.kv_num_heads" },
+        { "name": "qPackedDim", "type": "u32", "value": "dim(shapes.queryT, 2)" },
+        { "name": "kPackedDim", "type": "u32", "value": "dim(shapes.keyT, 2)" },
+        { "name": "vPackedDim", "type": "u32", "value": "dim(shapes.valueT, 2)" },
+        { "name": "decayPackedDim", "type": "u32", "value": "dim(shapes.decayT, 2) if present.decayT else 0" },
+        { "name": "betaPackedDim", "type": "u32", "value": "dim(shapes.betaT, 2) if present.betaT else 0" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if attrs.scale else 0" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "linear_zero_scalar",
+      "priority": 0,
+      "when": ["effRule == \"linear\"", "not present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"linear\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.tileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "output", "present_state", "params_linear"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_zero_vec4",
+      "priority": 10,
+      "when": ["effRule == \"linear\"", "not present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsPlain", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"linear\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "vec4TileVPlain",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "output", "present_state", "params_linear"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_state_scalar",
+      "priority": 0,
+      "when": ["effRule == \"linear\"", "present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"linear\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.tileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "output", "present_state", "params_linear"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_state_vec4",
+      "priority": 10,
+      "when": ["effRule == \"linear\"", "present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsPlain", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"linear\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "vec4TileVPlain",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "output", "present_state", "params_linear"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_zero_scalar",
+      "priority": 0,
+      "when": ["effRule == \"gated\"", "not present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"gated\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.tileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "decay", "output", "present_state", "params_gated"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_zero_vec4",
+      "priority": 10,
+      "when": ["effRule == \"gated\"", "not present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsPlain", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"gated\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "vec4TileVPlain",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "decay", "output", "present_state", "params_gated"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_state_scalar",
+      "priority": 0,
+      "when": ["effRule == \"gated\"", "present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"gated\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.tileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "decay", "output", "present_state", "params_gated"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_state_vec4",
+      "priority": 10,
+      "when": ["effRule == \"gated\"", "present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsPlain", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"gated\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "vec4TileVPlain",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "decay", "output", "present_state", "params_gated"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_zero_scalar",
+      "priority": 0,
+      "when": ["effRule == \"delta\"", "not present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.gatedTileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "beta", "output", "present_state", "params_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_zero_vec4",
+      "priority": 10,
+      "when": ["effRule == \"delta\"", "not present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsGatedBeta", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "gatedVec4TileV",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "beta", "output", "present_state", "params_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_state_scalar",
+      "priority": 0,
+      "when": ["effRule == \"delta\"", "present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.gatedTileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "beta", "output", "present_state", "params_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_state_vec4",
+      "priority": 10,
+      "when": ["effRule == \"delta\"", "present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsGatedBeta", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "gatedVec4TileV",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "beta", "output", "present_state", "params_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_zero_scalar",
+      "priority": 0,
+      "when": ["effRule == \"gated_delta\"", "not present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"gated_delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.gatedTileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "decay", "beta", "output", "present_state", "params_gated_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_zero_vec4",
+      "priority": 10,
+      "when": ["effRule == \"gated_delta\"", "not present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsGatedBeta", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"gated_delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "gatedVec4TileV",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "decay", "beta", "output", "present_state", "params_gated_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_state_scalar",
+      "priority": 0,
+      "when": ["effRule == \"gated_delta\"", "present.pastStateT", "commonContract", "scalarHeadDimFits"],
+      "derive": {
+        "updateRule": "\"gated_delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "device.features.has(\"subgroups\") and headDimK > 16",
+        "workgroupSize": "min(256, pow2ceil(headDimK))",
+        "tileV": "max(1, min(tunables.gatedTileV, headDimV))",
+        "outputDtype": "tensorDtypes.queryT"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "decay", "beta", "output", "present_state", "params_gated_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(headDimV, tileV), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_state_vec4",
+      "priority": 10,
+      "when": ["effRule == \"gated_delta\"", "present.pastStateT", "commonContract", "headDimK % 4 == 0", "vec4SharedFitsGatedBeta", "vec4HeadDimFits", "vec4BindingsNonEmpty"],
+      "derive": {
+        "updateRule": "\"gated_delta\"",
+        "hasPastState": "present.pastStateT",
+        "useSubgroups": "vec4UseSubgroups",
+        "tileV": "gatedVec4TileV",
+        "queryElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "keyElem": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+        "dvGroups": "vec4DvGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttention",
+          "shader": "linear-attention.vec4.wgsl.jinja",
+          "bindings": ["query", "key", "value", "past_state", "decay", "beta", "output", "present_state", "params_gated_delta"],
+          "dispatch": {
+            "x": "min(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "y": "ceilDiv(dim(shapes.queryT, 0) * attrs.kv_num_heads * ceilDiv(ceilDiv(headDimV, tileV), dvGroups), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

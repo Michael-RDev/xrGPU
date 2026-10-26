@@ -1,0 +1,509 @@
+{
+  "cases": [
+    {
+      "name": "max_arity_float16_positions",
+      "provenance": {
+        "notes": "Synthetic five-input float16 Mean contract fixture; element-varying operands make every bounded input position affect a non-constant exact mean."
+      },
+      "inputs": {
+        "a": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } },
+        "b": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [2.0, 3.0, 4.0, 5.0, 6.0] } },
+        "c": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [3.0, 4.0, 5.0, 6.0, 7.0] } },
+        "d": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [4.0, 5.0, 6.0, 7.0, 8.0] } },
+        "e": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [5.0, 6.0, 7.0, 8.0, 9.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [3.0, 4.0, 5.0, 6.0, 7.0] }
+        }
+      }
+    },
+    {
+      "name": "same_shape",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_two_input_mean_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes float32 subnormals to zero; the subnormal addends/mean cannot be reproduced on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_6",
+        "notes": "The mean of equal finite subnormal values is the same subnormal value; flushing the accumulation or division erases the signal."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1e-40, -1e-40] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1e-40, -1e-40] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [1e-40, -1e-40] }
+        }
+      }
+    },
+    {
+      "name": "f32_subnormal_two_input_mean_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes float32 subnormals to zero; the subnormal addends/mean cannot be reproduced on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_6",
+        "notes": "On the vec4 path, the mean of equal finite subnormal values must remain subnormal."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-39, -1e-39] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-39, -1e-39] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-39, -1e-39] }
+        }
+      }
+    },
+    {
+      "name": "float16_vec4_same_shape",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.5, -4.0, 0.25, 10.0, -100.0, 0.001] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.5, 2.0, -1.5, 4.0, 0.75, -5.0, 100.0, -0.001] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [8],
+          "tolerance": 0.001,
+          "data": { "kind": "values", "values": [0.75, 0.0, 1.0, 0.0, 0.5, 2.5, 0.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "same_shape_vec4_three_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 5.0, -2.0, 4.0, 0.0, 6.0, 10.0, -10.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [3.0, 2.0, -4.0, 8.0, 1.0, 1.0, 9.0, -9.0] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.0, 7.0, -3.0, 2.0, -1.0, 8.0, 11.0, -11.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [8],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [1.3333333333333333, 4.666666666666667, -3.0, 4.666666666666667, 0.0, 5.0, 10.0, -10.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "float16_vec4_three_input",
+      "provenance": {
+        "notes": "Three float16 vec4 inputs exercise widening each operand to float32, folding the third input, dividing by three, and narrowing on store. Dyadic inputs make every operand, partial sum, and quotient exactly representable in float16, so the expected result is exactly (a+b+c)/3."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 10.0, 0.125, 4.0, -16.0, 0.25] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [2.0, -3.25, -1.0, 6.0, -0.25, 3.0, -20.0, 0.25] }
+        },
+        "c": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.5, -1.5, 2.0, 8.0, -0.25, 2.0, -12.0, 0.25] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [8],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [1.5, -2.25, 0.5, 8.0, -0.125, 3.0, -16.0, 0.25] }
+        }
+      }
+    },
+    {
+      "name": "broadcast_rank4",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 1, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_lhs_scalar_broadcast",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [10.0] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [2.0, 4.0, 6.0, 8.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_three_inputs_same_shape",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_6"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 1.0, -1.0, 1.1, -100.0, -5.0, 0.01, -10.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 2.0, -2.0, 2.2, 65.0, -1.0, 0.02, -1.0] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 3.0, -3.0, 3.3, 65.0, -3.0, 0.03, -1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_validated_four_inputs_same_shape_variadic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_6",
+        "notes": "Four same-shaped inputs exercise the maximum supported arity of this variadic Mean package."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "constant", "value": 3.0 } },
+        "c": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "constant", "value": 5.0 } },
+        "d": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "constant", "value": 7.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0, "data": { "kind": "constant", "value": 4.0 } }
+      }
+    },
+    {
+      "name": "four_input_same_shape_vec4_reference_generated",
+      "provenance": {
+        "notes": "Four distinct operands make both the numerator and divisor observable: omitting the fourth input or dividing by three changes every output element."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.07, "scale": 0.25 }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "d": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.37, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 8], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_four_inputs_nan_infinity_variadic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_6",
+        "notes": "A fourth input exposes NaN propagation and positive-Infinity plus negative-Infinity cancellation."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, "Infinity", 1.0, 8.0] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [3.0, "-Infinity", 5.0, 4.0] } },
+        "c": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [5.0, 2.0, "NaN", -4.0] } },
+        "d": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [7.0, 6.0, 9.0, "NaN"] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "allowNaN": true,
+          "data": { "kind": "values", "values": [4.0, "NaN", "NaN", "NaN"] }
+        }
+      }
+    },
+    {
+      "name": "ort_three_inputs_multidirectional_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_8"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "b": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "c": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000003 } }
+    },
+    {
+      "name": "three_input_broadcast_vec4_mean",
+      "provenance": {
+        "notes": "The four-aligned innermost output dimension permits a vec4 load from a while b and c broadcast as scalar splats, exercising three-input vectorized broadcasting with mixed binding element types."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [0.5, -0.5] } },
+        "c": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_four_inputs_multidirectional_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Mean_8",
+        "notes": "Extends ORT's multidirectional broadcast case to a valid four-input ONNX variadic Mean node."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } },
+        "c": { "dtype": "float32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [100.0, 200.0, 300.0] } },
+        "d": {
+          "dtype": "float32",
+          "shape": [1, 1, 3],
+          "data": { "kind": "values", "values": [1000.0, 2000.0, 3000.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 3, 3],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [277.75, 528.0, 778.25, 280.25, 530.5, 780.75, 282.75, 533.0, 783.25, 302.75, 553.0, 803.25, 305.25, 555.5, 805.75, 307.75, 558.0, 808.25, 327.75, 578.0, 828.25, 330.25, 580.5, 830.75, 332.75, 583.0, 833.25]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_example_three_inputs",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mean_example" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 3.0, 4.0] } },
+        "c": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.0, 6.0, 6.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_one_input_identity",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mean_one_input" },
+      "inputs": { "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_mean_two_inputs",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mean_two_inputs" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 3.0, 4.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_dim_zero_equal_rank",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.DimWithZeroHandling",
+        "notes": "Projected from ORT's binary elementwise zero-dimension Add coverage to generic ONNX multidirectional broadcasting."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_dim_zero_scalar_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.DimWithZeroHandling",
+        "notes": "Projected from ORT's binary elementwise zero-dimension Add coverage to generic ONNX multidirectional broadcasting."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } },
+        "b": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "single_input_empty_shape",
+      "inputs": { "a": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_broadcast_differing_shapes",
+      "inputs": {
+        "a": { "dtype": "float16", "shape": [1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0] } },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.41 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 4], "tolerance": 0.004 } }
+    },
+    {
+      "name": "rank7_broadcast_two_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "four_input_scalar_d_broadcast_mean",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0] }
+        },
+        "d": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [100.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [31.75, 32.5, 33.25, 34.0, 34.75, 35.5, 36.25, 37.0] }
+        }
+      }
+    },
+    {
+      "name": "five_input_same_shape_variadic",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 9.0, -3.0, 4.0] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [2.0, 8.0, -4.0, 3.0] } },
+        "c": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [3.0, 7.0, -5.0, 2.0] } },
+        "d": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [4.0, 6.0, -6.0, 1.0] } },
+        "e": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [5.0, 5.0, -7.0, 0.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [3.0, 7.0, -5.0, 2.0] }
+        }
+      }
+    },
+    {
+      "name": "rank8_broadcast_two_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "domain": "ai.onnx",
+  "name": "IsInf",
+  "sinceVersion": 20,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "B", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "detect_negative": { "default": 1 }, "detect_positive": { "default": 1 } },
+  "attributeConstraints": { "detect_negative": { "values": [0, 1] }, "detect_positive": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16"], "B": ["bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "ranks.y == ranks.x"],
+  "bindings": { "y": { "elementType": "u32" } },
+  "variants": [
+    {
+      "id": "detect_neither",
+      "priority": 30,
+      "when": ["attrs.detect_negative == 0", "attrs.detect_positive == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "IsInf.DetectNeither",
+          "shader": "detect-neither.wgsl.jinja",
+          "bindings": [
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["attrs.detect_negative == 1 or attrs.detect_positive == 1", "numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "f16Ok(dtypes.T)"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outVec": "\"vec4<\" ~ dtypes.B ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "IsInf.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "detectNegative": "attrs.detect_negative",
+            "detectPositive": "attrs.detect_positive",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$outVec" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "when": ["f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "IsInf",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "detectNegative", "type": "u32", "value": "attrs.detect_negative" },
+                { "name": "detectPositive", "type": "u32", "value": "attrs.detect_positive" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

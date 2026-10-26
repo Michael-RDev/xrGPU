@@ -1,0 +1,1535 @@
+{
+  "domain": "com.microsoft",
+  "name": "DecoderMaskedMultiHeadAttention",
+  "sinceVersion": 1,
+  "inputs": {
+    "queryT": { "onnx": "query", "dtype": "T", "rank": 3 },
+    "keyT": { "onnx": "key", "dtype": "T" },
+    "valueT": { "onnx": "value", "dtype": "T" },
+    "maskIndexT": { "onnx": "mask_index", "dtype": "M", "rank": 2, "optional": true },
+    "attentionBiasT": { "onnx": "attention_bias", "dtype": "T", "rank": 4, "optional": true },
+    "pastKeyT": { "onnx": "past_key", "dtype": "T", "rank": 4, "optional": true },
+    "pastValueT": { "onnx": "past_value", "dtype": "T", "rank": 4, "optional": true },
+    "pastSequenceLengthT": { "onnx": "past_sequence_length", "dtype": "M", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.queryT, 0), 1, dim(shapes.queryT, 2)]"
+    },
+    "presentKeyT": { "onnx": "present_key", "dtype": "T", "rank": 4, "optional": true, "shape": "shapes.pastKeyT" },
+    "presentValueT": {
+      "onnx": "present_value",
+      "dtype": "T",
+      "rank": 4,
+      "optional": true,
+      "shape": "shapes.pastValueT"
+    },
+    "qkT": {
+      "onnx": "qk",
+      "dtype": "QK",
+      "rank": 4,
+      "optional": true,
+      "shape": "[dim(shapes.queryT, 0), attrs.num_heads, 1, dim(shapes.keyT, 2)]"
+    }
+  },
+  "attributes": {
+    "num_heads": {},
+    "past_present_share_buffer": {},
+    "scale": {},
+    "mask_filter_value": { "default": -10000 },
+    "output_qk": {}
+  },
+  "attributeConstraints": { "num_heads": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"], "QK": ["float32", "float16"], "M": ["int32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "COPY_WORKGROUP_SIZE": { "default": 256 },
+    "COPY_ITEMS_PER_LANE": { "default": 8 },
+    "COPY_MIN_WORKGROUPS": { "default": 64 },
+    "MAX_SPLITS": { "default": 8 },
+    "KEYS_PER_SPLIT": { "default": 256 },
+    "THREAD_QK_OUTPUT_WORKGROUPS": { "default": 2 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "narrowSubgroupRange": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "batchSize": "dim(shapes.queryT, 0)",
+    "hiddenSize": "dim(shapes.queryT, 2)",
+    "numHeads": "attrs.num_heads",
+    "headSize": "hiddenSize / max(1, numHeads)",
+    "headDimV4": "headSize / 4",
+    "isCross": "not present.pastKeyT and not present.pastValueT",
+    "crossKvLen": "dim(shapes.keyT, 2) if (isCross and ranks.keyT == 4) else 0",
+    "cacheCapacity": "dim(shapes.pastKeyT, 2) if present.pastKeyT else 0",
+    "physicalKeys": "crossKvLen if isCross else cacheCapacity",
+    "qkRequested": "attrs.output_qk != 0 if has(attrs, \"output_qk\") else false",
+    "floatDtypeOk": "(tensorDtypes.queryT == \"float32\" or tensorDtypes.queryT == \"float16\") and f16Ok(tensorDtypes.queryT) and tensorDtypes.keyT == tensorDtypes.queryT and tensorDtypes.valueT == tensorDtypes.queryT and tensorDtypes.outputT == tensorDtypes.queryT",
+    "geometryOk": "ranks.queryT == 3 and dim(shapes.queryT, 1) == 1 and numHeads > 0 and hiddenSize > 0 and hiddenSize % numHeads == 0 and headSize > 0 and headSize % 4 == 0",
+    "outputShapeOk": "ranks.outputT == 3 and dim(shapes.outputT, 0) == batchSize and dim(shapes.outputT, 1) == 1 and dim(shapes.outputT, 2) == hiddenSize",
+    "workgroupOk": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap and pow2ceil(tunables.WORKGROUP_SIZE) == tunables.WORKGROUP_SIZE and headDimV4 <= deviceWorkgroupCap and tunables.COPY_WORKGROUP_SIZE > 0 and tunables.COPY_WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "workgroupStorageOk": "32 * headDimV4 + 24 * tunables.WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupStorageSize",
+    "numSplits": "max(1, min(tunables.MAX_SPLITS, ceilDiv(physicalKeys, tunables.KEYS_PER_SPLIT)))",
+    "splitScratchBytes": "batchSize * numHeads * numSplits * headSize * 4",
+    "splitStatsBytes": "2 * batchSize * numHeads * numSplits * 4",
+    "scratchFits": "splitScratchBytes <= device.limits.maxStorageBufferBindingSize and splitScratchBytes <= device.limits.maxBufferSize and splitStatsBytes <= device.limits.maxStorageBufferBindingSize and splitStatsBytes <= device.limits.maxBufferSize",
+    "dispatchFits": "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and numSplits <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "coreOk": "floatDtypeOk and geometryOk and outputShapeOk and workgroupOk and workgroupStorageOk and scratchFits and dispatchFits and physicalKeys > 0",
+    "crossOk": "coreOk and isCross and ranks.keyT == 4 and ranks.valueT == 4 and dim(shapes.keyT, 0) == batchSize and dim(shapes.keyT, 1) == numHeads and dim(shapes.keyT, 3) == headSize and sameShape(shapes.valueT, shapes.keyT) and not present.attentionBiasT and not present.pastSequenceLengthT and not present.presentKeyT and not present.presentValueT",
+    "cacheDtypeOk": "tensorDtypes.pastKeyT == tensorDtypes.queryT and tensorDtypes.pastValueT == tensorDtypes.queryT and tensorDtypes.presentKeyT == tensorDtypes.queryT and tensorDtypes.presentValueT == tensorDtypes.queryT and tensorDtypes.pastSequenceLengthT == \"int32\"",
+    "selfOk": "coreOk and not isCross and present.pastValueT and present.pastSequenceLengthT and present.presentKeyT and present.presentValueT and attrs.past_present_share_buffer == 1 and ranks.keyT == 3 and ranks.valueT == 3 and dim(shapes.keyT, 0) == batchSize and dim(shapes.keyT, 1) == 1 and dim(shapes.keyT, 2) == hiddenSize and sameShape(shapes.valueT, shapes.keyT) and ranks.pastKeyT == 4 and dim(shapes.pastKeyT, 0) == batchSize and dim(shapes.pastKeyT, 1) == numHeads and dim(shapes.pastKeyT, 3) == headSize and cacheCapacity > 1 and sameShape(shapes.pastValueT, shapes.pastKeyT) and sameShape(shapes.presentKeyT, shapes.pastKeyT) and sameShape(shapes.presentValueT, shapes.pastKeyT) and numel(shapes.pastSequenceLengthT) == 1 and cacheDtypeOk and not present.qkT and not qkRequested",
+    "maskShapeOk": "present.maskIndexT and ranks.maskIndexT == 2 and dim(shapes.maskIndexT, 0) == batchSize and tensorDtypes.maskIndexT == \"int32\" and (dim(shapes.maskIndexT, 1) == crossKvLen if isCross else (dim(shapes.maskIndexT, 1) >= 1 and dim(shapes.maskIndexT, 1) <= cacheCapacity))",
+    "attnBiasShapeOk": "present.attentionBiasT and ranks.attentionBiasT == 4 and tensorDtypes.attentionBiasT == tensorDtypes.queryT and dim(shapes.attentionBiasT, 2) == 1 and (dim(shapes.attentionBiasT, 0) == 1 or dim(shapes.attentionBiasT, 0) == batchSize) and (dim(shapes.attentionBiasT, 1) == 1 or dim(shapes.attentionBiasT, 1) == numHeads) and dim(shapes.attentionBiasT, 3) >= 1 and dim(shapes.attentionBiasT, 3) <= cacheCapacity",
+    "qkShapeOk": "present.qkT and qkRequested and ranks.qkT == 4 and (tensorDtypes.qkT == \"float32\" or tensorDtypes.qkT == \"float16\") and f16Ok(tensorDtypes.qkT) and dim(shapes.qkT, 0) == batchSize and dim(shapes.qkT, 1) == numHeads and dim(shapes.qkT, 2) == 1 and dim(shapes.qkT, 3) == crossKvLen",
+    "crossPlainOk": "crossOk and not present.maskIndexT and not present.qkT and not qkRequested",
+    "crossMaskOk": "crossOk and maskShapeOk and not present.qkT and not qkRequested",
+    "crossQkOk": "crossOk and not present.maskIndexT and qkShapeOk",
+    "crossMaskQkOk": "crossOk and maskShapeOk and qkShapeOk",
+    "selfPlainOk": "selfOk and not present.maskIndexT and not present.attentionBiasT",
+    "selfMaskOk": "selfOk and maskShapeOk and not present.attentionBiasT",
+    "selfBiasOk": "selfOk and not present.maskIndexT and attnBiasShapeOk",
+    "selfMaskBiasOk": "selfOk and maskShapeOk and attnBiasShapeOk",
+    "subgroupSplitKOk": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize >= 8 and device.adapterInfo.subgroupMinSize % 8 == 0 and device.adapterInfo.subgroupMaxSize % 8 == 0 and device.adapterInfo.subgroupMaxSize <= tunables.WORKGROUP_SIZE and tunables.WORKGROUP_SIZE % device.adapterInfo.subgroupMinSize == 0 and tunables.WORKGROUP_SIZE % device.adapterInfo.subgroupMaxSize == 0",
+    "subgroupSplitKPreferred": "subgroupSplitKOk and not narrowSubgroupRange",
+    "attnScalar": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "attnVec4": "\"vec4<f16>\" if tensorDtypes.queryT == \"float16\" else \"vec4<f32>\"",
+    "attnMaskElement": "\"f16\" if tensorDtypes.queryT == \"float16\" else \"f32\"",
+    "qkScalarType": "\"f16\" if tensorDtypes.qkT == \"float16\" else \"f32\"",
+    "attnBiasWidth": "dim(shapes.attentionBiasT, 3) if present.attentionBiasT else 0",
+    "attnBiasHeads": "dim(shapes.attentionBiasT, 1) if present.attentionBiasT else 0",
+    "attnBiasBatch": "dim(shapes.attentionBiasT, 0) if present.attentionBiasT else 0",
+    "cacheWordsV4": "numel(shapes.pastKeyT) / 4 if present.pastKeyT else 0",
+    "retainBlockWords": "tunables.COPY_WORKGROUP_SIZE * tunables.COPY_MIN_WORKGROUPS",
+    "retainOccupancyCap": "pick([[cacheWordsV4 >= 8 * retainBlockWords, 8], [cacheWordsV4 >= 4 * retainBlockWords, 4], [cacheWordsV4 >= 2 * retainBlockWords, 2]], 1)",
+    "retainItemsPerLane": "max(1, min(tunables.COPY_ITEMS_PER_LANE, retainOccupancyCap))"
+  },
+  "bindings": {
+    "query": { "arg": "queryT", "elementType": "$attnVec4" },
+    "key_cross": { "arg": "keyT", "name": "key", "elementType": "$attnVec4" },
+    "value_cross": { "arg": "valueT", "name": "value", "elementType": "$attnVec4" },
+    "key_cache": { "arg": "presentKeyT", "name": "key", "buffer": "read-only-storage", "elementType": "$attnVec4" },
+    "value_cache": {
+      "arg": "presentValueT",
+      "name": "value",
+      "buffer": "read-only-storage",
+      "elementType": "$attnVec4"
+    },
+    "key_row": { "arg": "keyT", "name": "key", "elementType": "$attnVec4" },
+    "value_row": { "arg": "valueT", "name": "value", "elementType": "$attnVec4" },
+    "past_key": { "arg": "pastKeyT", "elementType": "$attnVec4" },
+    "past_value": { "arg": "pastValueT", "elementType": "$attnVec4" },
+    "present_key": { "arg": "presentKeyT", "elementType": "$attnVec4" },
+    "present_value": { "arg": "presentValueT", "elementType": "$attnVec4" },
+    "seqlens_k": { "arg": "pastSequenceLengthT", "name": "seqlens_k", "elementType": "i32" },
+    "past_sequence_length": { "arg": "pastSequenceLengthT", "elementType": "i32" },
+    "key_pad_mask": { "arg": "maskIndexT", "name": "key_pad_mask", "elementType": "i32" },
+    "attn_mask": { "arg": "attentionBiasT", "name": "attn_mask", "elementType": "$attnMaskElement" },
+    "qk": { "arg": "qkT", "elementType": "$qkScalarType" },
+    "partial_out": { "scratch": "partialOut", "elementType": "vec4<f32>" },
+    "partial_stats": { "scratch": "partialStats", "elementType": "vec2<f32>" },
+    "partial_out_read": {
+      "scratch": "partialOut",
+      "name": "partial_out",
+      "buffer": "read-only-storage",
+      "elementType": "vec4<f32>"
+    },
+    "partial_stats_read": {
+      "scratch": "partialStats",
+      "name": "partial_stats",
+      "buffer": "read-only-storage",
+      "elementType": "vec2<f32>"
+    },
+    "output": { "arg": "outputT", "elementType": "$attnVec4" },
+    "params_cross": {
+      "name": "params",
+      "struct": [
+        { "name": "kvSeq", "type": "u32", "value": "crossKvLen" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if has(attrs, \"scale\") else 0" }
+      ]
+    },
+    "params_self": {
+      "name": "params",
+      "struct": [
+        { "name": "kvSeq", "type": "u32", "value": "cacheCapacity" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if has(attrs, \"scale\") else 0" }
+      ]
+    },
+    "params_self_bias": {
+      "name": "params",
+      "struct": [
+        { "name": "kvSeq", "type": "u32", "value": "cacheCapacity" },
+        { "name": "scale", "type": "f32", "value": "attrs.scale if has(attrs, \"scale\") else 0" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if attnBiasBatch == 1 else attnBiasHeads * attnBiasWidth"
+        },
+        { "name": "maskHeadStride", "type": "u32", "value": "0 if attnBiasHeads == 1 else attnBiasWidth" },
+        { "name": "maskSeqStride", "type": "u32", "value": "0" }
+      ]
+    },
+    "params_retain": {
+      "name": "params",
+      "struct": [{ "name": "countV4", "type": "u32", "value": "numel(shapes.pastKeyT) / 4" }]
+    },
+    "params_append": {
+      "name": "params",
+      "struct": [
+        { "name": "rowCountV4", "type": "u32", "value": "batchSize * hiddenSize / 4" },
+        { "name": "capacity", "type": "u32", "value": "cacheCapacity" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "cross_direct",
+      "priority": 31,
+      "when": ["crossPlainOk", "subgroupSplitKOk", "numSplits == 1"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross",
+      "priority": 30,
+      "when": ["crossPlainOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_qk_direct",
+      "priority": 31,
+      "when": ["crossQkOk", "subgroupSplitKOk", "numSplits == 1"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQk",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "qk", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_qk",
+      "priority": 30,
+      "when": ["crossQkOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQk",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "qk", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_mask_direct",
+      "priority": 31,
+      "when": ["crossMaskOk", "subgroupSplitKOk", "numSplits == 1"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_mask",
+      "priority": 30,
+      "when": ["crossMaskOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_mask_qk_direct",
+      "priority": 31,
+      "when": ["crossMaskQkOk", "subgroupSplitKOk", "numSplits == 1"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQk",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "qk", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_mask_qk",
+      "priority": 30,
+      "when": ["crossMaskQkOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQk",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": true,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "qk", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_nosg_direct",
+      "priority": 21,
+      "when": ["crossPlainOk", "numSplits == 1"],
+      "requires": {},
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_nosg",
+      "priority": 20,
+      "when": ["crossPlainOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_qk_nosg_direct",
+      "priority": 21,
+      "when": ["crossQkOk", "numSplits == 1"],
+      "requires": {},
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQkNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "qk", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_qk_nosg",
+      "priority": 20,
+      "when": ["crossQkOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQkNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "qk", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_mask_nosg_direct",
+      "priority": 21,
+      "when": ["crossMaskOk", "numSplits == 1"],
+      "requires": {},
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_mask_nosg",
+      "priority": 20,
+      "when": ["crossMaskOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "cross_mask_qk_nosg_direct",
+      "priority": 21,
+      "when": ["crossMaskQkOk", "numSplits == 1"],
+      "requires": {},
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQkNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "qk", "params_cross", "output"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ],
+      "derive": { "directOutput": true }
+    },
+    {
+      "id": "cross_mask_qk_nosg",
+      "priority": 20,
+      "when": ["crossMaskQkOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.CrossSplitKQkNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "emitQk": "present.qkT",
+            "qkScalar": "qkScalarType",
+            "useSubgroups": false,
+            "allowCooperativeQk": "not useSubgroups or usesF16 or headDimV4 < 8 or batchSize * hiddenSize / 4 > tunables.THREAD_QK_OUTPUT_WORKGROUPS * tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["query", "key_cross", "value_cross", "key_pad_mask", "qk", "partial_out", "partial_stats", "params_cross"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.CrossMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self",
+      "priority": 30,
+      "when": ["selfPlainOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "hasMask": "present.attentionBiasT"
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "partial_out", "partial_stats", "params_self"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_bias",
+      "priority": 30,
+      "when": ["selfBiasOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "hasMask": "present.attentionBiasT"
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "attn_mask", "partial_out", "partial_stats", "params_self_bias"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_mask",
+      "priority": 30,
+      "when": ["selfMaskOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "hasMask": "present.attentionBiasT"
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "key_pad_mask", "partial_out", "partial_stats", "params_self"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_mask_bias",
+      "priority": 30,
+      "when": ["selfMaskBiasOk", "subgroupSplitKOk"],
+      "demoteWhen": ["not subgroupSplitKPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "hasMask": "present.attentionBiasT"
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "key_pad_mask", "attn_mask", "partial_out", "partial_stats", "params_self_bias"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_nosg",
+      "priority": 20,
+      "when": ["selfPlainOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "hasMask": "present.attentionBiasT",
+            "useSubgroups": false
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "partial_out", "partial_stats", "params_self"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_bias_nosg",
+      "priority": 20,
+      "when": ["selfBiasOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "hasMask": "present.attentionBiasT",
+            "useSubgroups": false
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "attn_mask", "partial_out", "partial_stats", "params_self_bias"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_mask_nosg",
+      "priority": 20,
+      "when": ["selfMaskOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "hasMask": "present.attentionBiasT",
+            "useSubgroups": false
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "key_pad_mask", "partial_out", "partial_stats", "params_self"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "self_mask_bias_nosg",
+      "priority": 20,
+      "when": ["selfMaskBiasOk"],
+      "requires": {},
+      "intermediates": [
+        { "id": "partialOut", "dtype": "float32", "shape": "[batchSize * numHeads * numSplits * headSize]" },
+        { "id": "partialStats", "dtype": "float32", "shape": "[2 * batchSize * numHeads * numSplits]" }
+      ],
+      "passes": [
+        {
+          "id": "present_retain",
+          "name": "DecoderMaskedMultiHeadAttention.PresentRetain",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": false,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "itemsPerLane": "retainItemsPerLane",
+            "cacheScalar": "attnScalar"
+          },
+          "bindings": ["past_key", "past_value", "present_key", "present_value", "params_retain"],
+          "dispatch": {
+            "x": "min(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "y": "ceilDiv(ceilDiv(cacheWordsV4, tunables.COPY_WORKGROUP_SIZE * retainItemsPerLane), 65535)",
+            "z": 1
+          },
+          "viewAlias": [
+            { "input": "past_key", "output": "present_key" },
+            { "input": "past_value", "output": "present_value" }
+          ]
+        },
+        {
+          "id": "present_append",
+          "name": "DecoderMaskedMultiHeadAttention.PresentAppend",
+          "shader": "dmmha-present.wgsl.jinja",
+          "derive": {
+            "appendRow": true,
+            "workgroupSize": "tunables.COPY_WORKGROUP_SIZE",
+            "headSizeV4": "headDimV4",
+            "numHeads": "numHeads"
+          },
+          "bindings": ["key_row", "value_row", "past_sequence_length", "present_key", "present_value", "params_append"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * hiddenSize / 4), (tunables.COPY_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "split_attention",
+          "name": "DecoderMaskedMultiHeadAttention.SelfSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "qNumHeads": "numHeads",
+            "kvNumHeads": "numHeads",
+            "headDim": "headSize",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits",
+            "usesF16": "tensorDtypes.queryT == \"float16\"",
+            "cacheSeqlens": true,
+            "cacheSeqlensIndex": "\"0u\"",
+            "hasKeyPadMask": "present.maskIndexT",
+            "maskFilterValue": "attrs.mask_filter_value",
+            "hasMask": "present.attentionBiasT",
+            "useSubgroups": false
+          },
+          "bindings": ["query", "key_cache", "value_cache", "seqlens_k", "key_pad_mask", "attn_mask", "partial_out", "partial_stats", "params_self_bias"],
+          "dispatch": { "x": "numSplits", "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "DecoderMaskedMultiHeadAttention.SelfMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": {
+            "layout": "\"bhsd\"",
+            "splitQueries": false,
+            "scalar": "attnScalar",
+            "qNumHeads": "numHeads",
+            "headDimV4": "headDimV4",
+            "numSplits": "numSplits"
+          },
+          "bindings": ["partial_out_read", "partial_stats_read", "output"],
+          "dispatch": { "x": 1, "y": "attrs.num_heads", "z": "dim(shapes.queryT, 0)" }
+        }
+      ]
+    }
+  ]
+}

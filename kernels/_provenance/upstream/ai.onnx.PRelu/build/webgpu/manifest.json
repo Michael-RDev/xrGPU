@@ -1,0 +1,87 @@
+{
+  "domain": "ai.onnx",
+  "name": "PRelu",
+  "sinceVersion": 16,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" }, "slope": { "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "x_main": { "name": "x", "elementType": "$vectorScalar" },
+    "slope_main": { "name": "slope", "elementType": "$scalar", "length": 1 },
+    "y_main": { "name": "y", "elementType": "$vectorScalar" },
+    "params_main": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] },
+    "slope_prelu_vec4": { "name": "slope", "elementType": "$vectorScalar" }
+  },
+  "variants": [
+    {
+      "id": "broadcast",
+      "when": ["ranks.slope >= 0", "ranks.slope <= ranks.y"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "PRelu",
+          "shader": "prelu.wgsl.jinja",
+          "derive": {
+            "slopeShape": "shapes.slope",
+            "yShape": "shapes.y",
+            "slopeRank": "ranks.slope",
+            "yRank": "ranks.y",
+            "itemsPerInvocation": 4
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$scalar" },
+            { "arg": "slope", "elementType": "$scalar" },
+            { "arg": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_slope_vec4",
+      "priority": 30,
+      "when": ["numel(shapes.slope) == 1", "numel(shapes.y) > 0", "numel(shapes.y) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "PRelu.ScalarSlopeVec4",
+          "shader": "prelu-vec4.wgsl.jinja",
+          "derive": { "slopeMode": "\"scalar\"" },
+          "bindings": ["x_main", "slope_main", "y_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4",
+      "priority": 20,
+      "when": ["sameShape(shapes.slope, shapes.y)", "numel(shapes.y) > 0", "numel(shapes.y) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "PRelu.Vec4",
+          "shader": "prelu-vec4.wgsl.jinja",
+          "derive": { "slopeMode": "\"dense\"" },
+          "bindings": ["x_main", "slope_prelu_vec4", "y_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" }
+}

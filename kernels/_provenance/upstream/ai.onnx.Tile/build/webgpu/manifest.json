@@ -1,0 +1,71 @@
+{
+  "domain": "ai.onnx",
+  "name": "Tile",
+  "sinceVersion": 13,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "repeats": { "dtype": "S", "rank": 1, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input" } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "S": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "tileTailAxes": "pick([[numel(suffix(shapes.input, ranks.input - 8)) == numel(suffix(shapes.output, ranks.input - 8)), 8], [numel(suffix(shapes.input, ranks.input - 7)) == numel(suffix(shapes.output, ranks.input - 7)), 7], [numel(suffix(shapes.input, ranks.input - 6)) == numel(suffix(shapes.output, ranks.input - 6)), 6], [numel(suffix(shapes.input, ranks.input - 5)) == numel(suffix(shapes.output, ranks.input - 5)), 5], [numel(suffix(shapes.input, ranks.input - 4)) == numel(suffix(shapes.output, ranks.input - 4)), 4], [numel(suffix(shapes.input, ranks.input - 3)) == numel(suffix(shapes.output, ranks.input - 3)), 3], [numel(suffix(shapes.input, ranks.input - 2)) == numel(suffix(shapes.output, ranks.input - 2)), 2], [numel(suffix(shapes.input, ranks.input - 1)) == numel(suffix(shapes.output, ranks.input - 1)), 1]], 0)",
+    "tileFoldAxes": "min(tileTailAxes, ranks.input)",
+    "tileTail": "numel(suffix(shapes.input, ranks.input - tileFoldAxes)) if tileFoldAxes > 0 else (dim(shapes.input, ranks.input - 1) if ranks.input > 0 else 0)",
+    "tileVec4Ok": "ranks.input >= 1 and numel(shapes.output) > 0 and tileTail % 4 == 0",
+    "inputShape": "shapes.input",
+    "outputShape": "shapes.output",
+    "rank": "ranks.input"
+  },
+  "when": ["ranks.input == ranks.output", "ranks.repeats == 1", "dim(shapes.repeats, 0) == ranks.input", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "inner_vec4",
+      "priority": 15,
+      "when": ["dtypes.T != \"vec2<u32>\"", "ranks.input >= 1", "numel(shapes.output) > 0", "tileVec4Ok"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Tile.InnerVec4",
+          "shader": "datamove-tile-vec4.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4", "foldAxes": "tileFoldAxes" },
+          "bindings": [
+            { "arg": "input", "elementType": "$vectorScalar" },
+            { "arg": "output", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Tile",
+          "shader": "tile.wgsl.jinja",
+          "bindings": [
+            { "arg": "input", "elementType": "$scalar" },
+            { "arg": "output", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

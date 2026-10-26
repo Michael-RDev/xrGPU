@@ -1,0 +1,311 @@
+{
+  "domain": "com.microsoft",
+  "name": "FusedGemm",
+  "sinceVersion": 1,
+  "inputs": {
+    "A": { "dtype": "T", "rank": 2 },
+    "B": { "dtype": "T", "rank": 2 },
+    "C": { "dtype": "T", "optional": true }
+  },
+  "outputs": { "Y": { "dtype": "T", "rank": 2, "shape": "[gemmM, gemmN]" } },
+  "attributes": {
+    "alpha": { "default": 1 },
+    "beta": { "default": 1 },
+    "transA": { "default": 0 },
+    "transB": { "default": 0 },
+    "activation": {},
+    "activation_alpha": {},
+    "activation_beta": {}
+  },
+  "attributeConstraints": { "activation": { "values": ["Relu", "LeakyRelu", "Sigmoid", "Tanh", "HardSigmoid"] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "transAFlag": "has(attrs, \"transA\") and attrs.transA != 0",
+    "transBFlag": "has(attrs, \"transB\") and attrs.transB != 0",
+    "gemmM": "dim(shapes.A, 1) if transAFlag else dim(shapes.A, 0)",
+    "gemmK": "dim(shapes.A, 0) if transAFlag else dim(shapes.A, 1)",
+    "gemmN": "dim(shapes.B, 0) if transBFlag else dim(shapes.B, 1)",
+    "gemmKB": "dim(shapes.B, 1) if transBFlag else dim(shapes.B, 0)",
+    "shapeOk": "ranks.A == 2 and ranks.B == 2 and ranks.Y == 2 and gemmK == gemmKB and dim(shapes.Y, 0) == gemmM and dim(shapes.Y, 1) == gemmN",
+    "dtypeOk": "(tensorDtypes.A == \"float32\" or tensorDtypes.A == \"float16\") and tensorDtypes.B == tensorDtypes.A and tensorDtypes.Y == tensorDtypes.A and f16Ok(dtypes.T)",
+    "rowBiasOk": "present.C and ((ranks.C == 1 and dim(shapes.C, 0) == gemmN) or (ranks.C == 2 and dim(shapes.C, 0) == 1 and dim(shapes.C, 1) == gemmN))",
+    "scalarBiasOk": "present.C and (ranks.C == 0 or (ranks.C == 1 and dim(shapes.C, 0) == 1) or (ranks.C == 2 and dim(shapes.C, 0) == 1 and dim(shapes.C, 1) == 1))",
+    "columnBiasOk": "present.C and ranks.C == 2 and dim(shapes.C, 0) == gemmM and dim(shapes.C, 1) == 1",
+    "matrixBiasOk": "present.C and ranks.C == 2 and dim(shapes.C, 0) == gemmM and dim(shapes.C, 1) == gemmN",
+    "cOk": "tensorDtypes.C == tensorDtypes.A and (rowBiasOk or scalarBiasOk or columnBiasOk or matrixBiasOk)",
+    "hasActivation": "has(attrs, \"activation\")",
+    "activationName": "attrs.activation if hasActivation else \"\"",
+    "activationOk": "not hasActivation or activationName == \"Relu\" or activationName == \"LeakyRelu\" or activationName == \"Sigmoid\" or activationName == \"Tanh\" or activationName == \"HardSigmoid\"",
+    "activationAlpha": "attrs.activation_alpha if has(attrs, \"activation_alpha\") else (0.2 if activationName == \"HardSigmoid\" else (0.01 if activationName == \"LeakyRelu\" else 0.0))",
+    "activationBeta": "attrs.activation_beta if has(attrs, \"activation_beta\") else (0.5 if activationName == \"HardSigmoid\" else 0.0)",
+    "baseContract": "shapeOk and dtypeOk and activationOk",
+    "noBiasContract": "baseContract and not present.C",
+    "biasContract": "baseContract and present.C and cOk",
+    "sgmatOperandBytes": "2 if tensorDtypes.A == \"float16\" and tensorDtypes.B == \"float16\" else 4",
+    "sgmatTileM": "32",
+    "sgmatTileN": "64",
+    "sgmatTileK": "32",
+    "sgmatDirectA": "tensorDtypes.A == \"float32\" and not transAFlag and gemmK > 0 and gemmM % sgmatTileM == 0",
+    "sgmatStorageBytes": "((0 if sgmatDirectA else sgmatTileM) + sgmatTileN) * sgmatTileK * sgmatOperandBytes + sgmatTileM * sgmatTileN * 4",
+    "sgmatResourcesFit": "128 <= deviceWorkgroupCap and sgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "sgmatScalingOk": "(attrs.alpha if has(attrs, \"alpha\") else 1) == 1 and (attrs.beta if has(attrs, \"beta\") else 1) == 1",
+    "sgmatLayoutOk": "gemmM > 0 and gemmK % sgmatTileK == 0 and gemmN % sgmatTileN == 0 and ((tensorDtypes.A == \"float16\" and device.features.has(\"shader-f16\") and (gemmM >= 2 or (not transAFlag and transBFlag))) or (tensorDtypes.A == \"float32\" and gemmM >= sgmatTileM)) and ceilDiv(gemmM, sgmatTileM) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(gemmN, sgmatTileN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmatContract": "wave32Effective and sgmatLayoutOk and sgmatScalingOk and sgmatResourcesFit",
+    "sgmatRowBiasContract": "sgmatContract and rowBiasOk and ranks.C == 1",
+    "usesF16": "tensorDtypes.A == \"float16\"",
+    "gemmActivation": "activationName",
+    "gemmActAlpha": "activationAlpha",
+    "gemmActBeta": "activationBeta",
+    "gemmEpilogue": "\"activation\" if hasActivation else \"none\"",
+    "gemvColumns": "4 if gemmN % 4 == 0 else 1",
+    "gemvWorkgroup": "min(pow(2, log2ceil(deviceWorkgroupCap + 1) - 1), pow2ceil(max(gemmK, 1)), 64)",
+    "portableMicro8x2Preferred": "(variableSubgroup16To32 or (wave32Effective and not device.features.has(\"shader-f16\"))) and 256 <= deviceWorkgroupCap and 32 <= device.limits.maxComputeWorkgroupSizeX and 8 <= device.limits.maxComputeWorkgroupSizeY",
+    "gemmMicroRows": "8 if portableMicro8x2Preferred else 4",
+    "gemmMicroCols": "2 if portableMicro8x2Preferred else 4",
+    "gemmStaticM": "gemmM",
+    "gemmStaticN": "gemmN",
+    "gemmStaticK": "gemmK"
+  },
+  "bindings": {
+    "x": { "arg": "A", "elementType": "$T" },
+    "w": { "arg": "B", "elementType": "$T" },
+    "bias": { "arg": "C", "elementType": "$T" },
+    "y": { "arg": "Y", "elementType": "$T" },
+    "params": { "struct": [{ "name": "M", "type": "u32", "value": "gemmM" }] },
+    "a": { "arg": "A", "elementType": "$T" },
+    "b": { "arg": "B", "elementType": "$T" }
+  },
+  "variants": [
+    {
+      "id": "gemv_plain",
+      "priority": 200,
+      "when": ["noBiasContract", "gemmM == 1 and gemmN > 0 and gemmK > 0 and transBFlag", "gemvWorkgroup * gemvColumns * 4 <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": {
+        "hasBias": false,
+        "workgroupSize": "gemvWorkgroup",
+        "gemvFused": true,
+        "inFeatures": "gemmK",
+        "outFeatures": "gemmN",
+        "xScalar": "\"f16\" if usesF16 else \"f32\"",
+        "wScalar": "\"f16\" if usesF16 else \"f32\"",
+        "yScalar": "\"f16\" if usesF16 else \"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm.Gemv",
+          "shader": "gemv-contiguous.wgsl.jinja",
+          "bindings": [
+            "x",
+            "w",
+            "y",
+            {
+              "name": "params",
+              "struct": [{ "name": "alpha", "type": "f32", "value": "attrs.alpha if has(attrs, \"alpha\") else 1" }]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(gemmN, gemvColumns), DISPATCH_FOLD_WIDTH)",
+            "y": "1",
+            "z": "ceilDiv(ceilDiv(gemmN, gemvColumns), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gemv_bias",
+      "priority": 200,
+      "when": ["biasContract", "gemmM == 1 and gemmN > 0 and gemmK > 0 and transBFlag", "gemvWorkgroup * gemvColumns * 4 <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": {
+        "hasBias": true,
+        "workgroupSize": "gemvWorkgroup",
+        "gemvFused": true,
+        "inFeatures": "gemmK",
+        "outFeatures": "gemmN",
+        "xScalar": "\"f16\" if usesF16 else \"f32\"",
+        "wScalar": "\"f16\" if usesF16 else \"f32\"",
+        "yScalar": "\"f16\" if usesF16 else \"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm.Gemv",
+          "shader": "gemv-contiguous.wgsl.jinja",
+          "bindings": [
+            "x",
+            "w",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha if has(attrs, \"alpha\") else 1" },
+                { "name": "beta", "type": "f32", "value": "attrs.beta if has(attrs, \"beta\") else 1" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(gemmN, gemvColumns), DISPATCH_FOLD_WIDTH)",
+            "y": "1",
+            "z": "ceilDiv(ceilDiv(gemmN, gemvColumns), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_bias",
+      "priority": 100,
+      "when": ["sgmatRowBiasContract"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": true,
+        "aTransposedStorage": "transAFlag",
+        "bTransposedStorage": "not transBFlag",
+        "yScalar": "\"f16\" if tensorDtypes.Y == \"float16\" else \"f32\"",
+        "mmaScalar": "\"f16\" if tensorDtypes.A == \"float16\" and tensorDtypes.B == \"float16\" else \"f32\"",
+        "inFeatures": "gemmK",
+        "outFeatures": "gemmN",
+        "tileM": "sgmatTileM",
+        "tileN": "sgmatTileN",
+        "tileK": "sgmatTileK",
+        "directAStorage": "sgmatDirectA",
+        "compensatedMatrixChunkTiles": "2 if sgmatDirectA and gemmK >= 8 * sgmatTileK else 0"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm.SubgroupMatrixBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "bias", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(gemmN, sgmatTileN)",
+            "y": "min(ceilDiv(gemmM, sgmatTileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gemmM, sgmatTileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat",
+      "priority": 100,
+      "when": ["noBiasContract and sgmatContract"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "aTransposedStorage": "transAFlag",
+        "bTransposedStorage": "not transBFlag",
+        "yScalar": "\"f16\" if tensorDtypes.Y == \"float16\" else \"f32\"",
+        "mmaScalar": "\"f16\" if tensorDtypes.A == \"float16\" and tensorDtypes.B == \"float16\" else \"f32\"",
+        "inFeatures": "gemmK",
+        "outFeatures": "gemmN",
+        "tileM": "sgmatTileM",
+        "tileN": "sgmatTileN",
+        "tileK": "sgmatTileK",
+        "directAStorage": "sgmatDirectA",
+        "compensatedMatrixChunkTiles": "2 if sgmatDirectA and gemmK >= 8 * sgmatTileK else 0"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm.SubgroupMatrix",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(gemmN, sgmatTileN)",
+            "y": "min(ceilDiv(gemmM, sgmatTileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gemmM, sgmatTileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tiled_reg_bias",
+      "priority": 0,
+      "when": ["biasContract"],
+      "derive": {
+        "transA": "transAFlag",
+        "transB": "transBFlag",
+        "hasBias": true,
+        "rowBias": "rowBiasOk",
+        "scalarBias": "scalarBiasOk",
+        "columnBias": "columnBiasOk"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm.Bias",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [
+            "a",
+            "b",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemmM" },
+                { "name": "N", "type": "u32", "value": "gemmN" },
+                { "name": "K", "type": "u32", "value": "gemmK" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha if has(attrs, \"alpha\") else 1" },
+                { "name": "beta", "type": "f32", "value": "attrs.beta if has(attrs, \"beta\") else 1" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(gemmN, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(gemmM, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tiled_reg",
+      "priority": 0,
+      "when": ["noBiasContract"],
+      "derive": { "transA": "transAFlag", "transB": "transBFlag", "hasBias": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FusedGemm",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [
+            "a",
+            "b",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemmM" },
+                { "name": "N", "type": "u32", "value": "gemmN" },
+                { "name": "K", "type": "u32", "value": "gemmK" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha if has(attrs, \"alpha\") else 1" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(gemmN, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(gemmM, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    }
+  ]
+}

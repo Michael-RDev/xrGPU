@@ -1,0 +1,209 @@
+{
+  "domain": "ai.onnx",
+  "name": "Compress",
+  "sinceVersion": 11,
+  "inputs": { "input": { "dtype": "T" }, "condition": { "dtype": "C", "rank": 1 } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input if has(attrs, \"axis\") else 1" } },
+  "attributes": { "axis": {} },
+  "typeConstraints": { "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool"], "C": ["bool"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SCAN_ITEMS_PER_THREAD": { "default": 16 },
+    "PARALLEL_MIN_ELEMENTS": { "default": 512 },
+    "MAX_PARALLEL_INPUT": { "default": 1073741823 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "axisParam": "attrs.axis if has(attrs, \"axis\") else 2147483647",
+    "normalizedAxis": "axisParam if axisParam >= 0 else axisParam + ranks.input",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "scanItems": "tunables.SCAN_ITEMS_PER_THREAD",
+    "scanBlockItems": "workgroupSize * scanItems",
+    "workgroupStorageOk": "workgroupSize * 4 <= device.limits.maxComputeWorkgroupStorageSize",
+    "flatScanN": "min(numel(shapes.input), dim(shapes.condition, 0))",
+    "flatScanBlocks": "ceilDiv(flatScanN, scanBlockItems)",
+    "flatScanThreads": "flatScanBlocks * workgroupSize",
+    "flatParallelFits": "workgroupStorageOk and flatScanThreads * 4 <= storageBufferLimit and flatScanBlocks * 4 <= storageBufferLimit and flatScanBlocks <= foldedDispatchCapacity",
+    "axisScanN": "min(dim(shapes.input, normalizedAxis), dim(shapes.condition, 0))",
+    "axisScanBlocks": "ceilDiv(axisScanN, scanBlockItems)",
+    "axisScanThreads": "axisScanBlocks * workgroupSize",
+    "axisScatterThreads": "outer(shapes.input, normalizedAxis) * axisScanN * inner(shapes.input, normalizedAxis)",
+    "axisParallelFits": "workgroupStorageOk and axisScanThreads * 4 <= storageBufferLimit and axisScanBlocks * 4 <= storageBufferLimit and axisScanBlocks <= foldedDispatchCapacity and ceilDiv(axisScatterThreads, workgroupSize) <= foldedDispatchCapacity"
+  },
+  "when": ["ranks.condition == 1", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "src": { "arg": "condition", "elementType": "u32" },
+    "offsets": { "buffer": "storage", "elementType": "u32" },
+    "flags": { "buffer": "storage", "elementType": "u32" },
+    "blockSums": { "buffer": "storage", "elementType": "u32" },
+    "params": { "struct": [{ "name": "n", "type": "u32", "value": "scanN" }] },
+    "blockSums_u32": { "name": "blockSums", "buffer": "read-only-storage", "elementType": "u32" },
+    "blockPrefix": { "buffer": "storage", "elementType": "u32" },
+    "params__uniform": { "name": "params", "struct": [{ "name": "numBlocks", "type": "u32", "value": "scanBlocks" }] },
+    "offsets_u32": { "name": "offsets", "buffer": "read-only-storage", "elementType": "u32" },
+    "flags_u32": { "name": "flags", "buffer": "read-only-storage", "elementType": "u32" },
+    "blockPrefix_u32": { "name": "blockPrefix", "buffer": "read-only-storage", "elementType": "u32" },
+    "condition": { "elementType": "u32" }
+  },
+  "variants": [
+    {
+      "id": "flatten_parallel_scan",
+      "priority": 15,
+      "when": ["normalizedAxis == 2147483647", "ranks.input >= 1", "ranks.output == 1", "numel(shapes.output) <= numel(shapes.input)", "numel(shapes.input) >= tunables.PARALLEL_MIN_ELEMENTS", "numel(shapes.input) <= tunables.MAX_PARALLEL_INPUT", "dim(shapes.condition, 0) > 0", "flatParallelFits"],
+      "derive": { "scanN": "flatScanN", "scanBlocks": "flatScanBlocks", "scanThreads": "flatScanThreads" },
+      "intermediates": [
+        { "id": "offsets", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "flags", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "blockSums", "dtype": "uint32", "shape": "[scanBlocks]" },
+        { "id": "blockPrefix", "dtype": "uint32", "shape": "[scanBlocks]" }
+      ],
+      "passes": [
+        {
+          "id": "flag_scan",
+          "name": "Compress.FlagBlockScan",
+          "shader": "scan-flags-block-exclusive.wgsl.jinja",
+          "derive": {
+            "predicate": "\"src[i] != 0u\"",
+            "itemsPerThread": "scanItems",
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": ["src", "offsets", "flags", "blockSums", "params"],
+          "dispatch": { "x": "min(scanBlocks, 65535)", "y": "ceilDiv(scanBlocks, 65535)", "z": 1 }
+        },
+        {
+          "id": "block_prefix",
+          "name": "Compress.BlockPrefixScan",
+          "shader": "scan-block-prefix-u32.wgsl.jinja",
+          "derive": { "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["blockSums_u32", "blockPrefix", "params__uniform"],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "scatter",
+          "name": "Compress.ParallelScatter",
+          "shader": "compress-scatter.wgsl.jinja",
+          "derive": { "axisMode": false },
+          "bindings": ["input", "offsets_u32", "flags_u32", "blockPrefix_u32", "output", "params"],
+          "dispatch": { "x": "min(scanBlocks, 65535)", "y": "ceilDiv(scanBlocks, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_parallel_scan",
+      "priority": 15,
+      "when": ["normalizedAxis != 2147483647", "ranks.input >= 1", "ranks.output == ranks.input", "outer(shapes.output, normalizedAxis) == outer(shapes.input, normalizedAxis)", "inner(shapes.output, normalizedAxis) == inner(shapes.input, normalizedAxis)", "dim(shapes.output, normalizedAxis) <= dim(shapes.input, normalizedAxis)", "numel(shapes.input) >= tunables.PARALLEL_MIN_ELEMENTS", "numel(shapes.input) <= tunables.MAX_PARALLEL_INPUT", "dim(shapes.condition, 0) > 0", "axisParallelFits"],
+      "derive": { "scanN": "axisScanN", "scanBlocks": "axisScanBlocks", "scanThreads": "axisScanThreads" },
+      "intermediates": [
+        { "id": "offsets", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "flags", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "blockSums", "dtype": "uint32", "shape": "[scanBlocks]" },
+        { "id": "blockPrefix", "dtype": "uint32", "shape": "[scanBlocks]" }
+      ],
+      "passes": [
+        {
+          "id": "flag_scan",
+          "name": "Compress.FlagBlockScan",
+          "shader": "scan-flags-block-exclusive.wgsl.jinja",
+          "derive": {
+            "predicate": "\"src[i] != 0u\"",
+            "itemsPerThread": "scanItems",
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": ["src", "offsets", "flags", "blockSums", "params"],
+          "dispatch": { "x": "min(scanBlocks, 65535)", "y": "ceilDiv(scanBlocks, 65535)", "z": 1 }
+        },
+        {
+          "id": "block_prefix",
+          "name": "Compress.BlockPrefixScan",
+          "shader": "scan-block-prefix-u32.wgsl.jinja",
+          "derive": { "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["blockSums_u32", "blockPrefix", "params__uniform"],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "scatter",
+          "name": "Compress.ParallelScatterAxis",
+          "shader": "compress-scatter.wgsl.jinja",
+          "derive": { "axisMode": true },
+          "bindings": [
+            "input",
+            "offsets_u32",
+            "flags_u32",
+            "blockPrefix_u32",
+            "output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "scanCount", "type": "u32", "value": "axisScatterThreads" },
+                { "name": "inner", "type": "u32", "value": "inner(shapes.input, normalizedAxis)" },
+                { "name": "axisDim", "type": "u32", "value": "dim(shapes.input, normalizedAxis)" },
+                { "name": "n", "type": "u32", "value": "scanN" },
+                { "name": "outputAxisDim", "type": "u32", "value": "dim(shapes.output, normalizedAxis)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((axisScatterThreads), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((axisScatterThreads), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "flatten_serial",
+      "when": ["normalizedAxis == 2147483647", "ranks.output == 1", "numel(shapes.output) <= numel(shapes.input)"],
+      "derive": { "axisMode": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Compress",
+          "shader": "compress.wgsl.jinja",
+          "bindings": [
+            "input",
+            "condition",
+            "output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "inputCount", "type": "u32", "value": "numel(shapes.input)" },
+                { "name": "conditionCount", "type": "u32", "value": "dim(shapes.condition, 0)" }
+              ]
+            }
+          ],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_serial",
+      "when": ["normalizedAxis != 2147483647", "ranks.input >= 1", "ranks.output == ranks.input", "outer(shapes.output, normalizedAxis) == outer(shapes.input, normalizedAxis)", "inner(shapes.output, normalizedAxis) == inner(shapes.input, normalizedAxis)", "dim(shapes.output, normalizedAxis) <= dim(shapes.input, normalizedAxis)"],
+      "derive": { "axisMode": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Compress",
+          "shader": "compress.wgsl.jinja",
+          "bindings": [
+            "input",
+            "condition",
+            "output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "conditionCount", "type": "u32", "value": "dim(shapes.condition, 0)" },
+                { "name": "outer", "type": "u32", "value": "outer(shapes.input, normalizedAxis)" },
+                { "name": "axisDim", "type": "u32", "value": "dim(shapes.input, normalizedAxis)" },
+                { "name": "inner", "type": "u32", "value": "inner(shapes.input, normalizedAxis)" },
+                { "name": "outputAxisDim", "type": "u32", "value": "dim(shapes.output, normalizedAxis)" }
+              ]
+            }
+          ],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    }
+  ]
+}

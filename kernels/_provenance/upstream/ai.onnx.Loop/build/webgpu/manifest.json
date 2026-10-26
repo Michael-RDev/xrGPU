@@ -1,0 +1,47 @@
+{
+  "domain": "ai.onnx",
+  "name": "Loop",
+  "conformance": "internal-lowering",
+  "sinceVersion": 25,
+  "inputs": {
+    "m": { "onnx": "M", "dtype": "I" },
+    "cond": { "dtype": "B" },
+    "v_initial": { "dtype": "T", "rank": 1 },
+    "step": { "dtype": "T", "rank": 1 }
+  },
+  "outputs": {
+    "v_final": { "dtype": "T", "rank": 1, "shape": "shapes.v_initial" },
+    "scan_output": { "dtype": "T", "rank": 2 }
+  },
+  "typeConstraints": { "T": ["float32"], "I": ["uint32"], "B": ["uint32", "bool"] },
+  "variants": [
+    {
+      "id": "lowered_add_step",
+      "when": ["ranks.m <= 1", "numel(shapes.m) == 1", "ranks.cond <= 1", "numel(shapes.cond) == 1", "ranks.v_initial == 1", "ranks.step == 1", "ranks.v_final == 1", "ranks.scan_output == 2", "dim(shapes.step, 0) == dim(shapes.v_initial, 0)", "dim(shapes.v_final, 0) == dim(shapes.v_initial, 0)", "dim(shapes.scan_output, 1) == dim(shapes.v_initial, 0)"],
+      "derive": { "workgroupSize": 256, "dimBlocks": "ceil(dim(shapes.v_initial, 0) / workgroupSize)" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Loop",
+          "shader": "loop-add-step.wgsl.jinja",
+          "bindings": [
+            { "arg": "m", "elementType": "u32", "length": 1 },
+            { "arg": "cond", "elementType": "u32", "length": 1 },
+            { "arg": "v_initial", "elementType": "f32" },
+            { "arg": "step", "elementType": "f32" },
+            { "arg": "v_final", "elementType": "f32" },
+            { "arg": "scan_output", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "dim", "type": "u32", "value": "dim(shapes.v_initial, 0)" },
+                { "name": "scanSteps", "type": "u32", "value": "dim(shapes.scan_output, 0)" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "dimBlocks" }
+        }
+      ]
+    }
+  ]
+}

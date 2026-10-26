@@ -1,0 +1,121 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "tile-vec4-rows-f32-8x512x1024-repeat4",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "outCount": 16777216 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [8, 512, 1024], "dist": "normal", "seed": 878, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [4, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [32, 512, 1024] } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "rank3",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [1, 128, 64] },
+        "repeats": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [4, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 128, 64] } }
+    },
+    {
+      "name": "rank1_large_output_from_scalar",
+      "preset": "edge",
+      "vars": { "dtype": "float32", "count": 1048576 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 1 },
+        "repeats": { "dtype": "uint32", "shape": [1], "dist": "constant", "value": 1048576 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1048576] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "rank5_uniform_repeats",
+      "preset": "edge",
+      "vars": { "dtype": "float32", "count": 65536 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [1, 8, 1, 8, 1], "dist": "normal", "seed": 877, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [5], "dist": "constant", "value": 4 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 32, 4, 32, 4] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "tile-vec4-rows-f16-8x512x1024-repeat4",
+      "preset": "edge",
+      "vars": { "dtype": "float16", "outCount": 16777216 },
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [8, 512, 1024], "dist": "normal", "seed": 879, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [4, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [32, 512, 1024] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "tile-lastdim-not-mul4-scalar-cliff-f32-8x512x1023-repeat4",
+      "preset": "edge",
+      "vars": { "dtype": "float32", "outCount": 16760832 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [8, 512, 1023], "dist": "normal", "seed": 880, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [4, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [32, 512, 1023] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "tile-lastaxis-repeat-broadcast-fallback-f32-16x2048-repeat4",
+      "preset": "edge",
+      "vars": { "dtype": "float32", "outCount": 131072 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [16, 2048], "dist": "normal", "seed": 881, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [1, 4] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [16, 8192] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "tile-generic-rank6-deep-fold-lastaxis-repeat-f32-4x4x4x4x4x64",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "outCount": 131072 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4, 4, 4, 4, 4, 64], "dist": "normal", "seed": 5301, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [6], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 2] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 4, 4, 4, 4, 128] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "tile-f32-8x1x197x197-repeat-heads-generic-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "A [B,1,S,S] attention mask repeated over eight heads at the ViT-B/16 token count: the trailing block has 197*197 elements, not divisible by four. The paired 200-token case checks an aligned block."
+      },
+      "vars": { "dtype": "float32", "outCount": 2483776 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [8, 1, 197, 197], "dist": "normal", "seed": 882, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 8, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8, 8, 197, 197], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "tile-f32-8x1x200x200-repeat-heads-control",
+      "preset": "stress",
+      "provenance": {
+        "notes": "The next multiple-of-four token count above the paired 197-token case, with about 3% more bytes."
+      },
+      "vars": { "dtype": "float32", "outCount": 2560000 },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [8, 1, 200, 200], "dist": "normal", "seed": 883, "scale": 1 },
+        "repeats": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 8, 1, 1] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8, 8, 200, 200], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.outCount * dtypeBytes(args.dtype) * 2" }] }
+    }
+  ]
+}

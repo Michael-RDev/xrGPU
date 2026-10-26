@@ -1,0 +1,467 @@
+{
+  "cases": [
+    {
+      "name": "int16_scalar_boundaries",
+      "inputs": {
+        "x": { "dtype": "int16", "shape": [4], "data": { "kind": "values", "values": [-32768, 0, 32767, -1] } }
+      },
+      "outputs": {
+        "y": { "dtype": "uint32", "shape": [1, 3], "tolerance": 0, "data": { "kind": "values", "values": [0, 2, 3] } }
+      }
+    },
+    {
+      "name": "rank2_exact_capacity_f32",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 0.0, -2.0, 3.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 3] } }
+    },
+    {
+      "name": "f32_subnormal_nonzero_coordinates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Subnormal finite values are nonzero under ONNX equality semantics; flushing them to zero changes the emitted coordinates."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.0, 1e-40, -1e-40, 0.0, 1e-39, 0.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 0, 1, 1, 2, 1] }
+        }
+      }
+    },
+    {
+      "name": "f32_scalar_subnormal_nonzero_coordinates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.Scalar",
+        "notes": "A finite subnormal rank-0 input is still nonzero. ONNX represents its one hit with shape [0, 1], containing no coordinate values."
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1e-40] } } },
+      "outputs": {
+        "y": { "dtype": "uint32", "shape": [0, 1], "tolerance": 0, "data": { "kind": "values", "values": [] } }
+      }
+    },
+    {
+      "name": "f32_parallel_subnormal_nonzero_coordinates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Every even column is a finite subnormal and must produce an output coordinate in this large NonZero input."
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 1026], "data": { "kind": "cycle", "values": [1e-40, 0.0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 513], "tolerance": 0 } }
+    },
+    {
+      "name": "rank3_exact_capacity_uint8",
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 2, 2], "data": { "kind": "values", "values": [1, 0, 2, 3, 0, 4, 5, 6] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 6] } }
+    },
+    {
+      "name": "rank1_no_hits_int8",
+      "inputs": { "x": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [0, 0, 0, 0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 0] } }
+    },
+    {
+      "name": "rank1_nonzero_int8",
+      "inputs": { "x": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-2, 0, 7, 0] } } },
+      "outputs": {
+        "y": { "dtype": "uint32", "shape": [1, 2], "tolerance": 0, "data": { "kind": "values", "values": [0, 2] } }
+      },
+      "provenance": {
+        "notes": "A compact nonempty int8 tensor exercises the numeric nonzero predicate and dtype-specific coordinate-emission path."
+      }
+    },
+    {
+      "name": "rank4_exact_capacity_f32",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 0.0, 0.0, -3.0, 4.0, 0.0, 5.0, 6.0, 0.0, 7.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [4, 7] } }
+    },
+    {
+      "name": "ort_basic_numeric_rank3_exact_capacity_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "This WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [1, 2, 3], "data": { "kind": "values", "values": [0, 1, 2, 0, 3, 4] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_numeric_rank3_exact_capacity_float",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Float variant of ORT's templated BasicNumeric case; this WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 0.0, 3.0, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_three_dims_rank3_exact_capacity_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.ThreeDims",
+        "notes": "The source integer payload is represented as int32, and this WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [2, 2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0, 1, 0, 1, 0] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_empty_input_rank3_zero_hits",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.EmptyInput",
+        "notes": "Empty-input coverage with the exact ONNX output shape [rank(X), 0]."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [1, 0, 2], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_bool_adapted_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicBool",
+        "notes": "A [2,3] int32 tensor of zeros and ones fixes row-major coordinates for two nonzero elements and a uint32 metadata output."
+      },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 0, 0, 0, 1] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_bool_exact",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicBool"
+      },
+      "inputs": {
+        "x": { "dtype": "bool", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 0, 0, 0, 1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 1, 0, 2] }
+        }
+      }
+    },
+    {
+      "name": "ort_scalar_zero_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.Scalar",
+        "notes": "A zero scalar produces output shape [0, 0]; this WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [0, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_scalar_nonzero_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.Scalar",
+        "notes": "A nonzero scalar produces output shape [0, 1]; this WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [1] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [0, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "bool_scalar_nonzero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.Scalar",
+        "notes": "Scalar NonZero shape convention from ORT's scalar case, using ONNX-valid bool input coverage from NonZeroOpTest.BasicBool."
+      },
+      "inputs": { "x": { "dtype": "bool", "shape": [], "data": { "kind": "values", "values": [1] } } },
+      "outputs": {
+        "y": { "dtype": "uint32", "shape": [0, 1], "tolerance": 0, "data": { "kind": "values", "values": [] } }
+      }
+    },
+    {
+      "name": "onnx_backend_nonzero_example",
+      "inputs": { "x": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 1, 1] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_nonzero_example",
+        "notes": "Official ONNX example with its exact dynamic output shape. This WebGPU package stores representable ONNX int64 coordinate metadata in uint32 slots."
+      }
+    },
+    {
+      "name": "float32_signed_zero_nan_and_infinity",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Additional numeric edge: +0 and -0 are zero, while NaN and infinities compare nonzero."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.0, 0.0, "NaN", "Infinity", "-Infinity", 1.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 1, 1, 1, 2, 0, 1, 2] }
+        }
+      }
+    },
+    {
+      "name": "float16_signed_zero_nan_exact_capacity",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Additional numeric edge: -0 is zero, while NaN and the finite nonzero value produce the two exact output coordinates."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [0.0, "NaN", 0.0, -2.0] } }
+      },
+      "outputs": {
+        "y": { "dtype": "uint32", "shape": [1, 2], "tolerance": 0, "data": { "kind": "values", "values": [1, 3] } }
+      }
+    },
+    {
+      "name": "parallel_rank2_exact_capacity_f32",
+      "provenance": {
+        "notes": "65536-element rank-2 input with 25% nonzeros at exact capacity; exercises the parallel_scan 3-pass coordinate-emission variant."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [256, 256],
+          "data": { "kind": "cycle", "values": [0.0, 0.0, 2.5, 0.0, -1.25, 0.0, 0.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 16384], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank1_f32_subnormal_nonzero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Finite subnormal float32 values are nonzero and must survive the parallel predicate scan."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4096], "data": { "kind": "cycle", "values": [0.0, 1e-40, 0.0, -1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 2048], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank1_exact_capacity_int32",
+      "provenance": {
+        "notes": "Exactly 10000 nonzeros; the parallel scatter must emit every coordinate into the caller-provided exact output shape."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [50000], "data": { "kind": "cycle", "values": [0, 3, 0, 0, 0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 10000], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank3_u32",
+      "provenance": { "notes": "A rank-3 uint32 input requires three coordinate rows at the scanned columns." },
+      "inputs": {
+        "x": { "dtype": "uint32", "shape": [32, 60, 8], "data": { "kind": "cycle", "values": [7, 0, 0, 0, 1, 0] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 5120], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank1_f16",
+      "provenance": {
+        "notes": "Float16 input exercises the parallel predicate scan, which widens values to f32 for the zero test."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [4096], "data": { "kind": "cycle", "values": [0.0, 1.5, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 1024], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_subnormal_nonzero_coordinates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "The f16 predicate widens values to f32 before comparing with zero. The three finite f16 subnormals must therefore produce coordinates (0,1), (0,2), and (1,1), proving that widening preserves their nonzero values."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.0, 6e-8, -6e-8, 0.0, 0.00006, 0.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 0, 1, 1, 2, 1] }
+        }
+      }
+    },
+    {
+      "name": "parallel_f16_subnormal_nonzero_coordinates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "Every even element rounds to the finite f16 subnormal 0x0001 and must survive the parallel widened-f32 predicate, producing exactly 1,024 coordinate columns."
+      },
+      "inputs": { "x": { "dtype": "float16", "shape": [2048], "data": { "kind": "cycle", "values": [6e-8, 0.0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 1024], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank1_bool_mask",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicBool",
+        "notes": "A boolean mask with more than 1,024 elements has 1,024 nonzero positions at even indices; every output coordinate must be present."
+      },
+      "inputs": { "x": { "dtype": "bool", "shape": [2048], "data": { "kind": "cycle", "values": [1, 0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 1024], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank2_uint8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "A rank-two uint8 tensor with more than 1,024 elements has a nonzero value at every third index; every output coordinate must be present."
+      },
+      "inputs": { "x": { "dtype": "uint8", "shape": [30, 50], "data": { "kind": "cycle", "values": [7, 0, 0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 500], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_f32_signed_zero_nan_infinity",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/nonzero_op_test.cc",
+        "test": "NonZeroOpTest.BasicNumeric",
+        "notes": "The parallel flag scan bit-tests `(bitcast<u32>(src[i]) & 0x7fffffffu) != 0u`, so +0 and -0 are zero while NaN and infinities are nonzero. The six-value cycle produces exactly 1,024 coordinate columns."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1536],
+          "data": { "kind": "cycle", "values": [0.0, 0.0, "NaN", "Infinity", "-Infinity", 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 1024], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank6_max_rank_stride_unroll",
+      "provenance": {
+        "notes": "Six-dimensional int32 input through the parallel path. This exercises six compile-time coordinate strides and emits six coordinate rows; the [3,0,0,0] cycle produces 512 deterministic columns in row-major order."
+      },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [2, 2, 2, 2, 2, 64], "data": { "kind": "cycle", "values": [3, 0, 0, 0] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [6, 512], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank4_vec4_tail_scan_scatter",
+      "provenance": {
+        "notes": "A 1536-element rank-four activation map with a 50% mask checks stable flattened order, coordinate decomposition and the partial final block."
+      },
+      "inputs": { "x": { "dtype": "uint32", "shape": [2, 3, 8, 32], "data": { "kind": "cycle", "values": [0, 7] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [4, 768], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank1_exact_crossover_1024",
+      "provenance": {
+        "notes": "Exactly 1,024 elements form one complete vectorized scan block. The alternating mask validates stable coordinates and an exact 512-column output at the serial/parallel boundary."
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [1024], "data": { "kind": "cycle", "values": [0.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 512], "tolerance": 0 } }
+    },
+    {
+      "name": "rank7_exact_capacity_coordinates",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "cycle", "values": [0.0, 1.0, 0.0, -2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [7, 12], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_sparse_exact_capacity_2048",
+      "provenance": {
+        "notes": "Sparse parallel-route fixture with 512 deterministic hits and an exact [1, 512] output shape."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2048], "data": { "kind": "cycle", "values": [0.0, 3.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 512], "tolerance": 0 } }
+    },
+    {
+      "name": "rank8_exact_capacity_coordinates",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 2, 3],
+          "data": { "kind": "cycle", "values": [0.0, 1.0, 0.0, -2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [8, 24], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank4_wide_items_scan",
+      "provenance": {
+        "notes": "A 524,288-element rank-4 tensor forms 512 scan blocks and uses four items per thread in both scan and scatter."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint32",
+          "shape": [4, 8, 128, 128],
+          "data": { "kind": "cycle", "values": [0, 0, 0, 0, 0, 0, 0, 7] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [4, 65536], "tolerance": 0 } }
+    },
+    {
+      "name": "parallel_rank3_wide_items_scan",
+      "provenance": {
+        "notes": "A 1,048,576-element rank-3 tensor forms 512 scan blocks and uses eight items per thread in both scan and scatter."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint32",
+          "shape": [8, 128, 1024],
+          "data": { "kind": "cycle", "values": [0, 0, 0, 0, 0, 0, 0, 7] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3, 131072], "tolerance": 0 } }
+    }
+  ]
+}

@@ -1,0 +1,246 @@
+{
+  "tunableSpace": {
+    "DP4A_TILE_M": [8, 16, 32, 64],
+    "DP4A_TILE_N": [32, 64, 128],
+    "DP4A_K_TILE_WORDS": [8, 16, 32],
+    "ATTEND_WORKGROUP": [32, 64, 128, 256]
+  },
+  "cases": [
+    {
+      "name": "qattention-bert-b1-s128",
+      "preset": "smoke",
+      "vars": { "batch": 1, "seq": 128, "inHidden": 768, "hidden": 768, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [1, 128, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [768, 2304], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [1], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [1], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 128, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ]
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    },
+    {
+      "name": "qattention-bert-b8-s128",
+      "preset": "smoke",
+      "vars": { "batch": 8, "seq": 128, "inHidden": 768, "hidden": 768, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [8, 128, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [768, 2304], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [8], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [1], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8, 128, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ],
+        "primary": true
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    },
+    {
+      "name": "qattention-bert-b8-s128-u8u8",
+      "preset": "smoke",
+      "vars": { "batch": 8, "seq": 128, "inHidden": 768, "hidden": 768, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [8, 128, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "uint8", "shape": [768, 2304], "dist": "randint", "min": 0, "max": 256, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [8], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 129 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8, 128, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ]
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    },
+    {
+      "name": "qattention-bert-b1-s128-percolumn",
+      "preset": "smoke",
+      "vars": { "batch": 1, "seq": 128, "inHidden": 768, "hidden": 768, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [1, 128, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [768, 2304], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": {
+          "dtype": "float32",
+          "shape": [2304],
+          "dist": "uniform",
+          "min": 0.005,
+          "max": 0.02,
+          "seed": 104
+        },
+        "mask_index": { "dtype": "int32", "shape": [1], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [2304], "dist": "randint", "min": -8, "max": 9, "seed": 106 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 128, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ]
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    },
+    {
+      "name": "qattention-minilm-b32-s128",
+      "preset": "smoke",
+      "vars": { "batch": 32, "seq": 128, "inHidden": 384, "hidden": 384, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [32, 128, 384], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [384, 1152], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [1152], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [32], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [1], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [32, 128, 384], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ]
+      },
+      "provenance": { "model": "all-MiniLM-L6-v2 encoder: hidden 384, 12 heads, head size 32" }
+    },
+    {
+      "name": "qattention-bert-decode-p127",
+      "preset": "smoke",
+      "vars": { "batch": 1, "seq": 1, "inHidden": 768, "hidden": 768, "heads": 12, "past": 127 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [1, 1, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [768, 2304], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [1], "dist": "randint", "min": 1, "max": 129, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [1], "dist": "constant", "value": 1 },
+        "past": { "dtype": "float32", "shape": [2, 1, 12, 127, 64], "dist": "normal", "scale": 0.3, "seed": 107 }
+      },
+      "outputs": {
+        "output": { "dtype": "float32", "shape": [1, 1, 768], "dist": "empty" },
+        "present": { "dtype": "float32", "shape": [2, 1, 12, 128, 64], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4 + 2 * args.batch * args.hidden * args.past * 4 + 2 * args.batch * args.hidden * (args.past + args.seq) * 4"
+          },
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          }
+        ]
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    },
+    {
+      "name": "qattention-bert-b16-s384",
+      "preset": "scale",
+      "vars": { "batch": 16, "seq": 384, "inHidden": 768, "hidden": 768, "heads": 12, "past": 0 },
+      "attrs": { "num_heads": 12 },
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [16, 384, 768], "dist": "randint", "min": 0, "max": 256, "seed": 101 },
+        "weight": { "dtype": "int8", "shape": [768, 2304], "dist": "randint", "min": -128, "max": 128, "seed": 102 },
+        "bias": { "dtype": "float32", "shape": [2304], "dist": "normal", "scale": 0.3, "seed": 103 },
+        "input_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.02 },
+        "weight_scale": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0.012 },
+        "mask_index": { "dtype": "int32", "shape": [16], "dist": "randint", "min": 1, "max": 385, "seed": 105 },
+        "input_zero_point": { "dtype": "uint8", "shape": [1], "dist": "constant", "value": 128 },
+        "weight_zero_point": { "dtype": "int8", "shape": [1], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [16, 384, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "name": "projection+attention",
+            "value": "2 * args.batch * args.seq * args.inHidden * 3 * args.hidden + 4 * args.batch * args.hidden * args.seq * (args.past + args.seq)"
+          },
+          {
+            "type": "bandwidth",
+            "name": "operands",
+            "value": "args.inHidden * 3 * args.hidden * 4 + args.batch * args.seq * args.inHidden * 4 + args.batch * args.seq * args.hidden * 4"
+          }
+        ]
+      },
+      "provenance": { "model": "BERT-base encoder: hidden 768, 12 heads, head size 64" }
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+{
+  "domain": "ai.onnx",
+  "name": "LpNormalization",
+  "sinceVersion": 1,
+  "inputs": { "input": { "dtype": "T" } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "axis": { "default": -1 }, "p": { "default": 2 } },
+  "attributeConstraints": { "p": { "values": [1, 2] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SPLIT_MIN_DIM": { "default": 512 },
+    "SPLIT_MIN_ROWS": { "default": 32 },
+    "SPLIT_TARGET_DIM": { "default": 256 },
+    "MAX_SPLITS": { "default": 128 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "hasSubgroupId": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "scalar": "dtypes.T"
+  },
+  "when": ["ranks.output == ranks.input", "numel(shapes.input) == numel(shapes.output)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "input": { "elementType": "$scalar" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "axisRows" },
+        { "name": "dim", "type": "u32", "value": "axisDim" },
+        { "name": "inner", "type": "u32", "value": "axisInner" },
+        { "name": "p", "type": "u32", "value": "attrs.p" }
+      ]
+    },
+    "input_axis": { "name": "input", "elementType": "$divElem" },
+    "rowNorms": { "buffer": "read-only-storage", "elementType": "f32" },
+    "output": { "elementType": "$divElem" },
+    "params_axis": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "divideCount" },
+        { "name": "dim", "type": "u32", "value": "axisDim" },
+        { "name": "inner", "type": "u32", "value": "axisInner" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "axis_splitk",
+      "priority": 20,
+      "when": ["ranks.input >= 2", "inner(shapes.input, attrs.axis) > 1", "dim(shapes.input, attrs.axis) >= tunables.SPLIT_MIN_DIM", "numel(shapes.input) / dim(shapes.input, attrs.axis) >= tunables.SPLIT_MIN_ROWS", "min(tunables.MAX_SPLITS, pow2ceil(ceilDiv(dim(shapes.input, attrs.axis), tunables.SPLIT_TARGET_DIM))) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "numel(shapes.input) / dim(shapes.input, attrs.axis) * 4 <= device.limits.maxStorageBufferBindingSize", "numel(shapes.input) / dim(shapes.input, attrs.axis) * 4 <= device.limits.maxBufferSize", "numel(shapes.input) / dim(shapes.input, attrs.axis) * min(tunables.MAX_SPLITS, pow2ceil(ceilDiv(dim(shapes.input, attrs.axis), tunables.SPLIT_TARGET_DIM))) * 4 <= device.limits.maxStorageBufferBindingSize", "numel(shapes.input) / dim(shapes.input, attrs.axis) * min(tunables.MAX_SPLITS, pow2ceil(ceilDiv(dim(shapes.input, attrs.axis), tunables.SPLIT_TARGET_DIM))) * 4 <= device.limits.maxBufferSize"],
+      "derive": {
+        "axisDim": "dim(shapes.input, attrs.axis)",
+        "axisInner": "inner(shapes.input, attrs.axis)",
+        "axisRows": "numel(shapes.input) / axisDim",
+        "split": "min(tunables.MAX_SPLITS, pow2ceil(ceilDiv(axisDim, tunables.SPLIT_TARGET_DIM)))",
+        "divideVec4": "numel(shapes.output) % 4 == 0 and axisInner % 4 == 0",
+        "divideCount": "numel(shapes.output) / 4 if divideVec4 else numel(shapes.output)",
+        "divVec4": "divideVec4",
+        "divElem": "(\"vec4<\" ~ dtypes.T ~ \">\") if divideVec4 else dtypes.T"
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[split * axisRows]" },
+        { "id": "rowNorms", "dtype": "float32", "shape": "[axisRows]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "LpNormalization.SplitReduce",
+          "shader": "lp-norm-reduce.wgsl.jinja",
+          "derive": { "segmented": true },
+          "bindings": ["input", { "scratch": "partials", "name": "normOutput", "elementType": "f32" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv(axisRows, workgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "split"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "LpNormalization.SplitCombine",
+          "shader": "lp-norm-split-combine.wgsl.jinja",
+          "bindings": [
+            { "name": "partials", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "rowNorms", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "axisRows" },
+                { "name": "p", "type": "u32", "value": "attrs.p" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((axisRows), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "divide",
+          "name": "LpNormalization.Divide",
+          "shader": "lp-norm-divide.wgsl.jinja",
+          "bindings": ["input_axis", "rowNorms", "output", "params_axis"],
+          "dispatch": {
+            "x": "min(ceilDiv((divideCount), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis",
+      "when": ["ranks.input >= 1", "numel(shapes.input) / dim(shapes.input, attrs.axis) * 4 <= device.limits.maxStorageBufferBindingSize", "numel(shapes.input) / dim(shapes.input, attrs.axis) * 4 <= device.limits.maxBufferSize"],
+      "derive": {
+        "axisDim": "dim(shapes.input, attrs.axis)",
+        "axisInner": "inner(shapes.input, attrs.axis)",
+        "axisRows": "numel(shapes.input) / axisDim",
+        "divideCount": "numel(shapes.output)",
+        "divVec4": false,
+        "divElem": "dtypes.T"
+      },
+      "intermediates": [{ "id": "rowNorms", "dtype": "float32", "shape": "[axisRows]" }],
+      "passes": [
+        {
+          "id": "reduce",
+          "name": "LpNormalization.RowReduce",
+          "shader": "lp-norm-reduce.wgsl.jinja",
+          "derive": { "segmented": false },
+          "bindings": ["input", { "scratch": "rowNorms", "name": "normOutput", "elementType": "f32" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((axisRows), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "divide",
+          "name": "LpNormalization.Divide",
+          "shader": "lp-norm-divide.wgsl.jinja",
+          "bindings": ["input_axis", "rowNorms", "output", "params_axis"],
+          "dispatch": {
+            "x": "min(ceilDiv((divideCount), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_row_vec4",
+      "priority": 110,
+      "when": ["ranks.input >= 1", "(attrs.axis == -1 or attrs.axis == ranks.input - 1)", "dim(shapes.input, -1) % 4 == 0"],
+      "derive": { "ioElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"lp\"",
+            "vec4": true,
+            "hidden": "dim(shapes.input, -1)",
+            "wg": "min(workgroupSize, pow2ceil(dim(shapes.input, -1) / 4))",
+            "p": "attrs.p",
+            "hiddenVec": "dim(shapes.input, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": [
+            { "arg": "input", "name": "x", "elementType": "$ioElement" },
+            { "arg": "output", "name": "y", "elementType": "$ioElement" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "numel(shapes.input) / dim(shapes.input, -1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(numel(shapes.input) / dim(shapes.input, -1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.input) / dim(shapes.input, -1), 65535)",
+            "y": "ceilDiv(numel(shapes.input) / dim(shapes.input, -1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_row",
+      "priority": 100,
+      "when": ["ranks.input >= 1", "(attrs.axis == -1 or attrs.axis == ranks.input - 1)", "true"],
+      "derive": { "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"lp\"",
+            "vec4": false,
+            "hidden": "dim(shapes.input, -1)",
+            "wg": "min(workgroupSize, pow2ceil(dim(shapes.input, -1)))",
+            "p": "attrs.p",
+            "hiddenVec": 1,
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": [
+            { "arg": "input", "name": "x", "elementType": "$ioElement" },
+            { "arg": "output", "name": "y", "elementType": "$ioElement" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "numel(shapes.input) / dim(shapes.input, -1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(numel(shapes.input) / dim(shapes.input, -1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.input) / dim(shapes.input, -1), 65535)",
+            "y": "ceilDiv(numel(shapes.input) / dim(shapes.input, -1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

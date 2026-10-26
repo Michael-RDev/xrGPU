@@ -1,0 +1,828 @@
+{
+  "domain": "com.microsoft",
+  "name": "GemmFastGelu",
+  "sinceVersion": 1,
+  "inputs": {
+    "X": { "dtype": "T" },
+    "W": { "dtype": "T", "rank": 2 },
+    "bias": { "dtype": "T", "rank": 1, "optional": true }
+  },
+  "outputs": { "Y": { "dtype": "T", "rank": "ranks.X", "shape": "matmulShape(shapes.X, shapes.W)" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "derive": {
+    "kDim": "dim(shapes.W, 0)",
+    "nDim": "dim(shapes.W, 1)",
+    "gemvN": "nDim",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "gemvLanes": 32,
+    "vec4OutputTile": "4 * gemvLanes",
+    "gemvWorkgroups": "ceilDiv(gemvN, vec4OutputTile)",
+    "gemvSliceCap": "min(32, device.limits.maxComputeWorkgroupSizeY, floor(device.limits.maxComputeInvocationsPerWorkgroup / gemvLanes), floor(device.limits.maxComputeWorkgroupStorageSize / (16 * gemvLanes)))",
+    "gemvSlices": "max(1, min(gemvSliceCap, max(8, pow2ceil(ceilDiv(tunables.GEMV_TARGET_BLOCKS, gemvWorkgroups)))))",
+    "gemvResourcesFit": "gemvLanes <= device.limits.maxComputeWorkgroupSizeX and gemvSlices <= device.limits.maxComputeWorkgroupSizeY and gemvLanes * gemvSlices <= device.limits.maxComputeInvocationsPerWorkgroup and 16 * gemvLanes * gemvSlices <= device.limits.maxComputeWorkgroupStorageSize",
+    "gfgRows": "numel(shapes.X) / kDim if kDim > 0 else 0",
+    "shapeOk": "ranks.W == 2 and ranks.X >= 2 and kDim > 0 and nDim > 0 and dim(shapes.X, ranks.X - 1) == kDim and ranks.Y == ranks.X and dim(shapes.Y, ranks.Y - 1) == nDim and numel(shapes.Y) == gfgRows * nDim",
+    "dtypeOk": "(tensorDtypes.X == \"float32\" or tensorDtypes.X == \"float16\") and tensorDtypes.W == tensorDtypes.X and tensorDtypes.Y == tensorDtypes.X and f16Ok(dtypes.T)",
+    "biasOk": "ranks.bias == 1 and dim(shapes.bias, 0) == nDim and tensorDtypes.bias == tensorDtypes.X",
+    "baseContract": "shapeOk and dtypeOk",
+    "noBiasContract": "baseContract and not present.bias",
+    "biasContract": "baseContract and present.bias and biasOk",
+    "sgmatOperandBytes": "2 if tensorDtypes.X == \"float16\" and tensorDtypes.W == \"float16\" else 4",
+    "sgmatStorageBytes": "(32 * 32 + 64 * 32) * sgmatOperandBytes + 32 * 64 * 4",
+    "sgmatResourcesFit": "128 <= deviceWorkgroupCap and sgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "sgmatLayoutOk": "gfgRows > 0 and kDim % 32 == 0 and nDim % 64 == 0 and ((tensorDtypes.X == \"float16\" and device.features.has(\"shader-f16\") and gfgRows >= 2) or (tensorDtypes.X == \"float32\" and gfgRows >= 32)) and ceilDiv(gfgRows, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(nDim, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmatContract": "wave32Effective and sgmatLayoutOk and sgmatResourcesFit",
+    "usesF16": "tensorDtypes.X == \"float16\"",
+    "transB": false,
+    "sgmatDirectRows": 64,
+    "sgmatDirectCols": 32,
+    "sgmatDirectStorageBytes": "2 * sgmatDirectCols * 32 * sgmatOperandBytes + sgmatDirectRows * sgmatDirectCols * 4",
+    "sgmatDirectContract": "wave32Effective and gfgRows > 0 and gfgRows % sgmatDirectRows == 0 and kDim % 32 == 0 and nDim % sgmatDirectCols == 0 and deviceWorkgroupCap >= 128 and sgmatDirectStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(gfgRows, sgmatDirectRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(nDim, sgmatDirectCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmatOutputGroups": "ceilDiv(gfgRows, sgmatDirectRows) * ceilDiv(nDim, sgmatDirectCols)",
+    "sgmatSmallRows": 32,
+    "sgmatSmallCols": 16,
+    "sgmatSmallStorageBytes": "2 * sgmatSmallCols * 32 * sgmatOperandBytes + sgmatSmallRows * sgmatSmallCols * 4",
+    "sgmatSmallContract": "wave32Effective and gfgRows > 0 and gfgRows % sgmatSmallRows == 0 and kDim % 32 == 0 and nDim % sgmatSmallCols == 0 and deviceWorkgroupCap >= 128 and sgmatSmallStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(gfgRows, sgmatSmallRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(nDim, sgmatSmallCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmatMediumRows": 32,
+    "sgmatMediumCols": 32,
+    "sgmatMediumStorageBytes": "2 * sgmatMediumCols * 32 * sgmatOperandBytes + sgmatMediumRows * sgmatMediumCols * 4",
+    "sgmatMediumContract": "wave32Effective and gfgRows > 0 and gfgRows % sgmatMediumRows == 0 and kDim % 32 == 0 and nDim % sgmatMediumCols == 0 and deviceWorkgroupCap >= 128 and sgmatMediumStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(gfgRows, sgmatMediumRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(nDim, sgmatMediumCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "portableSmallGroups": "ceilDiv(gfgRows, 32) * ceilDiv(nDim, 32)",
+    "portableLargeGroups": "ceilDiv(gfgRows, 64) * ceilDiv(nDim, 64)",
+    "portableSmallBudget": "tunables.PORTABLE_SMALL_TILE_GROUPS_F16 if usesF16 else tunables.PORTABLE_SMALL_TILE_GROUPS_F32",
+    "portableAvoidsPadding": "portableLargeGroups * 3 >= portableSmallGroups",
+    "portableXe3LpgF32": "not usesF16 and has(device.adapterInfo, \"vendor\") and device.adapterInfo.vendor == \"intel\" and has(device.adapterInfo, \"architecture\") and device.adapterInfo.architecture == \"xe-3lpg\"",
+    "portableFixedWave32NoF16": "wave32Effective and not device.features.has(\"shader-f16\") and gfgRows >= device.adapterInfo.subgroupMaxSize and kDim >= 16 * device.adapterInfo.subgroupMaxSize and portableSmallGroups >= 8 * device.adapterInfo.subgroupMaxSize",
+    "portableLargeNoSubgroupGrid": "not usesF16 and not device.features.has(\"subgroups\") and portableSmallGroups >= 4 * deviceWorkgroupCap",
+    "gemmTileRows": "32 if portableXe3LpgF32 or portableFixedWave32NoF16 or portableLargeNoSubgroupGrid or portableSmallGroups <= portableSmallBudget * (2 if portableAvoidsPadding else 1) else 64",
+    "gemmTileCols": "gemmTileRows",
+    "gfgWideMicroPreferred": "(variableSubgroup16To32 or portableFixedWave32NoF16) and (8 if usesF16 else 4) * device.adapterInfo.subgroupMaxSize <= ceilDiv(gfgRows, gemmTileRows) * ceilDiv(nDim, gemmTileCols) and gemmTileRows * gemmTileCols / 8 <= deviceWorkgroupCap and gemmTileCols / 2 <= device.limits.maxComputeWorkgroupSizeX and gemmTileRows / 4 <= device.limits.maxComputeWorkgroupSizeY",
+    "gemmMicroRows": "4 if gfgWideMicroPreferred else gemmTileRows / 16",
+    "gemmMicroCols": "2 if gfgWideMicroPreferred else gemmTileCols / 16",
+    "gemmTileK": "(16 * 16 * 4) / gemmTileRows if usesF16 else (16 if portableLargeNoSubgroupGrid and has(device.adapterInfo, \"vendor\") and device.adapterInfo.vendor == \"intel\" else 32)",
+    "gemmTilePadding": "1 if not usesF16 and 2 * gemmTileRows * (gemmTileK + 4) * 4 <= device.limits.maxComputeWorkgroupStorageSize else 0",
+    "gemmCompensatedTiles": "not usesF16 and kDim > gemmTileK",
+    "gemmStaticM": "gfgRows",
+    "gemmStaticN": "nDim",
+    "gemmStaticK": "kDim"
+  },
+  "bindings": {
+    "x": { "arg": "X", "elementType": "$xScalar" },
+    "w": { "arg": "W", "elementType": "$wScalar" },
+    "y": { "arg": "Y", "elementType": "$yScalar" },
+    "params": { "struct": [{ "name": "M", "type": "u32", "value": "gfgRows" }] },
+    "a": { "arg": "X", "elementType": "$T" },
+    "b": { "arg": "W", "elementType": "$T" },
+    "y_t": { "arg": "Y", "name": "y", "elementType": "$T" }
+  },
+  "variants": [
+    {
+      "id": "vector_matrix_bias",
+      "priority": 130,
+      "when": ["biasContract", "gfgRows == 1", "nDim % 4 == 0", "gemvWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "gemvResourcesFit"],
+      "derive": {
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "outputBuffer": "\"y\"",
+        "gemvBias": true,
+        "unrollK2": "usesF16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.VectorMatrixBias",
+          "shader": "matmul-vector-matrix-vec4.wgsl.jinja",
+          "bindings": [
+            "a",
+            { "name": "b", "arg": "W", "elementType": "$vectorScalar" },
+            { "arg": "bias", "elementType": "$vectorScalar" },
+            { "name": "y", "arg": "Y", "elementType": "$vectorScalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "K", "type": "u32", "value": "kDim" },
+                { "name": "N4", "type": "u32", "value": "nDim / 4" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "gemvWorkgroups" }
+        }
+      ]
+    },
+    {
+      "id": "vector_matrix",
+      "priority": 130,
+      "when": ["noBiasContract", "gfgRows == 1", "nDim % 4 == 0", "gemvWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "gemvResourcesFit"],
+      "derive": {
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "outputBuffer": "\"y\"",
+        "gemvBias": false,
+        "unrollK2": "usesF16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.VectorMatrix",
+          "shader": "matmul-vector-matrix-vec4.wgsl.jinja",
+          "bindings": [
+            "a",
+            { "name": "b", "arg": "W", "elementType": "$vectorScalar" },
+            { "name": "y", "arg": "Y", "elementType": "$vectorScalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "K", "type": "u32", "value": "kDim" },
+                { "name": "N4", "type": "u32", "value": "nDim / 4" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "gemvWorkgroups" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_medium_bias",
+      "priority": 120,
+      "when": ["biasContract", "sgmatMediumContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatMediumRows",
+        "tileN": "sgmatMediumCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatMediumBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > (tunables.MEDIUM_MATRIX_MAX_GROUPS_F16 if usesF16 else tunables.MEDIUM_MATRIX_MAX_GROUPS_F32) and (sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_medium",
+      "priority": 120,
+      "when": ["noBiasContract", "sgmatMediumContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatMediumRows",
+        "tileN": "sgmatMediumCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatMedium",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > (tunables.MEDIUM_MATRIX_MAX_GROUPS_F16 if usesF16 else tunables.MEDIUM_MATRIX_MAX_GROUPS_F32) and (sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_medium_bias_f16",
+      "priority": 120,
+      "when": ["biasContract", "sgmatMediumContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatMediumRows",
+        "tileN": "sgmatMediumCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatMediumBiasF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > (tunables.MEDIUM_MATRIX_MAX_GROUPS_F16 if usesF16 else tunables.MEDIUM_MATRIX_MAX_GROUPS_F32) and (sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_medium_f16",
+      "priority": 120,
+      "when": ["noBiasContract", "sgmatMediumContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatMediumRows",
+        "tileN": "sgmatMediumCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatMediumF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > (tunables.MEDIUM_MATRIX_MAX_GROUPS_F16 if usesF16 else tunables.MEDIUM_MATRIX_MAX_GROUPS_F32) and (sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_small_bias",
+      "priority": 125,
+      "when": ["biasContract", "sgmatSmallContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatSmallRows",
+        "tileN": "sgmatSmallCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatSmallBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > tunables.SMALL_MATRIX_MAX_GROUPS and (sgmatMediumContract or sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_small",
+      "priority": 125,
+      "when": ["noBiasContract", "sgmatSmallContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatSmallRows",
+        "tileN": "sgmatSmallCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatSmall",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > tunables.SMALL_MATRIX_MAX_GROUPS and (sgmatMediumContract or sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_small_bias_f16",
+      "priority": 125,
+      "when": ["biasContract", "sgmatSmallContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatSmallRows",
+        "tileN": "sgmatSmallCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatSmallBiasF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > tunables.SMALL_MATRIX_MAX_GROUPS and (sgmatMediumContract or sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_small_f16",
+      "priority": 125,
+      "when": ["noBiasContract", "sgmatSmallContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatSmallRows",
+        "tileN": "sgmatSmallCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatSmallF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["sgmatOutputGroups > tunables.SMALL_MATRIX_MAX_GROUPS and (sgmatMediumContract or sgmatDirectContract or sgmatContract)"]
+    },
+    {
+      "id": "sgmat_direct_bias",
+      "priority": 110,
+      "when": ["biasContract", "sgmatDirectContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatDirectRows",
+        "tileN": "sgmatDirectCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatDirectBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_direct",
+      "priority": 110,
+      "when": ["noBiasContract", "sgmatDirectContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatDirectRows",
+        "tileN": "sgmatDirectCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatDirect",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_direct_bias_f16",
+      "priority": 110,
+      "when": ["biasContract", "sgmatDirectContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatDirectRows",
+        "tileN": "sgmatDirectCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatDirectBiasF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_direct_f16",
+      "priority": 110,
+      "when": ["noBiasContract", "sgmatDirectContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": "sgmatDirectRows",
+        "tileN": "sgmatDirectCols",
+        "directAStorage": true,
+        "doubleBufferedB": true,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatDirectF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_bias",
+      "priority": 100,
+      "when": ["biasContract", "sgmatContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": 32,
+        "tileN": 64,
+        "directAStorage": false,
+        "doubleBufferedB": false,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat",
+      "priority": 100,
+      "when": ["noBiasContract", "sgmatContract", "tensorDtypes.X == \"float32\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "bScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": 32,
+        "tileN": 64,
+        "directAStorage": false,
+        "doubleBufferedB": false,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.Sgmat",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_bias_f16",
+      "priority": 100,
+      "when": ["biasContract", "sgmatContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": true,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": 32,
+        "tileN": 64,
+        "directAStorage": false,
+        "doubleBufferedB": false,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatBiasF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "elementType": "$bScalar" }, "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "sgmat_f16",
+      "priority": 100,
+      "when": ["noBiasContract", "sgmatContract", "tensorDtypes.X == \"float16\""],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f16\"",
+        "wScalar": "\"f16\"",
+        "bScalar": "\"f16\"",
+        "yScalar": "\"f16\"",
+        "mmaScalar": "\"f16\"",
+        "inFeatures": "kDim",
+        "outFeatures": "nDim",
+        "tileM": 32,
+        "tileN": 64,
+        "directAStorage": false,
+        "doubleBufferedB": false,
+        "balancedMatrixAccumulation": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.SgmatF16",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "ceilDiv(nDim, tileN)",
+            "y": "min(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(gfgRows, tileM), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "tiled_bias",
+      "priority": 0,
+      "when": ["biasContract"],
+      "derive": { "hasBias": true, "rowBias": true, "scalarBias": false, "columnBias": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu.Bias",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [
+            "a",
+            "b",
+            "bias",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gfgRows" },
+                { "name": "N", "type": "u32", "value": "nDim" },
+                { "name": "K", "type": "u32", "value": "kDim" },
+                { "name": "alpha", "type": "f32", "value": 1 },
+                { "name": "beta", "type": "f32", "value": 1 }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(nDim, gemmTileCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(gfgRows, gemmTileRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tiled",
+      "priority": 0,
+      "when": ["noBiasContract"],
+      "derive": { "hasBias": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmFastGelu",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [
+            "a",
+            "b",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gfgRows" },
+                { "name": "N", "type": "u32", "value": "nDim" },
+                { "name": "K", "type": "u32", "value": "kDim" },
+                { "name": "alpha", "type": "f32", "value": 1 }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(nDim, gemmTileCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(gfgRows, gemmTileRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    }
+  ],
+  "tunables": {
+    "SMALL_MATRIX_MAX_GROUPS": { "default": 48 },
+    "MEDIUM_MATRIX_MAX_GROUPS_F32": { "default": 96 },
+    "MEDIUM_MATRIX_MAX_GROUPS_F16": { "default": 80 },
+    "GEMV_TARGET_BLOCKS": { "default": 512 },
+    "PORTABLE_SMALL_TILE_GROUPS_F32": { "default": 64 },
+    "PORTABLE_SMALL_TILE_GROUPS_F16": { "default": 128 }
+  }
+}

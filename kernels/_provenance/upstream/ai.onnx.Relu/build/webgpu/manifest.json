@@ -1,0 +1,64 @@
+{
+  "domain": "ai.onnx",
+  "name": "Relu",
+  "sinceVersion": 14,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int16", "int8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "wideVec4StorageOk": "dtypes.T != \"f32\" or device.features.has(\"subgroups\") or not (has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 8 and device.adapterInfo.subgroupMaxSize <= 32)",
+    "scalar": "dtypes.T"
+  },
+  "when": ["f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "wideVec4StorageOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Relu.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"relu\"",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "passes": [
+        {
+          "id": "main",
+          "name": "Relu",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "op": "\"relu\"", "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.x)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

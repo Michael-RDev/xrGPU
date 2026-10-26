@@ -1,0 +1,77 @@
+{
+  "tunableSpace": { "workgroupSize": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "decode-f16-b1c1024t1k4",
+      "preset": "smoke",
+      "attrs": { "activation": "silu" },
+      "inputs": {
+        "inputT": { "shape": [1, 1024, 1], "dtype": "float16", "dist": "normal", "seed": 2751, "scale": 0.2 },
+        "weightT": { "shape": [1024, 1, 4], "dtype": "float16", "dist": "normal", "seed": 2752, "scale": 0.1 },
+        "biasT": { "shape": [1024], "dtype": "float16", "dist": "normal", "seed": 2753, "scale": 0.05 },
+        "pastStateT": { "shape": [1, 1024, 3], "dtype": "float16", "dist": "normal", "seed": 2754, "scale": 0.2 }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1024, 1], "dtype": "float16" },
+        "presentStateT": { "shape": [1, 1024, 3], "dtype": "float16" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "2 * numel(shapes.outputT) * dim(shapes.weightT, 2)" },
+          {
+            "type": "bandwidth",
+            "value": "(numel(shapes.inputT) + numel(shapes.weightT) + numel(shapes.biasT) + numel(shapes.pastStateT) + numel(shapes.outputT) + numel(shapes.presentStateT)) * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefill-f32-b2c32t256k4",
+      "preset": "smoke",
+      "attrs": { "activation": "none" },
+      "inputs": {
+        "inputT": { "shape": [2, 32, 256], "dtype": "float32", "dist": "normal", "seed": 2755, "scale": 0.2 },
+        "weightT": { "shape": [32, 1, 4], "dtype": "float32", "dist": "normal", "seed": 2756, "scale": 0.1 }
+      },
+      "outputs": {
+        "outputT": { "shape": [2, 32, 256], "dtype": "float32" },
+        "presentStateT": { "shape": [2, 32, 3], "dtype": "float32" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "2 * numel(shapes.outputT) * dim(shapes.weightT, 2)" },
+          {
+            "type": "bandwidth",
+            "value": "(numel(shapes.inputT) + numel(shapes.weightT) + numel(shapes.outputT) + numel(shapes.presentStateT)) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "large-kernel-f32-b2c1024t512k128",
+      "preset": "stress",
+      "tunableSpace": { "tiledWorkgroupSize": [64, 128, 256] },
+      "attrs": { "activation": "none" },
+      "inputs": {
+        "inputT": { "shape": [2, 1024, 512], "dtype": "float32", "dist": "normal", "seed": 2757, "scale": 0.2 },
+        "weightT": { "shape": [1024, 1, 128], "dtype": "float32", "dist": "normal", "seed": 2758, "scale": 0.05 }
+      },
+      "outputs": {
+        "outputT": { "shape": [2, 1024, 512], "dtype": "float32", "dist": "empty" },
+        "presentStateT": { "shape": [2, 1024, 127], "dtype": "float32", "dist": "empty" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "2 * numel(shapes.outputT) * dim(shapes.weightT, 2)" },
+          {
+            "type": "bandwidth",
+            "value": "(numel(shapes.inputT) + numel(shapes.weightT) + numel(shapes.outputT) + numel(shapes.presentStateT)) * 4"
+          }
+        ]
+      }
+    }
+  ]
+}

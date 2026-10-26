@@ -1,0 +1,149 @@
+{
+  "domain": "ai.onnx",
+  "name": "CumProd",
+  "sinceVersion": 26,
+  "inputs": { "x": { "dtype": "T" } },
+  "outputs": { "y": { "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "args": { "axis": { "kind": "i32" } },
+  "attributes": { "exclusive": { "default": 0 }, "reverse": { "default": 0 } },
+  "attributeConstraints": { "exclusive": { "values": [0, 1] }, "reverse": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SERIAL_SHORT_DIM_MAX": { "default": 128 },
+    "SERIAL_MIN_ROWS": { "default": 4096 },
+    "SHORT_ROW_TILE_STORAGE_TARGET": { "default": 16384 }
+  },
+  "derive": {
+    "op": "\"mul\"",
+    "shortRowsPerWorkgroup": "max(1, min(tunables.WORKGROUP_SIZE, floor(min(tunables.SHORT_ROW_TILE_STORAGE_TARGET, device.limits.maxComputeWorkgroupStorageSize) / ((dim(shapes.x, args.axis) + 1) * 4))))",
+    "shortRowTileScan": "inner(shapes.x, args.axis) == 1 and dim(shapes.x, args.axis) >= 2 and dim(shapes.x, args.axis) <= tunables.SERIAL_SHORT_DIM_MAX and rows(shapes.x, args.axis) >= tunables.SERIAL_MIN_ROWS and ceilDiv(rows(shapes.x, args.axis), shortRowsPerWorkgroup) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "cooperativeRowScan": "inner(shapes.x, args.axis) == 1 and dim(shapes.x, args.axis) > 32 and rows(shapes.x, args.axis) >= 1 and rows(shapes.x, args.axis) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and not shortRowTileScan"
+  },
+  "when": ["f16Ok(dtypes.T)", "numel(shapes.x) == numel(shapes.y)", "ranks.x >= 1", "ranks.y == ranks.x"],
+  "bindings": {
+    "x": { "elementType": "$scalar" },
+    "y": { "elementType": "$scalar" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis)" },
+        { "name": "dim", "type": "u32", "value": "dim(shapes.x, args.axis)" }
+      ]
+    },
+    "x_main": { "name": "x", "elementType": "$vec4Scalar" },
+    "y_main": { "name": "y", "elementType": "$vec4Scalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis)" },
+        { "name": "dim4", "type": "u32", "value": "dim(shapes.x, args.axis) / 4" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis)" },
+        { "name": "dim", "type": "u32", "value": "dim(shapes.x, args.axis)" },
+        { "name": "inner", "type": "u32", "value": "inner(shapes.x, args.axis)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "tiled_short_rows",
+      "priority": 18,
+      "when": ["shortRowTileScan"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "rowsPerWorkgroup": "shortRowsPerWorkgroup",
+        "rowStride": "dim(shapes.x, args.axis) + 1",
+        "tileElements": "shortRowsPerWorkgroup * (dim(shapes.x, args.axis) + 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumProd.TiledShortRows",
+          "shader": "cumprod-tiled-short-rows.wgsl.jinja",
+          "derive": { "exclusive": "attrs.exclusive != 0", "reverse": "attrs.reverse != 0" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv(rows(shapes.x, args.axis), shortRowsPerWorkgroup), 65535)",
+            "y": "ceilDiv(ceilDiv(rows(shapes.x, args.axis), shortRowsPerWorkgroup), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "wg_row_scan_vec4",
+      "priority": 16,
+      "when": ["cooperativeRowScan", "dim(shapes.x, args.axis) % 4 == 0", "attrs.reverse == 0"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vec4Scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumProd.WorkgroupRowScanVec4",
+          "shader": "scan-row-chunked-vec4.wgsl.jinja",
+          "derive": { "exclusive": "attrs.exclusive != 0", "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["x_main", "y_main", "params_main"],
+          "dispatch": { "x": "rows(shapes.x, args.axis)" }
+        }
+      ]
+    },
+    {
+      "id": "wg_row_scan",
+      "priority": 15,
+      "when": ["cooperativeRowScan"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumProd.WorkgroupRowScan",
+          "shader": "scan-row-chunked.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": ["x", "y", "params"],
+          "dispatch": { "x": "rows(shapes.x, args.axis)" }
+        }
+      ]
+    },
+    {
+      "id": "thread_row_scan",
+      "priority": 12,
+      "supersededBy": ["tiled_short_rows", "wg_row_scan_vec4", "wg_row_scan"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumProd.ThreadRowScan",
+          "shader": "scan-thread-row.wgsl.jinja",
+          "derive": { "exclusive": "attrs.exclusive != 0", "reverse": "attrs.reverse != 0" },
+          "bindings": ["x", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((rows(shapes.x, args.axis)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((rows(shapes.x, args.axis)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

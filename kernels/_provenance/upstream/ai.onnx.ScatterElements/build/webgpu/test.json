@@ -1,0 +1,1758 @@
+{
+  "fixtureArrays": {
+    "f16_reduction_add_embedding_rows_mixed_duplicates_input_indices": [0, 0, 0, 0, 3, 3, 3, 3, 7, 7, 7, 7, 31, 31, 31, 31]
+  },
+  "cases": [
+    {
+      "name": "dispatch_cliff_axis0_identity",
+      "attrs": { "axis": 0, "reduction": "none" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [16777216], "data": { "kind": "constant", "value": 0.0 } },
+        "indices": {
+          "dtype": "int32",
+          "shape": [16777216],
+          "data": { "kind": "linspace", "start": 0, "end": 16777215 }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [16777216],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [16777216], "tolerance": 0 } }
+    },
+    {
+      "name": "axis1",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 13.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [3, 1, 0, 2] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [30.0, 31.0, 40.0, 41.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 4] } }
+    },
+    {
+      "name": "axis2_f16",
+      "attrs": { "axis": 2 },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [1, 2, 4] },
+        "indices": { "dtype": "int32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [0, 3, 1, 2] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 12.0, 13.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 2, 4] } },
+      "tolerance": 0.001
+    },
+    {
+      "name": "axis0_reduction_add_subnormal_duplicate_indices_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU, so this reduction's subnormal sum/product result is flushed on GPU; permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReduction",
+        "notes": "Duplicate-index add reduction with finite subnormal updates; the accumulated output should remain a nonzero subnormal."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "indices": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 0, 0] } },
+        "updates": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, 1e-40, 2e-40] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [3.999978440445904e-40] }
+        }
+      }
+    },
+    {
+      "name": "axis0_reduction_mul_normal_inputs_subnormal_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU, so this reduction's subnormal sum/product result is flushed on GPU; permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MulReduction",
+        "notes": "Duplicate-index mul reduction where tiny normal updates produce a finite subnormal product."
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "updates": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1e-20, 1e-20] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [9.99994610111476e-41] }
+        }
+      }
+    },
+    {
+      "name": "ort_bool_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.BoolInputWithAxis",
+        "notes": "ORT runs this helper for ScatterElements too; ONNX allows bool data and updates."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1, 5], "data": { "kind": "values", "values": [0, 0, 0, 1, 0] } },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 3] } },
+        "updates": { "dtype": "bool", "shape": [1, 2], "data": { "kind": "values", "values": [1, 0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "bool",
+          "shape": [1, 5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 1, 0, 0, 0] }
+        }
+      }
+    },
+    {
+      "name": "rank5_axis2",
+      "attrs": { "axis": 2 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 1, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [1, 2, 2, 1, 2],
+          "data": { "kind": "values", "values": [2, 0, 1, 2, 0, 1, 2, 2] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 1, 2],
+          "data": { "kind": "values", "values": [30.0, 31.0, 32.0, 33.0, 40.0, 41.0, 42.0, 43.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 2, 3, 1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank6_axis5",
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 13.0, 100.0, 101.0, 102.0, 103.0, 110.0, 111.0, 112.0, 113.0]
+          }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [1, 2, 1, 2, 1, 2],
+          "data": { "kind": "values", "values": [3, 0, 2, 1, 1, 3, 0, 2] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2],
+          "data": { "kind": "values", "values": [30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 2, 1, 2, 1, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "reduction_add_duplicate_indices",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 10.0, 20.0, 30.0, 100.0, 110.0, 120.0, 130.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 3, 0, 2, 2] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "reduction_add_subnormal_duplicate_indices_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU, so this reduction's subnormal sum/product result is flushed on GPU; permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReductionAxis1",
+        "notes": "Duplicate-index add reduction with finite subnormal updates; two tiny valid updates must accumulate to a nonzero subnormal instead of disappearing."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } },
+        "indices": { "dtype": "int32", "shape": [1, 4], "data": { "kind": "values", "values": [1, 1, 3, 3] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [1e-40, 1e-40, -1e-40, -1e-40] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 4], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "rank6_reduction_add_duplicate_indices",
+      "attrs": { "axis": -1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 1, 1, 4],
+          "data": { "kind": "values", "values": [0.0, 10.0, 20.0, 30.0, 100.0, 110.0, 120.0, 130.0] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [1, 1, 2, 1, 1, 3],
+          "data": { "kind": "values", "values": [1, 1, 3, 0, 2, 2] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 1, 1, 3],
+          "data": { "kind": "values", "values": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 2, 1, 1, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "reduction_mul_normal_inputs_subnormal_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU, so this reduction's subnormal sum/product result is flushed on GPU; permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MulReductionAxis1",
+        "notes": "Duplicate-index mul reduction over tiny normal updates produces a finite subnormal product; flushing the intermediate product loses the update."
+      },
+      "attrs": { "axis": 1, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 1.0, 0.0, 0.0] } },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "updates": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [1e-20, 1e-20] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 4], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "ort_reduction_add_axis0",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReduction"
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 2, 0, 2, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 1.1, 1.2, 2.0, 2.1, 2.2] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_add_axis1_duplicates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReductionAxis1"
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [9.0, 4.0, 1.0, 7.0, 3.0, 6.0] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1, 1, 1] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [2.0, 5.0, 3.0, 6.0, 7.0, 9.0, 8.0, 10.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_mul_axis0",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MulReduction"
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-9.0, -4.0, -1.0, -7.0, -3.0, -6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [7.0, 3.0, 6.0, 7.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_mul_axis1_duplicates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MulReductionAxis1"
+      },
+      "attrs": { "axis": 1, "reduction": "mul" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [9.0, 4.0, 1.0, 7.0, 3.0, 6.0] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1, 1, 1] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_max_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MaxReduction_Float"
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-9.0, -4.0, -1.0, -7.0, -3.0, -6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 5.0, 3.0, 7.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_max_f16",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MaxReduction_MLFloat16"
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-9.0, -4.0, -1.0, -7.0, -3.0, -6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 5.0, 3.0, 7.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_reduction_min_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MinReduction_Float"
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-9.0, -4.0, -1.0, 8.0, -3.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 5.0, 3.0, 7.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_reduction_min_f16",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MinReduction_MLFloat16"
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-9.0, -4.0, -1.0, 8.0, -3.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 5.0, 3.0, 7.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_int32_negative_indices_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.int32_t",
+        "notes": "Negative indices normalize against the selected axis before replacement."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 13.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [-1, -3, 0, -2] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [30.0, 31.0, 40.0, 41.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int32_negative_indices_last_axis_rank3_f16",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.MLFloat16",
+        "notes": "Negative indices normalize against the selected axis before float16 replacement."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 13.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [-1, 0, -2, -3] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [30.0, 31.0, 40.0, 41.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 2, 4], "tolerance": 0.001 } }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_with_axis",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 3] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2],
+          "data": { "kind": "values", "values": [1.100000023841858, 2.0999999046325684] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_with_axis",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_with_duplicate_indices",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2],
+          "data": { "kind": "values", "values": [1.100000023841858, 2.0999999046325684] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_with_duplicate_indices",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_with_negative_indices",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, -3] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2],
+          "data": { "kind": "values", "values": [1.100000023841858, 2.0999999046325684] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_with_negative_indices",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_with_reduction_max",
+      "attrs": { "axis": 1, "reduction": "max" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2],
+          "data": { "kind": "values", "values": [1.100000023841858, 2.0999999046325684] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_with_reduction_max",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_with_reduction_min",
+      "attrs": { "axis": 1, "reduction": "min" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [1, 2],
+          "data": { "kind": "values", "values": [1.100000023841858, 2.0999999046325684] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_with_reduction_min",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "onnx_backend_scatter_elements_without_axis",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 2, 0, 2, 1] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 1.100000023841858, 1.2000000476837158, 2.0, 2.0999999046325684, 2.200000047683716]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_scatter_elements_without_axis",
+        "notes": "This WebGPU package stores representable ONNX int64 indices in int32 slots."
+      }
+    },
+    {
+      "name": "ort_int32_payload_axis1_exact_above_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.int32_t",
+        "notes": "Deterministic projection of ORT's int32 ScatterElements coverage using values above f32's exact integer range."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "int32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [16777217, -16777217, 42, 100, 200, -300] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [-1, 0, -2, -1] } },
+        "updates": {
+          "dtype": "int32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [20000001, -20000001, 30000003, -30000003] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [2, 3] } }
+    },
+    {
+      "name": "ort_int16_axis1_replacement",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.int16_t",
+        "notes": "Deterministic axis-1 replacement adapted from ORT's randomized int16 ScatterElements coverage."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": { "dtype": "int16", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 2, 3] } },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 0, 1] } },
+        "updates": { "dtype": "int16", "shape": [2, 2], "data": { "kind": "values", "values": [9, 8, 7, 6] } }
+      },
+      "outputs": { "output": { "dtype": "int16", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_axis1_replacement",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.BoolInputWithAxis",
+        "notes": "Projects representable int64 indices to int32 storage."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1, 5], "data": { "kind": "values", "values": [0, 0, 0, 1, 0] } },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 3] } },
+        "updates": { "dtype": "bool", "shape": [1, 2], "data": { "kind": "values", "values": [1, 0] } }
+      },
+      "outputs": {
+        "output": { "dtype": "bool", "shape": [1, 5], "data": { "kind": "values", "values": [0, 1, 0, 0, 0] } }
+      }
+    },
+    {
+      "name": "empty_updates_axis1_noop",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_nd_op_test.cc",
+        "test": "ScatterNDOpTest.ScatterND_empty_indices",
+        "notes": "Analogous ScatterElements no-op case: empty indices and updates leave data unchanged."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 0], "data": { "kind": "values", "values": [] } },
+        "updates": { "dtype": "float32", "shape": [2, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3] } }
+    },
+    {
+      "name": "empty_updates_reduction_add_noop",
+      "provenance": {
+        "notes": "Empty updates make both the axis stride and updates-per-column count zero. The reduction path must return without dividing by either extent and leave the input unchanged."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 0, 0], "data": { "kind": "values", "values": [] } },
+        "updates": { "dtype": "float32", "shape": [2, 0, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int32_reduction_add_exact_above_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReduction",
+        "notes": "Integer projection of ORT's add-reduction coverage using values above f32's exact integer range."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [1, 3], "data": { "kind": "values", "values": [0, 0, 0] } },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "updates": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [16777217, 1] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1, 3] } }
+    },
+    {
+      "name": "int32_reduction_min_duplicate_indices_negative",
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [5, -7, 3] } },
+        "indices": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 0, 2] } },
+        "updates": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-2, 4, 10] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-2, -7, 3] } } }
+    },
+    {
+      "name": "int32_reduction_max_duplicate_indices",
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-5, -7, 3] } },
+        "indices": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 0, 2] } },
+        "updates": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-2, 4, 1] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [4, -7, 3] } } }
+    },
+    {
+      "name": "int32_reduction_mul_duplicate_indices",
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 3, -1] } },
+        "indices": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 0, 2] } },
+        "updates": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, 5, -4] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [30, 3, 4] } } }
+    },
+    {
+      "name": "reduction_add_f32_high_contention_2048",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.5, 0.0, 0.0, 0.0] } },
+        "indices": { "dtype": "int32", "shape": [2048], "data": { "kind": "constant", "value": 0 } },
+        "updates": { "dtype": "float32", "shape": [2048], "data": { "kind": "constant", "value": 0.25 } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [512.5, 0.0, 0.0, 0.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "reduction_min_f32_high_contention_2048",
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1000.0, -3.0] } },
+        "indices": { "dtype": "int32", "shape": [2048], "data": { "kind": "constant", "value": 0 } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2048],
+          "data": { "kind": "cycle", "values": [9.0, 4.0, 7.0, 2.5, 8.0] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2],
+          "data": { "kind": "values", "values": [2.5, -3.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "reduction_max_axis1_duplicate_indices_atomic",
+      "attrs": { "axis": 1, "reduction": "max" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [0, 0, 2, 2] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [9.0, -1.0, 5.0, 8.0] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [9.0, 2.0, 3.0, 4.0, 5.0, 8.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "ort_reduction_add_axis1_negative_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReductionAxis1",
+        "notes": "Duplicate signed negative indices normalize to axis position 1 and accumulate there."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [9.0, 4.0, 1.0, 7.0, 3.0, 6.0] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-2, -2, -2, -2, -2, -2, -2, -2] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [2.0, 5.0, 3.0, 6.0, 7.0, 9.0, 8.0, 10.0] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [9.0, 20.0, 1.0, 7.0, 37.0, 6.0] }
+        }
+      }
+    },
+    {
+      "name": "f16_reduction_add_axis0_duplicate_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReduction",
+        "notes": "Float16 add reduction widens each read-modify-write operation to f32. Duplicate axis indices accumulate repeatedly into the same output row, and all values remain normal."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.5, 1.5, 2.5, 0.25, 0.75, 1.25] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.01 } }
+    },
+    {
+      "name": "f16_reduction_mul_axis1_duplicate_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MulReductionAxis1",
+        "notes": "Float16 multiply reduction widens each read-modify-write operation to f32. Duplicate axis indices multiply repeatedly into the same output cells, and all products remain normal."
+      },
+      "attrs": { "axis": 1, "reduction": "mul" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 1.0, 1.0, 1.0, 3.0, 1.0, 1.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [2.0, 1.5, 0.5, 4.0, 0.25, 2.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 4], "tolerance": 0.01 } }
+    },
+    {
+      "name": "f16_reduction_min_axis1_negative_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.MinReduction_MLFloat16",
+        "notes": "Float16 minimum reduction normalizes signed negative indices to the same axis-1 column before comparing updates."
+      },
+      "attrs": { "axis": 1, "reduction": "min" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [5.0, 5.0, 5.0, -1.0, -1.0, -1.0] }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [-2, -2, -1, -1] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [3.0, -4.0, 2.0, -6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.01 } }
+    },
+    {
+      "name": "int32_reduction_add_axis0_contended_native_atomic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReduction",
+        "notes": "Many duplicate indices target one slot across workgroups, exercising native int32 atomic addition under contention. Integer accumulation is exact and does not round through f32."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [10, 0, 0, 0] } },
+        "indices": { "dtype": "int32", "shape": [512], "data": { "kind": "constant", "value": 0 } },
+        "updates": { "dtype": "int32", "shape": [512], "data": { "kind": "constant", "value": 3 } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1546, 0, 0, 0] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "f16_reduction_mul_rank1_axis0_all_same_slot",
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [2.0, 1.0, 1.0] } },
+        "indices": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [0, 0, 0, 0] } },
+        "updates": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [3.0, 0.5, 2.0, 1.5] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3], "tolerance": 0.1 } }
+    },
+    {
+      "name": "f16_reduction_add_rank1_axis0_mixed_slots",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [10.0, 20.0, 30.0, 40.0] } },
+        "indices": { "dtype": "int32", "shape": [6], "data": { "kind": "values", "values": [0, 2, 0, 3, 1, 2] } },
+        "updates": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4], "tolerance": 0.1 } }
+    },
+    {
+      "name": "f32_reduction_max_high_contention_all_same_slot_exact",
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [-100.0, 5.0] } },
+        "indices": { "dtype": "int32", "shape": [6], "data": { "kind": "values", "values": [0, 0, 0, 0, 0, 0] } },
+        "updates": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-50.0, -20.0, -75.0, -10.0, -30.0, -5.0] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2],
+          "data": { "kind": "values", "values": [-5.0, 5.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "int32_reduction_add_rank6_axis5_negative_indices",
+      "attrs": { "axis": -1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "int32",
+          "shape": [1, 1, 1, 1, 2, 4],
+          "data": { "kind": "values", "values": [0, 10, 20, 30, 100, 110, 120, 130] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [1, 1, 1, 1, 2, 3],
+          "data": { "kind": "values", "values": [-1, -3, -4, -2, -4, -2] }
+        },
+        "updates": {
+          "dtype": "int32",
+          "shape": [1, 1, 1, 1, 2, 3],
+          "data": { "kind": "values", "values": [5, 7, 3, 9, 2, 6] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1, 1, 1, 1, 2, 4] } }
+    },
+    {
+      "name": "f16_reduction_add_embedding_rows_mixed_duplicates",
+      "provenance": {
+        "notes": "Rows 0, 3, 7, and 31 each receive 256 float16 updates offset around +0.005 through f32 atomic scratch. The nonzero mean makes lost or rescaled contributions observable; the tolerance allows one final f16 rounding after f32 accumulation."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [32, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "indices": {
+          "dtype": "int32",
+          "shape": [1024, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/f16_reduction_add_embedding_rows_mixed_duplicates_input_indices" }
+          }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [1024, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17, "scale": 0.25, "offset": 0.005 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [32, 4], "tolerance": 0.015, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "f32_reduction_add_axis0_histogram_mixed_bins_exact",
+      "provenance": {
+        "notes": "A rank-two axis-zero scatter has 1024 colliding updates per column and distinct target bins. Power-of-two increments keep the expected float32 result exact under any update order."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4, 32], "data": { "kind": "constant", "value": 1.0 } },
+        "indices": { "dtype": "int32", "shape": [1024, 32], "data": { "kind": "cycle", "values": [0, 1, 2, 3] } },
+        "updates": { "dtype": "float32", "shape": [1024, 32], "data": { "kind": "constant", "value": 0.25 } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 32], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_reduction_add_axis0_histogram_signed_tail_exact",
+      "provenance": {
+        "notes": "Tail-column case: 35 columns require a partial second 32-column tile, while signed -1 indices normalize to the final axis bin. Exact power-of-two updates also validate that untouched data rows are copied by histogram initialization."
+      },
+      "attrs": { "axis": -2, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [5, 35], "data": { "kind": "constant", "value": -2.0 } },
+        "indices": { "dtype": "int32", "shape": [1024, 35], "data": { "kind": "constant", "value": -1 } },
+        "updates": { "dtype": "float32", "shape": [1024, 35], "data": { "kind": "constant", "value": 0.125 } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [5, 35], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_reduction_add_axis1_outer257_atomic_f32_route",
+      "provenance": {
+        "notes": "A float16 axis-1 reduction with 257 independent rows and 1,024 duplicate indices per row exercises collision-safe f32 scratch accumulation."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [257, 1024], "data": { "kind": "constant", "value": 0.0 } },
+        "indices": { "dtype": "int32", "shape": [257, 1024], "data": { "kind": "constant", "value": 0 } },
+        "updates": { "dtype": "float16", "shape": [257, 1024], "data": { "kind": "constant", "value": 0.25 } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [257, 1024], "tolerance": 0 } }
+    },
+    {
+      "name": "rank7_last_axis",
+      "attrs": { "axis": 6, "reduction": "none" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "indices": {
+          "dtype": "int32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "cycle", "values": [3, 1, 0] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "rank8_last_axis",
+      "attrs": { "axis": 7, "reduction": "none" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 4],
+          "data": { "kind": "linspace", "start": 1.0, "end": 64.0 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "cycle", "values": [0, 2, 3] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 2, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_axis0_replacement",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider",
+        "notes": "Covers standard UINT32 payload storage on the replacement route."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 2, 3] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 0] } },
+        "updates": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [9, 8] } }
+      },
+      "outputs": {
+        "output": { "dtype": "uint32", "shape": [3], "tolerance": 0, "data": { "kind": "values", "values": [8, 2, 9] } }
+      }
+    },
+    {
+      "name": "ort_uint32_reduction_add_wrap32",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider",
+        "notes": "Duplicate updates prove native u32 atomic addition wraps modulo 2^32."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [4294967290, 7] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "updates": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [10, 10] } }
+      },
+      "outputs": {
+        "output": { "dtype": "uint32", "shape": [2], "tolerance": 0, "data": { "kind": "values", "values": [14, 7] } }
+      }
+    },
+    {
+      "name": "ort_int8_reduction_add_wrap8",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider",
+        "notes": "Duplicate signed updates must narrow after addition instead of leaking the physical i32 sum."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [120, -7] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "updates": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [10, 10] } }
+      },
+      "outputs": {
+        "output": { "dtype": "int8", "shape": [2], "tolerance": 0, "data": { "kind": "values", "values": [-116, -7] } }
+      }
+    },
+    {
+      "name": "ort_uint8_reduction_mul_wrap8",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider",
+        "notes": "Duplicate unsigned updates must narrow after multiplication instead of leaking the physical u32 product."
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [2], "data": { "kind": "values", "values": [200, 7] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "updates": { "dtype": "uint8", "shape": [2], "data": { "kind": "values", "values": [20, 20] } }
+      },
+      "outputs": {
+        "output": { "dtype": "uint8", "shape": [2], "tolerance": 0, "data": { "kind": "values", "values": [128, 7] } }
+      }
+    },
+    {
+      "name": "ort_int16_reduction_add_wrap16",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider",
+        "notes": "Duplicate indices add the same int16 update (10) twice to 32,760, overflowing to -32,756 via 16-bit two's-complement wraparound; the untouched -7 element confirms only the targeted index changes."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int16", "shape": [2], "data": { "kind": "values", "values": [32760, -7] } },
+        "indices": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "updates": { "dtype": "int16", "shape": [2], "data": { "kind": "values", "values": [10, 10] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int16",
+          "shape": [2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-32756, -7] }
+        }
+      }
+    },
+    {
+      "name": "int8_reduction_add_high_contention_wrap",
+      "provenance": {
+        "notes": "Three thousand int8 updates wrap repeatedly across four slots. Reduction uses raw two's-complement bits and narrows once at the end; synchronized index and update cycles give each slot a distinct total and expose mispaired lanes."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [7, -100, 0, 3] } },
+        "indices": { "dtype": "int32", "shape": [3000], "data": { "kind": "cycle", "values": [0, 1, 2, 3] } },
+        "updates": { "dtype": "int8", "shape": [3000], "data": { "kind": "cycle", "values": [5, -3, 1, 2] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_reduction_min_duplicate_indices",
+      "provenance": {
+        "notes": "Signed narrow min reduces through a native atomicMin on the i32-widened output. The update cycle length shares a factor with the index cycle so each slot sees a disjoint half of the values and the two slots reduce to different results, which a mispaired index/update lane would not reproduce; one slot is left untouched by any update."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [100, -5, 42] } },
+        "indices": { "dtype": "int32", "shape": [512], "data": { "kind": "cycle", "values": [0, 1] } },
+        "updates": { "dtype": "int8", "shape": [512], "data": { "kind": "cycle", "values": [9, -128, 7, 3] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "uint8_reduction_max_duplicate_indices",
+      "provenance": {
+        "notes": "Unsigned narrow max reduces through a native atomicMax on the u32-widened output. Each slot sees a disjoint half of the update cycle, so the two slots reduce to different results and one of them is decided by the data rather than by an update."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [0, 200, 17] } },
+        "indices": { "dtype": "int32", "shape": [512], "data": { "kind": "cycle", "values": [0, 1] } },
+        "updates": { "dtype": "uint8", "shape": [512], "data": { "kind": "cycle", "values": [3, 255, 9, 1] } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "int16_reduction_max_duplicate_indices",
+      "provenance": {
+        "notes": "Signed int16 maximum reduction uses i32-widened atomic storage at values outside the int8 range."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "int16", "shape": [3], "data": { "kind": "values", "values": [-30000, 1, -7] } },
+        "indices": { "dtype": "int32", "shape": [512], "data": { "kind": "cycle", "values": [0, 1] } },
+        "updates": { "dtype": "int16", "shape": [512], "data": { "kind": "cycle", "values": [-20000, 32767, -1, 5] } }
+      },
+      "outputs": { "output": { "dtype": "int16", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_reduction_add_axis1_slab_outer16_axis48_duplicates",
+      "provenance": {
+        "notes": "Slab route: sixteen rows of 48 stage in workgroup memory, twenty updates per row land on repeated and negative indices, and every cell writes back once."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [16, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.07, "scale": 0.5 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [16, 20],
+          "data": {
+            "kind": "cycle",
+            "values": [0, 5, 47, 5, -1, 12, 12, 30, 31, 0, 7, 46, 3, 3, 3, 20, 21, 22, -48, 9]
+          }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [16, 20],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17, "scale": 0.25 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16, 48], "tolerance": 0.004, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_reduction_add_axis1_slab_outer16_axis33_scalar_staging",
+      "provenance": {
+        "notes": "An odd slab of 33 cells is staged and written one float16 value at a time. Repeated and negative indices exercise reduction and normalization within the slab."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [16, 33],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.07, "scale": 0.5 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [16, 12],
+          "data": { "kind": "cycle", "values": [0, 5, 32, 5, -1, 12, 12, 30, 31, 0, 7, -33] }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [16, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17, "scale": 0.25 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16, 33], "tolerance": 0.004, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_reduction_mul_axis1_rank3_slab_inner5",
+      "provenance": {
+        "notes": "Slab route with an inner stride: axis 1 of a rank-3 tensor keeps each update in its own inner column while the slab (axis extent times inner) stages as one block."
+      },
+      "attrs": { "axis": 1, "reduction": "mul" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [12, 8, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23, "scale": 1.0 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [12, 3, 5],
+          "data": { "kind": "cycle", "values": [0, 7, 2, 2, -8, 1, 4, 3, 0, 5, 1, 6, 3, 4, 5] }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [12, 3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.31, "scale": 1.0 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [12, 8, 5], "tolerance": 0.002, "relTolerance": 0.004 } }
+    },
+    {
+      "name": "f16_reduction_min_axis1_rank3_slab_inner5",
+      "attrs": { "axis": 1, "reduction": "min" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [12, 8, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23, "scale": 1.0 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [12, 3, 5],
+          "data": { "kind": "cycle", "values": [0, 7, 2, 2, -8, 1, 4, 3, 0, 5, 1, 6, 3, 4, 5] }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [12, 3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.31, "scale": 1.0 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [12, 8, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_reduction_max_axis2_rank3_slab_last_axis",
+      "provenance": {
+        "notes": "Slab route on the last axis: forty slabs of 32 with a unit inner stride, repeated and negative indices."
+      },
+      "attrs": { "axis": 2, "reduction": "max" },
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [10, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13, "scale": 1.0 }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [10, 4, 16],
+          "data": { "kind": "cycle", "values": [0, 31, 31, -1, -32, 15, 15, 7, 8, 9, 10, 11, 12, 13, 14, 3] }
+        },
+        "updates": {
+          "dtype": "float16",
+          "shape": [10, 4, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.29, "scale": 1.0 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [10, 4, 32], "tolerance": 0 } }
+    },
+    {
+      "name": "int32_reduction_add_axis0_rank2_columns_direct_atomic",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [4, 64], "data": { "kind": "cycle", "values": [3, -1, 7, 0, 2] } },
+        "indices": {
+          "dtype": "int32",
+          "shape": [96, 64],
+          "data": { "kind": "cycle", "values": [0, 3, 1, 2, 2, 0, 3, 1, 1] }
+        },
+        "updates": {
+          "dtype": "int32",
+          "shape": [96, 64],
+          "data": { "kind": "cycle", "values": [1, 2, -3, 4, 5, -6, 7] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [4, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_reduction_add_axis0_rank2_columns_direct_atomic",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [4, 64],
+          "data": { "kind": "cycle", "values": [0.5, -1.0, 2.0, 0.25, 1.5] }
+        },
+        "indices": {
+          "dtype": "int32",
+          "shape": [96, 64],
+          "data": { "kind": "cycle", "values": [0, 3, 1, 2, 2, 0, 3, 1, 1] }
+        },
+        "updates": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, -0.375, 0.5, 0.625, -0.75, 0.875] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f16_reduction_min_slab_updates_smaller_outer",
+      "provenance": {
+        "notes": "Updates [8,20] cover only the first 8 of the data's 16 rows (a valid ScatterElements layout: update extents <= data extents). A slab route that walks the data's outer extent would read past the updates tensor for rows 8..15 and fold zeros into the min; rows 8..15 must stay 5."
+      },
+      "attrs": { "axis": 1, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [16, 48], "data": { "kind": "constant", "value": 5.0 } },
+        "indices": { "dtype": "int32", "shape": [8, 20], "data": { "kind": "constant", "value": 0 } },
+        "updates": { "dtype": "float16", "shape": [8, 20], "data": { "kind": "constant", "value": 3.0 } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16, 48], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f16_reduction_add_slab_updates_narrower_inner",
+      "provenance": {
+        "notes": "Rank-3 add along axis 1 whose updates [8,8,4] are narrower than the data [8,8,8] on the inner axis; every update targets axis index 2 so data[o,2,0..3] gains 8 * 0.5. A slab route keyed on the data's inner extent would misplace half the updates."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [8, 8, 8], "data": { "kind": "constant", "value": 1.0 } },
+        "indices": { "dtype": "int32", "shape": [8, 8, 4], "data": { "kind": "constant", "value": 2 } },
+        "updates": { "dtype": "float16", "shape": [8, 8, 4], "data": { "kind": "constant", "value": 0.5 } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [8, 8, 8], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_int32_reduction_add_ieee_bit_pattern",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.AddReductionInt32SemanticDispatch",
+        "notes": "0x3f800000 is the IEEE bit pattern of 1.0f. Integer addition gives 0x7f000000 = 2130706432; a reduction dispatched on a float representative type would give 2.0f = 0x40000000 = 1073741824."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1065353216] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1065353216] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_reduction_add_overflow_wraps",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt32",
+        "notes": "INT32_MAX + 1 must wrap to INT32_MIN. Upstream added this alongside the bit-pattern case to pin two's-complement semantics for the int32 add reduction."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2147483647] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_reduction_min_ieee_bit_pattern",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt32",
+        "notes": "-1082130432 and -1073741824 are the int32 readings of the float bit patterns -1.0f and -2.0f. As integers min is -1082130432; a float-typed reduction would answer -2.0f = -1073741824."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [-1082130432] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [-1073741824] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_reduction_max_ieee_bit_pattern",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt32",
+        "notes": "Max twin of the min bit-pattern case: as integers the answer is -1073741824, under a float reading it would be -1.0f = -1082130432."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [-1082130432] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [-1073741824] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_reduction_min_ieee_bit_pattern",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeUInt32",
+        "notes": "0xbf800000 (3212836864) vs 0x3f800000 (1065353216): unsigned min is 0x3f800000, a signed or float reading would answer the other one."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3212836864] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1065353216] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_reduction_max_ieee_bit_pattern",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeUInt32",
+        "notes": "Unsigned max of 0xbf800000 and 0x3f800000 is 0xbf800000."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3212836864] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1065353216] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_reduction_mul",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeUInt32",
+        "notes": "uint32 mul reduction smoke case; uint32 coverage here is add only (`ort_uint32_reduction_add_wrap32`)."
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [2] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int8_reduction_max",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt8Smoke",
+        "notes": "int8 max reduction; int8 coverage here is add (wrap) and min only."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-5] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint8_reduction_add",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeUInt8",
+        "notes": "uint8 add 200 + 20 = 220, deliberately below the 8-bit wrap so the value, not the wrap, is what is checked. uint8 coverage here is mul (wrap) and max."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [200] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [20] } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint8_reduction_min",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeUInt8",
+        "notes": "uint8 min reduction, the remaining empty cell for uint8."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [200] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [100] } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int16_reduction_min",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt16",
+        "notes": "int16 min on two negative values (upstream picked the int16 readings of f16 bit patterns). int16 coverage here is add (wrap) and max."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "int16", "shape": [1], "data": { "kind": "values", "values": [-17408] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int16", "shape": [1], "data": { "kind": "values", "values": [-16384] } }
+      },
+      "outputs": { "output": { "dtype": "int16", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int16_reduction_mul",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.FullDTypeInt16",
+        "notes": "int16 mul reduction, the remaining empty cell for int16."
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "int16", "shape": [1], "data": { "kind": "values", "values": [2] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "int16", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "output": { "dtype": "int16", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint8_reduction_add_adjacent_packed_lanes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.ContentionAdjacentPacked8BitLanes",
+        "notes": "Four adjacent 8-bit lanes each receive exactly 64 updates of 1 on top of distinct bases 1,2,3,4, so the result 65,66,67,68 fails loudly if a packed 8-bit read-modify-write drops or cross-writes a neighbouring lane. Upstream uses 64 updates per lane interleaved across the four lanes; a 4-value index cycle produces the same interleaving."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [1, 2, 3, 4] } },
+        "indices": { "dtype": "int32", "shape": [256], "data": { "kind": "cycle", "values": [0, 1, 2, 3] } },
+        "updates": { "dtype": "uint8", "shape": [256], "data": { "kind": "constant", "value": 1 } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_reduction_max",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.BoolReductionsAndCanonicalStorage",
+        "notes": "ORT's CUDA ScatterElements implements bool max as the corresponding logical operation."
+      },
+      "attrs": { "axis": 0, "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "output": { "dtype": "bool", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_reduction_min",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.BoolReductionsAndCanonicalStorage",
+        "notes": "ORT's CUDA ScatterElements implements bool min as the corresponding logical operation."
+      },
+      "attrs": { "axis": 0, "reduction": "min" },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "output": { "dtype": "bool", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_reduction_mul",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.BoolReductionsAndCanonicalStorage",
+        "notes": "ORT's CUDA ScatterElements implements bool mul as the corresponding logical operation."
+      },
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "output": { "dtype": "bool", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_reduction_add",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "ScatterElements.BoolReductionsAndCanonicalStorage",
+        "notes": "ORT's CUDA kernel makes bool add a logical OR, so true + true = true."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "indices": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "updates": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "output": { "dtype": "bool", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "int64_full_range_axis1",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "int64",
+          "shape": [2, 4],
+          "data": {
+            "kind": "cycle",
+            "values": ["0", "4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1"]
+          }
+        },
+        "indices": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [3, 1, 0, 2] } },
+        "updates": {
+          "dtype": "int64",
+          "shape": [2, 2],
+          "data": {
+            "kind": "cycle",
+            "values": ["0", "4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1"]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "int64", "shape": [2, 4], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    },
+    {
+      "name": "int64_full_range_ort_bool_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
+        "test": "Scatter.BoolInputWithAxis",
+        "notes": "ORT runs this helper for ScatterElements too; ONNX allows bool data and updates."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "int64",
+          "shape": [1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": ["4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1", "0"]
+          }
+        },
+        "indices": { "dtype": "int32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 3] } },
+        "updates": {
+          "dtype": "int64",
+          "shape": [1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": ["4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1", "0"]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "int64", "shape": [1, 5], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    }
+  ]
+}

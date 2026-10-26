@@ -1,0 +1,2653 @@
+{
+  "domain": "ai.onnx",
+  "name": "Conv",
+  "sinceVersion": 11,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "w": { "onnx": "W", "dtype": "T" },
+    "bias": { "onnx": "B", "dtype": "T", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": "ranks.x",
+      "shape": "[dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputWidth] if ranks.x == 3 else ([dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputHeight, expectedOutputWidth] if ranks.x == 4 else [dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputDepth, expectedOutputHeight, expectedOutputWidth])"
+    }
+  },
+  "attributes": {
+    "auto_pad": { "default": "NOTSET" },
+    "group": { "default": 1 },
+    "dilations": {},
+    "kernel_shape": {},
+    "pads": {},
+    "strides": {}
+  },
+  "attributeConstraints": { "auto_pad": { "values": ["NOTSET", "SAME_UPPER", "SAME_LOWER", "VALID"] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "DIRECT_MAX_KERNEL_SIZE": { "default": 11 },
+    "GROUPED_MIN_KERNEL_SIZE": { "default": 3 },
+    "GROUPED_MAX_KERNEL_SIZE": { "default": 11 },
+    "GROUPED_SCALAR_OC_MAX_KERNEL_SIZE": { "default": 9 },
+    "GROUPED_WIDE_WORKGROUP_SIZE": { "default": 64 },
+    "GROUPED_MIN_OUTPUT_ELEMENTS": { "default": 256 },
+    "GROUPED_MAX_REGISTER_SPAN": { "default": 64 },
+    "REG_MIN_TILE_COUNT": { "default": 128 },
+    "REG_MIN_SPATIAL": { "default": 1024 },
+    "REG_MIN_KERNEL_ROWS": { "default": 64 },
+    "CONV3D_REG_MIN_M": { "default": 64 },
+    "CONV1D_WG_X": { "default": 16 },
+    "CONV1D_WG_Y": { "default": 16 },
+    "CONV1D_K_TILE": { "default": 16 },
+    "CONV1D_TILE_M": { "default": 4 },
+    "CONV1D_TILE_N": { "default": 4 },
+    "CONV1D_REG_MIN_TILE_COUNT": { "default": 32 },
+    "CONV1D_REG_MIN_KERNEL_ROWS": { "default": 32 },
+    "SGMAT_MIN_ALIGNED_K": { "default": 32 },
+    "SGMAT_MIN_PADDED_K": { "default": 16 },
+    "SGMAT_MIN_ALIGNED_N": { "default": 64 },
+    "SGMAT_MIN_PADDED_N": { "default": 32 },
+    "SGMAT_MIN_M": { "default": 32 },
+    "IMPLICIT_MAX_M_TILES": { "default": 9 },
+    "IMPLICIT_MIN_OUTPUT_SPATIAL": { "default": 1024 },
+    "SGMAT_SPLIT_K_TARGET_WORKGROUPS": { "default": 512 },
+    "SGMAT_SPLIT_K_MAX_BASE_WORKGROUPS": { "default": 64 },
+    "SGMAT_SPLIT_K_MIN_TILES_PER_SLICE": { "default": 2 },
+    "SGMAT_SPLIT_K_MAX_PARTIAL_BYTES": { "default": 16777216 },
+    "CHANNEL_REDUCE_MAX_OUT_CHANNELS": { "default": 16 },
+    "CHANNEL_REDUCE_MIN_SPATIAL": { "default": 1024 },
+    "CHANNEL_REDUCE_WORKGROUP_SIZE": { "default": 256 },
+    "IM2COL_ITEMS_PER_THREAD": { "default": 8 },
+    "IM2COL_MIN_THREADS": { "default": 16384 },
+    "IMPLICIT_TILED_MAX_M_TILES": { "default": 4 },
+    "IMPLICIT_TILED_MIN_TILE_COUNT": { "default": 48 },
+    "TILED_SPLIT_K_MODE": { "default": 1 },
+    "TILED_SPLIT_K_TARGET_WORKGROUPS": { "default": 512 },
+    "TILED_SPLIT_K_MAX_BASE_WORKGROUPS": { "default": 64 },
+    "TILED_SPLIT_K_MIN_TILES_PER_SLICE": { "default": 2 },
+    "TILED_SPLIT_K_MAX_PARTIAL_BYTES": { "default": 16777216 },
+    "GROUPED_DILATED_LANES": { "default": 4 },
+    "GROUPED_DILATED_MIN_PLAIN_SPAN": { "default": 0 },
+    "DIRECT_IM2COL_MIN_M_TILES": { "default": 8 }
+  },
+  "derive": {
+    "inputDepth": "dim(shapes.x, 2) if ranks.x == 5 else 1",
+    "inputHeight": "dim(shapes.x, 3) if ranks.x == 5 else (dim(shapes.x, 2) if ranks.x == 4 else 1)",
+    "inputWidth": "dim(shapes.x, ranks.x - 1) if ranks.x >= 3 else 1",
+    "outputDepth": "dim(shapes.y, 2) if ranks.y == 5 else 1",
+    "outputHeight": "dim(shapes.y, 3) if ranks.y == 5 else (dim(shapes.y, 2) if ranks.y == 4 else 1)",
+    "outputWidth": "dim(shapes.y, ranks.y - 1) if ranks.y >= 3 else 1",
+    "kernelDepth": "dim(shapes.w, 2) if ranks.w == 5 else 1",
+    "kernelHeight": "dim(shapes.w, 3) if ranks.w == 5 else (dim(shapes.w, 2) if ranks.w == 4 else 1)",
+    "kernelWidth": "dim(shapes.w, ranks.w - 1) if ranks.w >= 3 else 1",
+    "spatialRank": "ranks.w - 2",
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelD": "attrs.kernel_shape[0] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank == 3 else 1",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "autoPadSame": "attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\"",
+    "autoPadValid": "attrs.auto_pad == \"VALID\"",
+    "samePadDepth": "max(0, (outputDepth - 1) * strideD + (kernelDepth - 1) * dilationD + 1 - inputDepth)",
+    "samePadHeight": "max(0, (outputHeight - 1) * strideH + (kernelHeight - 1) * dilationH + 1 - inputHeight)",
+    "samePadWidth": "max(0, (outputWidth - 1) * strideW + (kernelWidth - 1) * dilationW + 1 - inputWidth)",
+    "samePadFront": "floor(samePadDepth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadDepth - floor(samePadDepth / 2)",
+    "samePadTop": "floor(samePadHeight / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadHeight - floor(samePadHeight / 2)",
+    "samePadLeft": "floor(samePadWidth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadWidth - floor(samePadWidth / 2)",
+    "effectivePadFront": "samePadFront if autoPadSame else (0 if autoPadValid else padFront)",
+    "effectivePadTop": "samePadTop if autoPadSame else (0 if autoPadValid else padTop)",
+    "effectivePadLeft": "samePadLeft if autoPadSame else (0 if autoPadValid else padLeft)",
+    "expectedOutputDepth": "ceil(inputDepth / strideD) if autoPadSame else floor((inputDepth + (0 if autoPadValid else padFront + padBack) - ((kernelDepth - 1) * dilationD + 1)) / strideD) + 1",
+    "expectedOutputHeight": "ceil(inputHeight / strideH) if autoPadSame else floor((inputHeight + (0 if autoPadValid else padTop + padBottom) - ((kernelHeight - 1) * dilationH + 1)) / strideH) + 1",
+    "expectedOutputWidth": "ceil(inputWidth / strideW) if autoPadSame else floor((inputWidth + (0 if autoPadValid else padLeft + padRight) - ((kernelWidth - 1) * dilationW + 1)) / strideW) + 1",
+    "spatialAttributeLengthsOk": "kernelShapeLengthOk and stridesLengthOk and dilationsLengthOk and padsLengthOk",
+    "kernelShapeMatchesWeights": "not has(attrs, \"kernel_shape\") or (kernelW == kernelWidth and (spatialRank < 2 or kernelH == kernelHeight) and (spatialRank < 3 or kernelD == kernelDepth))",
+    "kernelExtentsOk": "kernelWidth >= 1 and (spatialRank < 2 or kernelHeight >= 1) and (spatialRank < 3 or kernelDepth >= 1)",
+    "stridesValuesOk": "not has(attrs, \"strides\") or (strideD >= 1 and floor(strideD) == strideD and strideH >= 1 and floor(strideH) == strideH and strideW >= 1 and floor(strideW) == strideW)",
+    "dilationsValuesOk": "not has(attrs, \"dilations\") or (dilationD >= 1 and floor(dilationD) == dilationD and dilationH >= 1 and floor(dilationH) == dilationH and dilationW >= 1 and floor(dilationW) == dilationW)",
+    "padsValuesOk": "padFront >= 0 and floor(padFront) == padFront and padTop >= 0 and floor(padTop) == padTop and padLeft >= 0 and floor(padLeft) == padLeft and padBack >= 0 and floor(padBack) == padBack and padBottom >= 0 and floor(padBottom) == padBottom and padRight >= 0 and floor(padRight) == padRight",
+    "explicitPadsOk": "attrs.auto_pad == \"NOTSET\" or not has(attrs, \"pads\")",
+    "spatialAttributesOk": "spatialRank >= 1 and spatialRank <= 3 and spatialAttributeLengthsOk and kernelShapeMatchesWeights and kernelExtentsOk and stridesValuesOk and dilationsValuesOk and padsValuesOk and explicitPadsOk",
+    "convWorkgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "configuredWorkgroupOk": "tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "conv1dRanksOk": "spatialAttributesOk and ranks.x == 3 and ranks.w == 3 and ranks.y == 3",
+    "nchwRanksOk": "spatialAttributesOk and ranks.x == 4 and ranks.w == 4 and ranks.y == 4",
+    "conv3dRanksOk": "spatialAttributesOk and ranks.x == 5 and ranks.w == 5 and ranks.y == 5",
+    "batchSize": "dim(shapes.x, 0) if ranks.x >= 1 else 0",
+    "inChannels": "dim(shapes.x, 1) if ranks.x >= 2 else 0",
+    "outChannels": "dim(shapes.w, 0) if ranks.w >= 1 else 0",
+    "weightInChannels": "dim(shapes.w, 1) if ranks.w >= 2 else 0",
+    "inChannelsPerGroup": "inChannels / attrs.group if attrs.group > 0 else 0",
+    "outChannelsPerGroup": "outChannels / attrs.group if attrs.group > 0 else 0",
+    "inputSpatial": "inputHeight * inputWidth",
+    "outputSpatial": "outputHeight * outputWidth",
+    "kernelRows": "weightInChannels * kernelHeight * kernelWidth",
+    "conv1dBlockN": "tunables.CONV1D_WG_X * tunables.CONV1D_TILE_N",
+    "outChannelsOk": "ranks.y >= 2 and ranks.x >= 1 and ranks.w >= 1 and dim(shapes.y, 0) == batchSize and dim(shapes.y, 1) == outChannels",
+    "biasOk": "present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == outChannels",
+    "noBiasContract": "not present.bias",
+    "biasContract": "present.bias and biasOk",
+    "hasBias": "present.bias",
+    "paddedKernelRows": "ceilDiv(kernelRows, 32) * 32",
+    "paddedOutputSpatial": "ceilDiv(outputSpatial, 64) * 64",
+    "fScalar": "\"f16\" if dtypes.T == \"f16\" else \"f32\"",
+    "M": "outChannels",
+    "usesF16": "dtypes.T == \"f16\"",
+    "implicitTiledWorthIt": "(strideH < kernelHeight or strideW < kernelWidth) and ceil(outChannels / 64) <= tunables.IMPLICIT_TILED_MAX_M_TILES",
+    "groupedDilatedQuads": "ceilDiv(ceilDiv(outputWidth, dilationW), tunables.GROUPED_DILATED_LANES)",
+    "groupedDilatedLanesOk": "dilationW > 1 and strideW == 1 and outputWidth >= tunables.GROUPED_DILATED_LANES * dilationW",
+    "tiledKTile": "32 if kernelRows % 32 == 0 else 16",
+    "tiledKTiles": "ceilDiv(kernelRows, tiledKTile)",
+    "tiledBaseWorkgroups": "ceilDiv(outputSpatial, 64) * ceilDiv(outChannels, 64) * batchSize",
+    "tiledSplitKStarved": "tiledBaseWorkgroups >= 1 and tiledBaseWorkgroups <= tunables.TILED_SPLIT_K_MAX_BASE_WORKGROUPS",
+    "tiledSplitKCandidate": "16 if (tiledBaseWorkgroups * 16 <= tunables.TILED_SPLIT_K_TARGET_WORKGROUPS and tiledKTiles >= 16 * tunables.TILED_SPLIT_K_MIN_TILES_PER_SLICE) else (8 if (tiledBaseWorkgroups * 8 <= tunables.TILED_SPLIT_K_TARGET_WORKGROUPS and tiledKTiles >= 8 * tunables.TILED_SPLIT_K_MIN_TILES_PER_SLICE) else (4 if (tiledBaseWorkgroups * 4 <= tunables.TILED_SPLIT_K_TARGET_WORKGROUPS and tiledKTiles >= 4 * tunables.TILED_SPLIT_K_MIN_TILES_PER_SLICE) else (2 if (tiledBaseWorkgroups * 2 <= tunables.TILED_SPLIT_K_TARGET_WORKGROUPS and tiledKTiles >= 2 * tunables.TILED_SPLIT_K_MIN_TILES_PER_SLICE) else (1))))",
+    "tiledSplitK": "tiledSplitKCandidate if tiledSplitKStarved else 1",
+    "tiledSplitKRequested": "tiledSplitK >= 2",
+    "tiledSplitKDispatchZ": "batchSize * tiledSplitK",
+    "tiledMPadded": "ceilDiv(outChannels, 64) * 64",
+    "tiledNPadded": "ceilDiv(outputSpatial, 64) * 64",
+    "tiledSplitKPartialElements": "tiledSplitK * batchSize * tiledMPadded * tiledNPadded",
+    "tiledSplitKPartialBytes": "tiledSplitKPartialElements * dtypeBytes(\"float32\")",
+    "tiledSplitKPartialFits": "tiledSplitKPartialBytes <= tunables.TILED_SPLIT_K_MAX_PARTIAL_BYTES and tiledSplitKPartialBytes <= device.limits.maxStorageBufferBindingSize and tiledSplitKPartialBytes <= device.limits.maxBufferSize",
+    "tiledSplitKDispatchFits": "tiledSplitKDispatchZ <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "tiledReduceWorkgroupSize": "min(256, deviceWorkgroupCap)",
+    "convFlops": "2 * batchSize * outChannels * outputDepth * outputHeight * outputWidth * inChannelsPerGroup * kernelDepth * kernelHeight * kernelWidth",
+    "outputVolume": "outputDepth * outputHeight * outputWidth",
+    "kernelVolumeRows": "weightInChannels * kernelDepth * kernelHeight * kernelWidth",
+    "conv1dOutputOk": "conv1dRanksOk and outputWidth == expectedOutputWidth",
+    "conv1dBlockM": "tunables.CONV1D_WG_Y * tunables.CONV1D_TILE_M",
+    "conv1dTiledGeometryOk": "tunables.CONV1D_WG_X >= 1 and tunables.CONV1D_WG_Y >= 1 and tunables.CONV1D_K_TILE >= 1 and tunables.CONV1D_TILE_M >= 1 and tunables.CONV1D_TILE_N >= 1 and tunables.CONV1D_WG_X * tunables.CONV1D_WG_Y <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.CONV1D_WG_X <= device.limits.maxComputeWorkgroupSizeX and tunables.CONV1D_WG_Y <= device.limits.maxComputeWorkgroupSizeY and (conv1dBlockM + conv1dBlockN) * tunables.CONV1D_K_TILE * 4 <= device.limits.maxComputeWorkgroupStorageSize",
+    "conv1dTiledDispatchOk": "batchSize >= 1 and batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(outputWidth, conv1dBlockN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(outChannels, conv1dBlockM) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "conv1dTiledFit": "ceilDiv(outChannels, conv1dBlockM) * ceilDiv(outputWidth, conv1dBlockN) >= tunables.CONV1D_REG_MIN_TILE_COUNT and kernelRows >= tunables.CONV1D_REG_MIN_KERNEL_ROWS",
+    "outHeightOk": "nchwRanksOk and outputHeight == expectedOutputHeight",
+    "outWidthOk": "nchwRanksOk and outputWidth == expectedOutputWidth",
+    "im2colRanksOk": "conv1dRanksOk or nchwRanksOk",
+    "im2colOutputOk": "conv1dOutputOk or (outHeightOk and outWidthOk)",
+    "conv2dOutputOk": "outHeightOk and outWidthOk",
+    "conv3dOutputOk": "conv3dRanksOk and outputDepth == expectedOutputDepth and outputHeight == expectedOutputHeight and outputWidth == expectedOutputWidth",
+    "groupOk": "ranks.w >= 2 and ranks.x >= 2 and attrs.group >= 1 and outChannels % attrs.group == 0 and weightInChannels * attrs.group == inChannels",
+    "im2colElements": "batchSize * kernelRows * outputSpatial",
+    "im2colBytes": "im2colElements * dtypeBytes(\"float32\")",
+    "im2colScratchFits": "im2colBytes <= device.limits.maxStorageBufferBindingSize and im2colBytes <= device.limits.maxBufferSize",
+    "paddedIm2colElements": "batchSize * paddedKernelRows * paddedOutputSpatial",
+    "paddedIm2colBytes": "paddedIm2colElements * dtypeBytes(\"float32\")",
+    "paddedIm2colScratchFits": "paddedIm2colBytes <= device.limits.maxStorageBufferBindingSize and paddedIm2colBytes <= device.limits.maxBufferSize",
+    "im2col3dElements": "batchSize * kernelVolumeRows * outputVolume",
+    "im2col3dBytes": "im2col3dElements * dtypeBytes(\"float32\")",
+    "im2col3dScratchFits": "im2col3dBytes <= device.limits.maxStorageBufferBindingSize and im2col3dBytes <= device.limits.maxBufferSize",
+    "sgmatF32WideSharedBytes": "(64 * 32 + 64 * 32 + (256 / 32) * 4 * 64) * dtypeBytes(\"float32\")",
+    "sgmatUseF32WideTile": "dtypes.T == \"f32\" and outChannels % 64 == 0 and wave32Effective and 256 <= deviceWorkgroupCap and sgmatF32WideSharedBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "sgmatTileRows": "64 if sgmatUseF32WideTile else 32",
+    "sgmatWorkgroupThreads": "256 if sgmatUseF32WideTile else 128",
+    "sgmatSubgroupRows": "4 if sgmatUseF32WideTile else 2",
+    "sgmatDirectMatrixStore": "dtypes.T == \"f32\" and outChannels % sgmatTileRows == 0",
+    "directMatrixStore": "sgmatDirectMatrixStore",
+    "tileRows": "sgmatTileRows",
+    "workgroupThreads": "sgmatWorkgroupThreads",
+    "subgroupRows": "sgmatSubgroupRows",
+    "sgmatYWorkgroups": "ceilDiv(outChannels, sgmatTileRows)",
+    "implicitIm2colOk": "attrs.group == 1 and weightInChannels == inChannels and ((nchwRanksOk and conv2dOutputOk) or (conv1dOutputOk and ceilDiv(outChannels, 64) * ceilDiv(outputSpatial, 64) >= tunables.REG_MIN_TILE_COUNT and outputSpatial >= tunables.REG_MIN_SPATIAL and kernelRows >= tunables.REG_MIN_KERNEL_ROWS and (pinSubgroupSize32 or not device.features.has(\"shader-f16\") or (wave32Adapter and kernelRows >= 8 * tunables.REG_MIN_KERNEL_ROWS and kernelRows <= 4 * outChannels))))",
+    "implicitIm2colWorthIt": "sgmatYWorkgroups <= tunables.IMPLICIT_MAX_M_TILES and outputSpatial >= tunables.IMPLICIT_MIN_OUTPUT_SPATIAL",
+    "sgmatMPadded": "sgmatYWorkgroups * sgmatTileRows",
+    "sgmatKTiles": "ceilDiv(kernelRows, 32)",
+    "sgmatBaseWorkgroups": "ceilDiv(outputSpatial, 64) * sgmatYWorkgroups * batchSize",
+    "sgmatSplitKStarved": "sgmatBaseWorkgroups >= 1 and sgmatBaseWorkgroups <= tunables.SGMAT_SPLIT_K_MAX_BASE_WORKGROUPS",
+    "sgmatSplitKCandidate": "16 if (sgmatBaseWorkgroups * 16 <= tunables.SGMAT_SPLIT_K_TARGET_WORKGROUPS and sgmatKTiles >= 16 * tunables.SGMAT_SPLIT_K_MIN_TILES_PER_SLICE) else (8 if (sgmatBaseWorkgroups * 8 <= tunables.SGMAT_SPLIT_K_TARGET_WORKGROUPS and sgmatKTiles >= 8 * tunables.SGMAT_SPLIT_K_MIN_TILES_PER_SLICE) else (4 if (sgmatBaseWorkgroups * 4 <= tunables.SGMAT_SPLIT_K_TARGET_WORKGROUPS and sgmatKTiles >= 4 * tunables.SGMAT_SPLIT_K_MIN_TILES_PER_SLICE) else (2 if (sgmatBaseWorkgroups * 2 <= tunables.SGMAT_SPLIT_K_TARGET_WORKGROUPS and sgmatKTiles >= 2 * tunables.SGMAT_SPLIT_K_MIN_TILES_PER_SLICE) else (1))))",
+    "sgmatSplitK": "sgmatSplitKCandidate if sgmatSplitKStarved else 1",
+    "sgmatSplitKRequested": "sgmatSplitK >= 2",
+    "sgmatSplitKChunk": "ceilDiv(sgmatKTiles, sgmatSplitK) * 32",
+    "sgmatSplitKDispatchZ": "batchSize * sgmatSplitK",
+    "sgmatSplitKPartialElements": "sgmatSplitK * batchSize * sgmatMPadded * paddedOutputSpatial",
+    "sgmatSplitKPartialBytes": "sgmatSplitKPartialElements * dtypeBytes(\"float32\")",
+    "sgmatSplitKPartialFits": "sgmatSplitKPartialBytes <= tunables.SGMAT_SPLIT_K_MAX_PARTIAL_BYTES and sgmatSplitKPartialBytes <= device.limits.maxStorageBufferBindingSize and sgmatSplitKPartialBytes <= device.limits.maxBufferSize",
+    "sgmatSplitKDispatchFits": "sgmatSplitKDispatchZ <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmatReduceWorkgroupSize": "min(256, deviceWorkgroupCap)",
+    "tiledSplitKChunk": "ceilDiv(tiledKTiles, tiledSplitK) * tiledKTile",
+    "pointwiseUnitStride": "kernelHeight == 1 and kernelWidth == 1 and strideH == 1 and strideW == 1 and dilationH == 1 and dilationW == 1 and effectivePadTop == 0 and effectivePadLeft == 0 and outputHeight == inputHeight and outputWidth == inputWidth",
+    "channelReduceOk": "nchwRanksOk and attrs.group == 1 and weightInChannels == inChannels and pointwiseUnitStride and conv2dOutputOk and outChannelsOk and inChannels >= 1 and outChannels <= tunables.CHANNEL_REDUCE_MAX_OUT_CHANNELS and outputSpatial >= tunables.CHANNEL_REDUCE_MIN_SPATIAL",
+    "channelReduceWorkgroupSize": "min(tunables.CHANNEL_REDUCE_WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "implicitIm2col3dOk": "conv3dRanksOk and attrs.group == 1 and weightInChannels == inChannels and conv3dOutputOk",
+    "implicitIm2col3dWorthIt": "sgmatYWorkgroups <= tunables.IMPLICIT_MAX_M_TILES and outputVolume >= tunables.IMPLICIT_MIN_OUTPUT_SPATIAL",
+    "paddedKernelVolumeRows": "ceilDiv(kernelVolumeRows, 32) * 32",
+    "halfIm2colFits": "im2colElements * dtypeBytes(\"float16\") <= device.limits.maxStorageBufferBindingSize and im2colElements * dtypeBytes(\"float16\") <= device.limits.maxBufferSize",
+    "halfRegTileRows": "min(64, 32 * ceilDiv(outChannels, 32))",
+    "halfRegWorkgroupFits": "128 <= device.limits.maxComputeInvocationsPerWorkgroup and 16 <= device.limits.maxComputeWorkgroupSizeX and 8 <= device.limits.maxComputeWorkgroupSizeY and (halfRegTileRows + 64) * tiledKTile * dtypeBytes(\"float16\") <= device.limits.maxComputeWorkgroupStorageSize",
+    "halfTiledHasEnoughSpatialWork": "batchSize * outputSpatial >= 256",
+    "groupedRollKernelRows": "dim(shapes.w, 1) > 1"
+  },
+  "when": ["f16Ok(dtypes.T)"],
+  "bindings": {
+    "x": { "elementType": "$T" },
+    "w": { "elementType": "$T" },
+    "y": { "elementType": "$T" },
+    "params": {
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "outChannels" },
+        { "name": "weightInChannels", "type": "u32", "value": "weightInChannels" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "inChannelsPerGroup" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "outChannelsPerGroup" },
+        { "name": "kernelW", "type": "u32", "value": "kernelWidth" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "inD", "type": "u32", "value": "inputDepth" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "outChannels" },
+        { "name": "weightInChannels", "type": "u32", "value": "weightInChannels" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "inChannelsPerGroup" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "outChannelsPerGroup" },
+        { "name": "kernelD", "type": "u32", "value": "kernelDepth" },
+        { "name": "kernelH", "type": "u32", "value": "kernelHeight" },
+        { "name": "kernelW", "type": "u32", "value": "kernelWidth" },
+        { "name": "outD", "type": "u32", "value": "outputDepth" },
+        { "name": "outH", "type": "u32", "value": "outputHeight" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadFront" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_nchw2d": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "outChannels" },
+        { "name": "weightInChannels", "type": "u32", "value": "weightInChannels" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "inChannelsPerGroup" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "outChannelsPerGroup" },
+        { "name": "kernelH", "type": "u32", "value": "kernelHeight" },
+        { "name": "kernelW", "type": "u32", "value": "kernelWidth" },
+        { "name": "outH", "type": "u32", "value": "outputHeight" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "bias": { "elementType": "$T" },
+    "x_main": { "name": "x", "elementType": "$scalar" },
+    "w_main": { "name": "w", "elementType": "$scalar" },
+    "y_main": { "name": "y", "elementType": "$outputElement" },
+    "xm": { "arg": "x", "elementType": "$T" },
+    "cols": { "buffer": "storage", "elementType": "f32" },
+    "params_im2col": {
+      "name": "params",
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "outputSpatial" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "kRows", "type": "u32", "value": "kernelRows" }
+      ]
+    },
+    "xm_f32": { "scratch": "cols", "name": "xm", "buffer": "read-only-storage", "elementType": "f32" },
+    "y_f32": { "scratch": "partial", "name": "y", "elementType": "f32" },
+    "partial": { "buffer": "read-only-storage", "elementType": "f32" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "outputVolume" },
+        { "name": "outH", "type": "u32", "value": "outputHeight" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "inD", "type": "u32", "value": "inputDepth" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "kRows", "type": "u32", "value": "kernelVolumeRows" }
+      ]
+    },
+    "params_gemm": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "outChannels" },
+        { "name": "K", "type": "u32", "value": "kernelVolumeRows" },
+        { "name": "N", "type": "u32", "value": "outputVolume" }
+      ]
+    },
+    "params_m_k_n": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "outChannels" },
+        { "name": "K", "type": "u32", "value": "kernelRows" },
+        { "name": "N", "type": "u32", "value": "outputSpatial" }
+      ]
+    },
+    "params_partial": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "outChannels" },
+        { "name": "K", "type": "u32", "value": "inChannels" },
+        { "name": "N", "type": "u32", "value": "inputSpatial" }
+      ]
+    },
+    "params_direct_unrolled": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "outChannels" },
+        { "name": "weightInChannels", "type": "u32", "value": "weightInChannels" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "inChannelsPerGroup" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "outChannelsPerGroup" },
+        { "name": "outH", "type": "u32", "value": "outputHeight" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_conv1d_tiled_reg": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "inChannels" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "outChannels" },
+        { "name": "kernelW", "type": "u32", "value": "kernelWidth" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" }
+      ]
+    },
+    "cols_half": { "name": "cols", "scratch": "cols", "elementType": "f16" },
+    "xm_half": { "name": "xm", "scratch": "cols", "buffer": "read-only-storage", "elementType": "f16" }
+  },
+  "variants": [
+    {
+      "id": "ncw1d",
+      "priority": 1,
+      "when": ["noBiasContract", "conv1dRanksOk", "groupOk", "outChannelsOk", "conv1dOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv1d",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 1 },
+          "bindings": ["x", "w", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncw1d_bias",
+      "priority": 11,
+      "when": ["biasContract", "conv1dRanksOk", "groupOk", "outChannelsOk", "conv1dOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv1dBias",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 1 },
+          "bindings": ["x", "w", "bias", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d",
+      "priority": 1,
+      "when": ["noBiasContract", "conv3dRanksOk", "groupOk", "outChannelsOk", "conv3dOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv3d",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3 },
+          "bindings": ["x", "w", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_bias",
+      "priority": 11,
+      "when": ["biasContract", "conv3dRanksOk", "groupOk", "outChannelsOk", "conv3dOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv3dBias",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3 },
+          "bindings": ["x", "w", "bias", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "priority": 0,
+      "when": ["noBiasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk"],
+      "supersededBy": ["im2col_gemm_tiled_reg", "im2col_gemm_tiled", "direct_unrolled"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x", "w", "y", "params_nchw2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_bias",
+      "priority": 10,
+      "when": ["biasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk"],
+      "supersededBy": ["im2col_gemm_tiled_bias_reg", "im2col_gemm_tiled_bias", "direct_unrolled_bias"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv",
+          "shader": "conv-direct-nd.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x", "w", "bias", "y", "params_nchw2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (convWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "grouped_large_kernel_w4",
+      "priority": 70,
+      "when": ["noBiasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "outputWidth % 4 == 0"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelW4",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "numel(shapes.y) / (4 * ocTile)",
+            "span": "(kernelWidth - 1) * dilationW + 1 + 3 * strideW",
+            "outW4": "outputWidth / 4",
+            "tailOutput": false,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": false,
+            "lanes": 4,
+            "quads": 1
+          },
+          "bindings": ["x_main", "w_main", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / (4 * ocTile)), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / (4 * ocTile)), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "false"]
+    },
+    {
+      "id": "grouped_large_kernel_w4_bias",
+      "priority": 70,
+      "when": ["biasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "outputWidth % 4 == 0"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelW4Bias",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "numel(shapes.y) / (4 * ocTile)",
+            "span": "(kernelWidth - 1) * dilationW + 1 + 3 * strideW",
+            "outW4": "outputWidth / 4",
+            "tailOutput": false,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": false,
+            "lanes": 4,
+            "quads": 1
+          },
+          "bindings": ["x_main", "w_main", "bias", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / (4 * ocTile)), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / (4 * ocTile)), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "false"]
+    },
+    {
+      "id": "grouped_large_kernel_w4_tail",
+      "priority": 70,
+      "when": ["noBiasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "outputWidth % 4 != 0"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelW4Tail",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)",
+            "span": "(kernelWidth - 1) * dilationW + 1 + 3 * strideW",
+            "outW4": "ceilDiv(outputWidth, 4)",
+            "tailOutput": true,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": false,
+            "lanes": 4,
+            "quads": 1
+          },
+          "bindings": ["x_main", "w_main", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "false"]
+    },
+    {
+      "id": "grouped_large_kernel_w4_tail_bias",
+      "priority": 70,
+      "when": ["biasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "outputWidth % 4 != 0"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelW4TailBias",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)",
+            "span": "(kernelWidth - 1) * dilationW + 1 + 3 * strideW",
+            "outW4": "ceilDiv(outputWidth, 4)",
+            "tailOutput": true,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": false,
+            "lanes": 4,
+            "quads": 1
+          },
+          "bindings": ["x_main", "w_main", "bias", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * outputHeight * ceilDiv(outputWidth, 4) * (outChannels / ocTile)), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "false"]
+    },
+    {
+      "id": "grouped_large_kernel_w4_dilated_lanes",
+      "priority": 71,
+      "when": ["noBiasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "groupedDilatedLanesOk"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelDilatedLanes",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads",
+            "span": "(kernelWidth + tunables.GROUPED_DILATED_LANES - 2) * dilationW + 1",
+            "outW4": "ceilDiv(outputWidth, 4)",
+            "tailOutput": false,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": true,
+            "lanes": "tunables.GROUPED_DILATED_LANES",
+            "quads": "groupedDilatedQuads"
+          },
+          "bindings": ["x_main", "w_main", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "(kernelWidth - 1) * dilationW + 4 <= tunables.GROUPED_DILATED_MIN_PLAIN_SPAN"]
+    },
+    {
+      "id": "grouped_large_kernel_w4_dilated_lanes_bias",
+      "priority": 71,
+      "when": ["biasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "attrs.group > 1", "numel(shapes.y) >= tunables.GROUPED_MIN_OUTPUT_ELEMENTS", "kernelHeight >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelHeight <= tunables.GROUPED_MAX_KERNEL_SIZE", "kernelWidth >= tunables.GROUPED_MIN_KERNEL_SIZE", "kernelWidth <= tunables.GROUPED_MAX_KERNEL_SIZE", "outputWidth > 0", "groupedDilatedLanesOk"],
+      "derive": {
+        "ocTile": "4 if (outChannels / attrs.group) % 4 == 0 else (2 if (outChannels / attrs.group) % 2 == 0 else 1)",
+        "tileWorkgroupSize": "min(tunables.GROUPED_WIDE_WORKGROUP_SIZE if outChannelsPerGroup % 2 == 0 else convWorkgroupSize, convWorkgroupSize)",
+        "scalar": "dtypes.T",
+        "outputElement": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.GroupedLargeKernelDilatedLanesBias",
+          "shader": "conv2d-grouped-large-w4.wgsl.jinja",
+          "derive": {
+            "countTiles": "dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads",
+            "span": "(kernelWidth + tunables.GROUPED_DILATED_LANES - 2) * dilationW + 1",
+            "outW4": "ceilDiv(outputWidth, 4)",
+            "tailOutput": false,
+            "spanCap": "tunables.GROUPED_MAX_REGISTER_SPAN",
+            "workgroupSizeSpec": "tileWorkgroupSize",
+            "outW": "outputWidth",
+            "outH": "outputHeight",
+            "outC": "outChannels",
+            "outCPerGroup": "outChannels / attrs.group",
+            "inC": "inChannels",
+            "inCPerGroup": "inChannels / attrs.group",
+            "inH": "inputHeight",
+            "inW": "inputWidth",
+            "rollKernelRows": "groupedRollKernelRows",
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "dilatedLanes": true,
+            "lanes": "tunables.GROUPED_DILATED_LANES",
+            "quads": "groupedDilatedQuads"
+          },
+          "bindings": ["x_main", "w_main", "bias", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads), (tileWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * outputHeight * (outChannels / ocTile) * dilationW * groupedDilatedQuads), (tileWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "demoteWhen": ["not (wave32Adapter or (kernelHeight <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE and kernelWidth <= tunables.GROUPED_SCALAR_OC_MAX_KERNEL_SIZE)) and not groupedRollKernelRows", "(kernelWidth - 1) * dilationW + 4 <= tunables.GROUPED_DILATED_MIN_PLAIN_SPAN"]
+    },
+    {
+      "id": "pointwise_channel_reduce",
+      "priority": 155,
+      "when": ["noBiasContract", "channelReduceOk", "batchSize >= 1", "inChannels <= 1024"],
+      "derive": { "batchCount": "batchSize", "yScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Pointwise1x1ChannelReduce",
+          "shader": "conv-1x1-channel-reduce.wgsl.jinja",
+          "bindings": ["w", "xm", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outputSpatial), (channelReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outputSpatial), (channelReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "pointwise_channel_reduce_bias",
+      "priority": 156,
+      "when": ["biasContract", "channelReduceOk", "batchSize >= 1", "inChannels <= 1024"],
+      "derive": { "batchCount": "batchSize", "yScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Pointwise1x1ChannelReduce",
+          "shader": "conv-1x1-channel-reduce.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outputSpatial), (channelReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outputSpatial), (channelReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_subgroup_matrix",
+      "priority": 165,
+      "when": ["wave32Effective", "noBiasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "inChannels >= tunables.SGMAT_MIN_ALIGNED_K", "inChannels % 32 == 0", "inputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "inputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "directMatrixInputs": "outChannels % sgmatTileRows == 0", "K": "inChannels", "N": "inputSpatial" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1SubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "y"],
+          "dispatch": { "x": "ceil(inputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_subgroup_matrix_bias",
+      "priority": 165,
+      "when": ["wave32Effective", "biasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "inChannels >= tunables.SGMAT_MIN_ALIGNED_K", "inChannels % 32 == 0", "inputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "inputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "directMatrixInputs": "outChannels % sgmatTileRows == 0", "K": "inChannels", "N": "inputSpatial" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1SubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y"],
+          "dispatch": { "x": "ceil(inputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix",
+      "priority": 150,
+      "when": ["wave32Effective", "noBiasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": false },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix_bias",
+      "priority": 151,
+      "when": ["wave32Effective", "biasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": false },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_direct_f32_subgroup_matrix",
+      "priority": 162,
+      "when": ["wave32Effective", "noBiasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "dtypes.T == \"f32\" and outChannels % sgmatTileRows == 0"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": true },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["sgmatSplitKRequested and sgmatSplitKPartialFits and sgmatSplitKDispatchFits and paddedIm2colScratchFits", "implicitIm2colOk and implicitIm2colWorthIt and sgmatYWorkgroups < tunables.DIRECT_IM2COL_MIN_M_TILES"]
+    },
+    {
+      "id": "im2col_direct_f16_subgroup_matrix",
+      "priority": 162,
+      "when": ["wave32Effective", "noBiasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\" and outChannels % sgmatTileRows == 0"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix", "shader-f16"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": true },
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_half", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["sgmatSplitKRequested and sgmatSplitKPartialFits and sgmatSplitKDispatchFits and paddedIm2colScratchFits", "implicitIm2colOk and implicitIm2colWorthIt and sgmatYWorkgroups < tunables.DIRECT_IM2COL_MIN_M_TILES"]
+    },
+    {
+      "id": "im2col_direct_f32_subgroup_matrix_bias",
+      "priority": 163,
+      "when": ["wave32Effective", "biasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "dtypes.T == \"f32\" and outChannels % sgmatTileRows == 0"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "M": 8, "N": 8, "K": 8, "resultComponentType": "f32" }]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": true },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["sgmatSplitKRequested and sgmatSplitKPartialFits and sgmatSplitKDispatchFits and paddedIm2colScratchFits", "implicitIm2colOk and implicitIm2colWorthIt and sgmatYWorkgroups < tunables.DIRECT_IM2COL_MIN_M_TILES"]
+    },
+    {
+      "id": "im2col_direct_f16_subgroup_matrix_bias",
+      "priority": 163,
+      "when": ["wave32Effective", "biasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelRows % 32 == 0", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "outputSpatial % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\" and outChannels % sgmatTileRows == 0"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix", "shader-f16"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": { "K": "kernelRows", "N": "outputSpatial", "directMatrixInputs": true },
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_half", "bias", "y"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["sgmatSplitKRequested and sgmatSplitKPartialFits and sgmatSplitKDispatchFits and paddedIm2colScratchFits", "implicitIm2colOk and implicitIm2colWorthIt and sgmatYWorkgroups < tunables.DIRECT_IM2COL_MIN_M_TILES"]
+    },
+    {
+      "id": "implicit_im2col_subgroup_matrix",
+      "priority": 160,
+      "when": ["wave32Effective", "noBiasContract", "implicitIm2colOk or implicitIm2col3dOk", "implicitIm2col3dWorthIt", "outChannelsOk", "outChannels >= tunables.SGMAT_MIN_M", "outputVolume >= tunables.SGMAT_MIN_ALIGNED_N", "kernelVolumeRows >= tunables.SGMAT_MIN_PADDED_K", "paddedKernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputVolume / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelVolumeRows",
+        "N": "outputVolume",
+        "padded": true,
+        "kPadded": "paddedKernelVolumeRows",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "convSpatialDims": "spatialRank",
+        "convKernelD": "kernelDepth",
+        "convStrideD": "strideD",
+        "convDilationD": "dilationD",
+        "convPadFront": "effectivePadFront",
+        "convInD": "inputDepth",
+        "convOutH": "outputHeight"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.ImplicitIm2colSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "y"],
+          "dispatch": { "x": "ceil(outputVolume / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_subgroup_matrix_bias",
+      "priority": 161,
+      "when": ["wave32Effective", "biasContract", "implicitIm2colOk or implicitIm2col3dOk", "implicitIm2col3dWorthIt", "outChannelsOk", "outChannels >= tunables.SGMAT_MIN_M", "outputVolume >= tunables.SGMAT_MIN_ALIGNED_N", "kernelVolumeRows >= tunables.SGMAT_MIN_PADDED_K", "paddedKernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputVolume / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelVolumeRows",
+        "N": "outputVolume",
+        "padded": true,
+        "kPadded": "paddedKernelVolumeRows",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "convSpatialDims": "spatialRank",
+        "convKernelD": "kernelDepth",
+        "convStrideD": "strideD",
+        "convDilationD": "dilationD",
+        "convPadFront": "effectivePadFront",
+        "convInD": "inputDepth",
+        "convOutH": "outputHeight"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.ImplicitIm2colSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y"],
+          "dispatch": { "x": "ceil(outputVolume / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_subgroup_matrix_splitk",
+      "priority": 170,
+      "when": ["wave32Effective", "noBiasContract", "implicitIm2colOk", "implicitIm2colWorthIt", "outChannelsOk", "outChannels >= tunables.SGMAT_MIN_M", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatSplitKRequested", "sgmatSplitKPartialFits", "sgmatSplitKDispatchFits", "paddedKernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "paddedKernelRows",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "splitK": "sgmatSplitK",
+        "mPadded": "sgmatMPadded",
+        "nPadded": "paddedOutputSpatial",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "sgmatReduceWorkgroupSize",
+        "kChunk": "sgmatSplitKChunk"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[sgmatSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.ImplicitIm2colSubgroupMatrixSplitK",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "sgmatSplitKDispatchZ" }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.SplitKReduce",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "bindings": ["partial", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_subgroup_matrix_bias_splitk",
+      "priority": 171,
+      "when": ["wave32Effective", "biasContract", "implicitIm2colOk", "implicitIm2colWorthIt", "outChannelsOk", "outChannels >= tunables.SGMAT_MIN_M", "outputSpatial >= tunables.SGMAT_MIN_ALIGNED_N", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatSplitKRequested", "sgmatSplitKPartialFits", "sgmatSplitKDispatchFits", "paddedKernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "paddedKernelRows",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "splitK": "sgmatSplitK",
+        "mPadded": "sgmatMPadded",
+        "nPadded": "paddedOutputSpatial",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "sgmatReduceWorkgroupSize",
+        "kChunk": "sgmatSplitKChunk"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[sgmatSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.ImplicitIm2colSubgroupMatrixSplitK",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "sgmatYWorkgroups", "z": "sgmatSplitKDispatchZ" }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.SplitKReduceBias",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "bindings": ["partial", "bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_subgroup_matrix",
+      "priority": 150,
+      "when": ["wave32Effective", "noBiasContract", "implicitIm2col3dOk", "outChannelsOk", "kernelVolumeRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelVolumeRows % 32 == 0", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputVolume >= tunables.SGMAT_MIN_ALIGNED_N", "outputVolume % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "K": "kernelVolumeRows", "N": "outputVolume" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_subgroup_matrix_bias",
+      "priority": 151,
+      "when": ["wave32Effective", "biasContract", "implicitIm2col3dOk", "outChannelsOk", "kernelVolumeRows >= tunables.SGMAT_MIN_ALIGNED_K", "kernelVolumeRows % 32 == 0", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputVolume >= tunables.SGMAT_MIN_ALIGNED_N", "outputVolume % 64 == 0", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": { "K": "kernelVolumeRows", "N": "outputVolume" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_tiled_reg",
+      "priority": 132,
+      "when": ["noBiasContract", "implicitIm2col3dOk", "outChannelsOk", "outChannels >= tunables.CONV3D_REG_MIN_M", "ceilDiv(outChannels, 64) * ceilDiv(outputVolume, 64) >= tunables.REG_MIN_TILE_COUNT", "outputVolume >= tunables.REG_MIN_SPATIAL", "kernelVolumeRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "derive": { "gemmKTile": "32 if kernelVolumeRows % 32 == 0 else 16" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 64)", "y": "ceilDiv(outChannels, 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_tiled",
+      "priority": 130,
+      "when": ["noBiasContract", "implicitIm2col3dOk", "outChannelsOk", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 32)", "y": "ceilDiv(outChannels, 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_tiled_bias_reg",
+      "priority": 133,
+      "when": ["biasContract", "implicitIm2col3dOk", "outChannelsOk", "outChannels >= tunables.CONV3D_REG_MIN_M", "ceilDiv(outChannels, 64) * ceilDiv(outputVolume, 64) >= tunables.REG_MIN_TILE_COUNT", "outputVolume >= tunables.REG_MIN_SPATIAL", "kernelVolumeRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "derive": { "gemmKTile": "32 if kernelVolumeRows % 32 == 0 else 16" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmTiledBiasReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 64)", "y": "ceilDiv(outChannels, 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col3d_gemm_tiled_bias",
+      "priority": 131,
+      "when": ["biasContract", "implicitIm2col3dOk", "outChannelsOk", "kernelVolumeRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputVolume, convWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2col3dScratchFits", "configuredWorkgroupOk"],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2col3dElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col3d",
+          "shader": "conv-im2col-ncdhw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "kernelDSpec": "kernelDepth",
+            "strideDSpec": "strideD",
+            "dilationDSpec": "dilationD",
+            "padFrontSpec": "effectivePadFront"
+          },
+          "bindings": ["x", "cols", "params__uniform"],
+          "dispatch": { "x": "ceilDiv(outputVolume, convWorkgroupSize)", "y": "kernelVolumeRows", "z": "batchSize" }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2col3dGemmTiledBias",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(outputVolume, 32)", "y": "ceilDiv(outChannels, 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix_padded",
+      "priority": 145,
+      "when": ["wave32Effective", "noBiasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_PADDED_N", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "paddedIm2colScratchFits", "configuredWorkgroupOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "(ceilDiv(kernelRows, 32) * 32)",
+        "nPadded": "(ceilDiv(outputSpatial, 64) * 64)"
+      },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[paddedIm2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2colPadded",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE)",
+            "y": "(ceilDiv(kernelRows, 32) * 32)",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixPadded",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y"],
+          "dispatch": { "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix_padded_bias",
+      "priority": 146,
+      "when": ["wave32Effective", "biasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "(ceilDiv(kernelRows, 32) * 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "outputSpatial >= tunables.SGMAT_MIN_PADDED_N", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "paddedIm2colScratchFits", "configuredWorkgroupOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "(ceilDiv(kernelRows, 32) * 32)",
+        "nPadded": "(ceilDiv(outputSpatial, 64) * 64)"
+      },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[paddedIm2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2colPadded",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE)",
+            "y": "(ceilDiv(kernelRows, 32) * 32)",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixBiasPadded",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y"],
+          "dispatch": { "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / 64)", "y": "sgmatYWorkgroups", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix_padded_splitk",
+      "priority": 152,
+      "when": ["wave32Effective", "noBiasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "outputSpatial >= tunables.SGMAT_MIN_PADDED_N", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "configuredWorkgroupOk", "sgmatSplitKRequested", "sgmatSplitKPartialFits", "sgmatSplitKDispatchFits", "paddedIm2colScratchFits", "paddedKernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "paddedKernelRows",
+        "nPadded": "(ceilDiv(outputSpatial, 64) * 64)",
+        "splitK": "sgmatSplitK",
+        "mPadded": "sgmatMPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "sgmatReduceWorkgroupSize",
+        "kChunk": "sgmatSplitKChunk"
+      },
+      "intermediates": [
+        { "id": "cols", "dtype": "float32", "shape": "[paddedIm2colElements]" },
+        { "id": "partial", "dtype": "float32", "shape": "[sgmatSplitKPartialElements]" }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2colPadded",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE)",
+            "y": "paddedKernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixPaddedSplitK",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y_f32"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / 64)",
+            "y": "sgmatYWorkgroups",
+            "z": "sgmatSplitKDispatchZ"
+          }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.SplitKReduce",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "bindings": ["partial", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_subgroup_matrix_padded_bias_splitk",
+      "priority": 153,
+      "when": ["wave32Effective", "biasContract", "im2colRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "im2colOutputOk", "kernelRows >= tunables.SGMAT_MIN_PADDED_K", "outputSpatial >= tunables.SGMAT_MIN_PADDED_N", "outChannels >= tunables.SGMAT_MIN_M", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "sgmatYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "configuredWorkgroupOk", "sgmatSplitKRequested", "sgmatSplitKPartialFits", "sgmatSplitKDispatchFits", "paddedIm2colScratchFits", "paddedKernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "K": "kernelRows",
+        "N": "outputSpatial",
+        "padded": true,
+        "kPadded": "paddedKernelRows",
+        "nPadded": "(ceilDiv(outputSpatial, 64) * 64)",
+        "splitK": "sgmatSplitK",
+        "mPadded": "sgmatMPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "sgmatReduceWorkgroupSize",
+        "kChunk": "sgmatSplitKChunk"
+      },
+      "intermediates": [
+        { "id": "cols", "dtype": "float32", "shape": "[paddedIm2colElements]" },
+        { "id": "partial", "dtype": "float32", "shape": "[sgmatSplitKPartialElements]" }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2colPadded",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / tunables.WORKGROUP_SIZE)",
+            "y": "paddedKernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmSubgroupMatrixPaddedSplitK",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y_f32"],
+          "dispatch": {
+            "x": "ceil((ceilDiv(outputSpatial, 64) * 64) / 64)",
+            "y": "sgmatYWorkgroups",
+            "z": "sgmatSplitKDispatchZ"
+          }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.SplitKReduceBias",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "bindings": ["partial", "bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (sgmatReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_tiled_bias_reg_m32",
+      "priority": 137,
+      "when": ["biasContract", "implicitIm2colOk", "implicitTiledWorthIt", "outChannelsOk", "conv2dOutputOk", "outChannels == 32", "outputSpatial >= 32768", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "tunables": { "IMPLICIT_TILED_GATHER_MODE": { "default": 1 } },
+      "derive": {
+        "gemmKTile": "32 if kernelRows % 32 == 0 else 16",
+        "gemmMTile": 32,
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.ImplicitIm2colTiledRegBiasM32",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_tiled_reg",
+      "priority": 134,
+      "when": ["noBiasContract", "implicitIm2colOk", "implicitTiledWorthIt", "outChannelsOk", "conv2dOutputOk", "ceil(outChannels / 64) * ceil(outputSpatial / 64) >= tunables.IMPLICIT_TILED_MIN_TILE_COUNT", "outputSpatial >= tunables.REG_MIN_SPATIAL", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "tunables": { "IMPLICIT_TILED_GATHER_MODE": { "default": 1 } },
+      "derive": {
+        "gemmKTile": "32 if kernelRows % 32 == 0 else 16",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.ImplicitIm2colTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_tiled_bias_reg",
+      "priority": 135,
+      "when": ["biasContract", "implicitIm2colOk", "implicitTiledWorthIt", "outChannelsOk", "conv2dOutputOk", "ceil(outChannels / 64) * ceil(outputSpatial / 64) >= tunables.IMPLICIT_TILED_MIN_TILE_COUNT", "outputSpatial >= tunables.REG_MIN_SPATIAL", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "tunables": { "IMPLICIT_TILED_GATHER_MODE": { "default": 1 } },
+      "derive": {
+        "gemmKTile": "32 if kernelRows % 32 == 0 else 16",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.ImplicitIm2colTiledRegBias",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_tiled_reg_splitk",
+      "priority": 138,
+      "when": ["tunables.TILED_SPLIT_K_MODE == 1", "noBiasContract", "implicitIm2colOk", "implicitTiledWorthIt", "outChannelsOk", "conv2dOutputOk", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "tiledSplitKRequested", "tiledSplitKPartialFits", "tiledSplitKDispatchFits"],
+      "tunables": { "IMPLICIT_TILED_GATHER_MODE": { "default": 1 } },
+      "derive": {
+        "hasBias": false,
+        "gemmKTile": "tiledKTile",
+        "N": "outputSpatial",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "splitK": "tiledSplitK",
+        "kTiles": "tiledKTiles",
+        "mPadded": "tiledMPadded",
+        "nPadded": "tiledNPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "tiledReduceWorkgroupSize"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[tiledSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.ImplicitIm2colTiledRegSplitK",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32", "params_m_k_n"],
+          "dispatch": {
+            "x": "ceilDiv(outputSpatial, 64)",
+            "y": "ceilDiv(outChannels, 64)",
+            "z": "tiledSplitKDispatchZ"
+          }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.TiledSplitKReduce",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["partial", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "implicit_im2col_tiled_bias_reg_splitk",
+      "priority": 139,
+      "when": ["tunables.TILED_SPLIT_K_MODE == 1", "biasContract", "implicitIm2colOk", "implicitTiledWorthIt", "outChannelsOk", "conv2dOutputOk", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "tiledSplitKRequested", "tiledSplitKPartialFits", "tiledSplitKDispatchFits"],
+      "tunables": { "IMPLICIT_TILED_GATHER_MODE": { "default": 1 } },
+      "derive": {
+        "hasBias": false,
+        "gemmKTile": "tiledKTile",
+        "N": "outputSpatial",
+        "implicitIm2col": true,
+        "convKernelH": "kernelHeight",
+        "convKernelW": "kernelWidth",
+        "convStrideH": "strideH",
+        "convStrideW": "strideW",
+        "convDilationH": "dilationH",
+        "convDilationW": "dilationW",
+        "convPadTop": "effectivePadTop",
+        "convPadLeft": "effectivePadLeft",
+        "convInH": "inputHeight",
+        "convInW": "inputWidth",
+        "convOutW": "outputWidth",
+        "convInChannels": "inChannels",
+        "splitK": "tiledSplitK",
+        "kTiles": "tiledKTiles",
+        "mPadded": "tiledMPadded",
+        "nPadded": "tiledNPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "tiledReduceWorkgroupSize"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[tiledSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.ImplicitIm2colTiledRegSplitK",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32", "params_m_k_n"],
+          "dispatch": {
+            "x": "ceilDiv(outputSpatial, 64)",
+            "y": "ceilDiv(outChannels, 64)",
+            "z": "tiledSplitKDispatchZ"
+          }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.TiledSplitKReduceBias",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "derive": { "hasBias": true },
+          "bindings": ["partial", "bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * outputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * outputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_reg",
+      "priority": 132,
+      "when": ["noBiasContract", "implicitIm2colOk", "outChannelsOk", "ceil(outChannels / 64) * ceil(outputSpatial / 64) >= tunables.REG_MIN_TILE_COUNT", "outputSpatial >= tunables.REG_MIN_SPATIAL", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "derive": { "gemmKTile": "32 if kernelRows % 32 == 0 else 16" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled",
+      "priority": 130,
+      "when": ["noBiasContract", "implicitIm2colOk", "outChannelsOk", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_bias_reg",
+      "priority": 133,
+      "when": ["biasContract", "implicitIm2colOk", "outChannelsOk", "ceil(outChannels / 64) * ceil(outputSpatial / 64) >= tunables.REG_MIN_TILE_COUNT", "outputSpatial >= tunables.REG_MIN_SPATIAL", "kernelRows >= tunables.REG_MIN_KERNEL_ROWS", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "derive": { "gemmKTile": "32 if kernelRows % 32 == 0 else 16" },
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledBiasReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_bias",
+      "priority": 131,
+      "when": ["biasContract", "implicitIm2colOk", "outChannelsOk", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "im2colScratchFits", "configuredWorkgroupOk", "true"],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float32", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f32\""
+          },
+          "bindings": ["x", "cols", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledBias",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_f32", "bias", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_reg_f16_columns",
+      "priority": 133,
+      "when": ["noBiasContract", "implicitIm2colOk", "outChannelsOk", "tiledBaseWorkgroups >= ceilDiv(tunables.REG_MIN_TILE_COUNT, 2)", "halfRegWorkgroupFits", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, halfRegTileRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\""],
+      "derive": {
+        "gemmKTile": "32 if kernelRows % 32 == 0 else 16",
+        "gemmMTile": "halfRegTileRows",
+        "gemmThreadRows": "ceilDiv(halfRegTileRows, 8)"
+      },
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_half", "y", "params_m_k_n"],
+          "dispatch": {
+            "x": "ceil(outputSpatial / 64)",
+            "y": "ceilDiv(outChannels, halfRegTileRows)",
+            "z": "batchSize"
+          }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_f16_columns",
+      "priority": 131,
+      "when": ["noBiasContract", "implicitIm2colOk", "outChannelsOk", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\""],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_half", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["im2colScratchFits and not halfTiledHasEnoughSpatialWork"]
+    },
+    {
+      "id": "im2col_gemm_tiled_bias_reg_f16_columns",
+      "priority": 134,
+      "when": ["biasContract", "implicitIm2colOk", "outChannelsOk", "tiledBaseWorkgroups >= ceilDiv(tunables.REG_MIN_TILE_COUNT, 2)", "halfRegWorkgroupFits", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, halfRegTileRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\""],
+      "derive": {
+        "gemmKTile": "32 if kernelRows % 32 == 0 else 16",
+        "gemmMTile": "halfRegTileRows",
+        "gemmThreadRows": "ceilDiv(halfRegTileRows, 8)",
+        "convPreloadBias": true
+      },
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledBiasReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm_half", "bias", "y", "params_m_k_n"],
+          "dispatch": {
+            "x": "ceil(outputSpatial / 64)",
+            "y": "ceilDiv(outChannels, halfRegTileRows)",
+            "z": "batchSize"
+          }
+        }
+      ]
+    },
+    {
+      "id": "im2col_gemm_tiled_bias_f16_columns",
+      "priority": 132,
+      "when": ["biasContract", "implicitIm2colOk", "outChannelsOk", "kernelRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outputSpatial / tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "halfIm2colFits", "configuredWorkgroupOk", "dtypes.T == \"f16\""],
+      "derive": {},
+      "intermediates": [{ "id": "cols", "dtype": "float16", "shape": "[im2colElements]" }],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "Conv.Im2col",
+          "shader": "conv-im2col-nchw.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft",
+            "colsScalar": "\"f16\""
+          },
+          "bindings": ["x", "cols_half", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(max(min(outputSpatial, tunables.IM2COL_MIN_THREADS), ceil(outputSpatial / tunables.IM2COL_ITEMS_PER_THREAD)) / tunables.WORKGROUP_SIZE)",
+            "y": "kernelRows",
+            "z": "batchSize"
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "Conv.Im2colGemmTiledBias",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm_half", "bias", "y", "params_m_k_n"],
+          "dispatch": { "x": "ceil(outputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ],
+      "demoteWhen": ["im2colScratchFits and not halfTiledHasEnoughSpatialWork"]
+    },
+    {
+      "id": "gemm_1x1_tiled_reg",
+      "priority": 142,
+      "when": ["noBiasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) * ceil(inputSpatial / 64) >= tunables.REG_MIN_TILE_COUNT", "inputSpatial >= tunables.REG_MIN_SPATIAL", "inChannels >= tunables.REG_MIN_KERNEL_ROWS"],
+      "derive": { "gemmKTile": "32 if inChannels % 32 == 0 else 16" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1TiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y", "params_partial"],
+          "dispatch": { "x": "ceil(inputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_tiled_bias_reg",
+      "priority": 143,
+      "when": ["biasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 64) * ceil(inputSpatial / 64) >= tunables.REG_MIN_TILE_COUNT", "inputSpatial >= tunables.REG_MIN_SPATIAL", "inChannels >= tunables.REG_MIN_KERNEL_ROWS"],
+      "derive": { "gemmKTile": "32 if inChannels % 32 == 0 else 16" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1TiledRegBias",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y", "params_partial"],
+          "dispatch": { "x": "ceil(inputSpatial / 64)", "y": "ceil(outChannels / 64)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_tiled",
+      "priority": 140,
+      "when": ["noBiasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1Tiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm", "y", "params_partial"],
+          "dispatch": { "x": "ceil(inputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_tiled_bias",
+      "priority": 141,
+      "when": ["biasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(inputSpatial / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(outChannels / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Gemm1x1TiledBias",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "bindings": ["w", "xm", "bias", "y", "params_partial"],
+          "dispatch": { "x": "ceil(inputSpatial / 32)", "y": "ceil(outChannels / 32)", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_tiled_reg_splitk",
+      "priority": 144,
+      "when": ["tunables.TILED_SPLIT_K_MODE == 1", "noBiasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "inChannels >= tunables.REG_MIN_KERNEL_ROWS", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(inputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "tiledSplitKRequested", "tiledSplitKPartialFits", "tiledSplitKDispatchFits"],
+      "derive": {
+        "hasBias": false,
+        "gemmKTile": "tiledKTile",
+        "N": "inputSpatial",
+        "splitK": "tiledSplitK",
+        "kTiles": "tiledKTiles",
+        "mPadded": "tiledMPadded",
+        "nPadded": "tiledNPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "tiledReduceWorkgroupSize"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[tiledSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.Gemm1x1TiledRegSplitK",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32", "params_partial"],
+          "dispatch": { "x": "ceilDiv(inputSpatial, 64)", "y": "ceilDiv(outChannels, 64)", "z": "tiledSplitKDispatchZ" }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.Gemm1x1TiledSplitKReduce",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["partial", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * inputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * inputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gemm_1x1_tiled_bias_reg_splitk",
+      "priority": 145,
+      "when": ["tunables.TILED_SPLIT_K_MODE == 1", "biasContract", "nchwRanksOk", "kernelHeight == 1", "kernelWidth == 1", "attrs.group == 1", "weightInChannels == inChannels", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outChannelsOk", "outputHeight == inputHeight", "outputWidth == inputWidth", "inChannels >= tunables.REG_MIN_KERNEL_ROWS", "batchSize >= 1", "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(inputSpatial, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(outChannels, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "tiledSplitKRequested", "tiledSplitKPartialFits", "tiledSplitKDispatchFits"],
+      "derive": {
+        "hasBias": false,
+        "gemmKTile": "tiledKTile",
+        "N": "inputSpatial",
+        "splitK": "tiledSplitK",
+        "kTiles": "tiledKTiles",
+        "mPadded": "tiledMPadded",
+        "nPadded": "tiledNPadded",
+        "batchCount": "batchSize",
+        "reduceWorkgroupSize": "tiledReduceWorkgroupSize"
+      },
+      "intermediates": [{ "id": "partial", "dtype": "float32", "shape": "[tiledSplitKPartialElements]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Conv.Gemm1x1TiledRegSplitKBias",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w", "xm", "y_f32", "params_partial"],
+          "dispatch": { "x": "ceilDiv(inputSpatial, 64)", "y": "ceilDiv(outChannels, 64)", "z": "tiledSplitKDispatchZ" }
+        },
+        {
+          "id": "reduce",
+          "name": "Conv.Gemm1x1TiledSplitKReduceBias",
+          "shader": "conv-splitk-reduce.wgsl.jinja",
+          "derive": { "hasBias": true },
+          "bindings": ["partial", "bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * outChannels * inputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * outChannels * inputSpatial), (tiledReduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct_unrolled",
+      "priority": 60,
+      "when": ["noBiasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "kernelHeight >= 1", "kernelHeight <= tunables.DIRECT_MAX_KERNEL_SIZE", "kernelWidth >= 1", "kernelWidth <= tunables.DIRECT_MAX_KERNEL_SIZE", "configuredWorkgroupOk"],
+      "supersededBy": ["im2col_gemm_tiled_reg", "im2col_gemm_tiled"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.DirectUnrolled",
+          "shader": "conv-direct-unrolled.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "w", "y", "params_direct_unrolled"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct_unrolled_bias",
+      "priority": 61,
+      "when": ["biasContract", "nchwRanksOk", "groupOk", "outChannelsOk", "conv2dOutputOk", "kernelHeight >= 1", "kernelHeight <= tunables.DIRECT_MAX_KERNEL_SIZE", "kernelWidth >= 1", "kernelWidth <= tunables.DIRECT_MAX_KERNEL_SIZE", "configuredWorkgroupOk"],
+      "supersededBy": ["im2col_gemm_tiled_bias_reg", "im2col_gemm_tiled_bias"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.DirectUnrolledBias",
+          "shader": "conv-direct-unrolled.wgsl.jinja",
+          "derive": {
+            "kernelHSpec": "kernelHeight",
+            "kernelWSpec": "kernelWidth",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "w", "bias", "y", "params_direct_unrolled"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "conv1d_tiled_reg",
+      "priority": 120,
+      "when": ["noBiasContract", "conv1dRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "conv1dOutputOk", "conv1dTiledFit", "conv1dTiledGeometryOk", "conv1dTiledDispatchOk"],
+      "derive": {
+        "convWgX": "tunables.CONV1D_WG_X",
+        "convWgY": "tunables.CONV1D_WG_Y",
+        "convKTile": "tunables.CONV1D_K_TILE",
+        "convTileM": "tunables.CONV1D_TILE_M",
+        "convTileN": "tunables.CONV1D_TILE_N"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Conv1dTiledReg",
+          "shader": "conv1d-tiled-reg.wgsl.jinja",
+          "bindings": ["x", "w", "y", "params_conv1d_tiled_reg"],
+          "dispatch": {
+            "x": "ceilDiv(outputWidth, conv1dBlockN)",
+            "y": "ceilDiv(outChannels, conv1dBlockM)",
+            "z": "batchSize"
+          }
+        }
+      ]
+    },
+    {
+      "id": "conv1d_tiled_bias_reg",
+      "priority": 121,
+      "when": ["biasContract", "conv1dRanksOk", "attrs.group == 1", "weightInChannels == inChannels", "outChannelsOk", "conv1dOutputOk", "conv1dTiledFit", "conv1dTiledGeometryOk", "conv1dTiledDispatchOk"],
+      "derive": {
+        "convWgX": "tunables.CONV1D_WG_X",
+        "convWgY": "tunables.CONV1D_WG_Y",
+        "convKTile": "tunables.CONV1D_K_TILE",
+        "convTileM": "tunables.CONV1D_TILE_M",
+        "convTileN": "tunables.CONV1D_TILE_N"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Conv.Conv1dTiledRegBias",
+          "shader": "conv1d-tiled-reg.wgsl.jinja",
+          "bindings": ["x", "w", "bias", "y", "params_conv1d_tiled_reg"],
+          "dispatch": {
+            "x": "ceilDiv(outputWidth, conv1dBlockN)",
+            "y": "ceilDiv(outChannels, conv1dBlockM)",
+            "z": "batchSize"
+          }
+        }
+      ]
+    }
+  ]
+}

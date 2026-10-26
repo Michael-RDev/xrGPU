@@ -1,0 +1,1939 @@
+{
+  "tunableSpace": {
+    "TILE": [4, 8, 16],
+    "GEMV_TARGET_BLOCKS": [256, 512, 1024],
+    "SUBGROUP_MATRIX_SPLIT_K": [2, 4, 8, 16],
+    "SUBGROUP_MATRIX_SPLITK_TARGET_WGS": [256, 512, 1024]
+  },
+  "cases": [
+    {
+      "name": "matmul-f32-64x128x128",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 64, "K": 128, "N": 128 },
+      "inputs": {
+        "a": { "shape": [64, 128], "dtype": "float32", "dist": "normal", "seed": 104, "scale": 0.2 },
+        "b": { "shape": [128, 128], "dtype": "float32", "dist": "normal", "seed": 105, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [64, 128], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-256x256x256",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 256, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [256, 256], "dtype": "float32", "dist": "normal", "seed": 106, "scale": 0.2 },
+        "b": { "shape": [256, 256], "dtype": "float32", "dist": "normal", "seed": 107, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [256, 256], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "gemma4-mlp-gate-prefill-m512-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 512, "K": 1536, "N": 12288 },
+      "inputs": {
+        "a": { "shape": [512, 1536], "dtype": "float32", "dist": "normal", "seed": 310, "scale": 0.2 },
+        "b": { "shape": [1536, 12288], "dtype": "float32", "dist": "normal", "seed": 311, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [512, 12288], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "gemma4-mlp-gate-decode-m1-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 1, "K": 1536, "N": 12288 },
+      "inputs": {
+        "a": { "shape": [1, 1536], "dtype": "float32", "dist": "normal", "seed": 312, "scale": 0.2 },
+        "b": { "shape": [1536, 12288], "dtype": "float32", "dist": "normal", "seed": 313, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [1, 12288], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-f16",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 512, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [512, 2560], "dtype": "float16", "dist": "normal", "seed": 314, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 315, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [512, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-batched3-subgroup-f32-8x256x256x256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "batch": 8, "M": 256, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 256, 256], "dtype": "float32", "dist": "normal", "seed": 309, "scale": 0.2 },
+        "b": { "shape": [8, 256, 256], "dtype": "float32", "dist": "normal", "seed": 310, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8, 256, 256], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.batch * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-probe-grouped-conv-g8-m32-k2592-n4096-f32",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "batch": 8, "M": 32, "K": 2592, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [8, 32, 2592], "dtype": "float32", "dist": "normal", "seed": 309, "scale": 0.2 },
+        "b": { "shape": [8, 2592, 4096], "dtype": "float32", "dist": "normal", "seed": 310, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8, 32, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.batch * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-batched3-f16-8x256x256x256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "batch": 8, "M": 256, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 256, 256], "dtype": "float16", "dist": "normal", "seed": 413, "scale": 0.2 },
+        "b": { "shape": [8, 256, 256], "dtype": "float16", "dist": "normal", "seed": 414, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8, 256, 256], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.batch * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-batched4-f16-2x8x128x128x128",
+      "preset": "model",
+      "vars": { "dtype": "float16", "batch": 16, "M": 128, "K": 128, "N": 128 },
+      "inputs": {
+        "a": { "shape": [2, 8, 128, 128], "dtype": "float16", "dist": "normal", "seed": 411, "scale": 0.2 },
+        "b": { "shape": [2, 8, 128, 128], "dtype": "float16", "dist": "normal", "seed": 412, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [2, 8, 128, 128], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.batch * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-gemv-matrix-vector-f32-8192x2048",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8192, "K": 2048 },
+      "inputs": {
+        "a": { "shape": [8192, 2048], "dtype": "float32", "dist": "normal", "seed": 320, "scale": 0.2 },
+        "b": { "shape": [2048], "dtype": "float32", "dist": "normal", "seed": 321, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8192], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.M * args.K + args.K + args.M) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-gemv-vector-matrix-f32-2048x8192",
+      "preset": "model",
+      "vars": { "dtype": "float32", "K": 2048, "N": 8192 },
+      "inputs": {
+        "a": { "shape": [2048], "dtype": "float32", "dist": "normal", "seed": 322, "scale": 0.2 },
+        "b": { "shape": [2048, 8192], "dtype": "float32", "dist": "normal", "seed": 323, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8192], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.K * args.N + args.K + args.N) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-f32-prefill-512x1536x1024-aligned-n",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 512, "K": 1536, "N": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1536, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1024] } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-prefill-512x2048x512-square-out-reg-floor",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 512, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 512] } },
+      "bench": { "primary": false, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-prefill-512x2048x512-square-out-reg-floor",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 512, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [512, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [512, 512] } },
+      "bench": { "primary": false, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-prefill-512x1536x1000-unaligned-n-cliff",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 512, "K": 1536, "N": 1000 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1536, 1000],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1000] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-prefill-512x1536x1024-aligned-n",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 512, "K": 1536, "N": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [512, 1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1536, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [512, 1024] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-prefill-512x1536x1000-unaligned-n-cliff",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 512, "K": 1536, "N": 1000 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [512, 1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1536, 1000],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [512, 1000] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-decode-m1-n12288-aligned",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 1536, "N": 12288 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1536, 12288],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 12288] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-decode-m1-n50257-odd-vocab-cliff",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 2048, "N": 50257 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 50257],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 50257] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-f32-decode-m1-n32001-odd-vocab-tail",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 1, "K": 1024, "N": 32001 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 32001],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 32001] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-dot-1d-f32-k16m",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "K": 16777216 },
+      "inputs": {
+        "a": { "shape": [16777216], "dtype": "float32", "dist": "normal", "seed": 530, "scale": 0.05 },
+        "b": { "shape": [16777216], "dtype": "float32", "dist": "normal", "seed": 531, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "2 * args.K * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "matmul-dot-1d-f32-k4099-odd-k-single-workgroup",
+      "preset": "smoke",
+      "provenance": {
+        "source": "hand-authored route boundary",
+        "notes": "Measures MatMul over a 4099-element odd-length float32 dot product."
+      },
+      "vars": { "dtype": "float32", "K": 4099 },
+      "inputs": {
+        "a": { "shape": [4099], "dtype": "float32", "dist": "normal", "seed": 532, "scale": 0.05 },
+        "b": { "shape": [4099], "dtype": "float32", "dist": "normal", "seed": 533, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "2 * args.K * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "matmul-dot-1d-f16-k32768-single-lane-fallback",
+      "preset": "stress",
+      "vars": { "dtype": "float16", "K": 32768 },
+      "inputs": {
+        "a": { "shape": [32768], "dtype": "float16", "dist": "normal", "seed": 720, "scale": 0.05 },
+        "b": { "shape": [32768], "dtype": "float16", "dist": "normal", "seed": 721, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [], "dtype": "float16", "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "2 * args.K * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "matmul-gemv-matrix-vector-f32-131072x2048-aligned-cooperative",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 131072, "K": 2048 },
+      "inputs": {
+        "a": { "shape": [131072, 2048], "dtype": "float32", "dist": "normal", "seed": 722, "scale": 0.2 },
+        "b": { "shape": [2048], "dtype": "float32", "dist": "normal", "seed": 723, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [131072], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.M * args.K + args.K + args.M) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-gemv-matrix-vector-f32-131072x2050-k-not-mult4-scalar",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 131072, "K": 2050 },
+      "inputs": {
+        "a": { "shape": [131072, 2050], "dtype": "float32", "dist": "normal", "seed": 722, "scale": 0.2 },
+        "b": { "shape": [2050], "dtype": "float32", "dist": "normal", "seed": 723, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [131072], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.M * args.K + args.K + args.M) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-rank4-broadcast-attention-b2h8-m128-k64-n128-pathology",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "batch": 2, "heads": 8, "M": 128, "K": 64, "N": 128 },
+      "inputs": {
+        "a": {
+          "shape": [2, 8, 128, 64],
+          "dtype": "float32",
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.2 }
+        },
+        "b": {
+          "shape": [1, 8, 64, 128],
+          "dtype": "float32",
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "shape": [2, 8, 128, 128], "dtype": "float32", "dist": "empty" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.y) * args.K" }] }
+    },
+    {
+      "name": "matmul-rank4-by-rank2-shared-weight-b2h8-m128-k64-n128-pathology",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 128, "K": 64, "N": 128 },
+      "inputs": {
+        "a": {
+          "shape": [2, 8, 128, 64],
+          "dtype": "float32",
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.2 }
+        },
+        "b": {
+          "shape": [64, 128],
+          "dtype": "float32",
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "shape": [2, 8, 128, 128], "dtype": "float32", "dist": "empty" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.y) * args.K" }] }
+    },
+    {
+      "name": "rank3-by-rank2-shared-weight-b8-m128-k1024-n768",
+      "preset": "model",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "Covers batched rank-3 activations multiplied by a shared rank-2 projection, including the ONNX broadcast semantics used by common batched MatMul graphs."
+      },
+      "vars": { "dtype": "float32", "batch": 8, "M": 128, "K": 1024, "N": 768 },
+      "inputs": {
+        "a": { "shape": [8, 128, 1024], "dtype": "float32", "dist": "normal", "seed": 9201, "scale": 0.2 },
+        "b": { "shape": [1024, 768], "dtype": "float32", "dist": "normal", "seed": 9202, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [8, 128, 768], "dtype": "float32", "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.y) * args.K" }] }
+    },
+    {
+      "name": "matmul-f32-batched-rows-fold-512x1x1024x1024",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 512, "K": 1024, "N": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1, 1024] } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-decode-m1-k8192-n2048-narrow-n-occupancy",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 1, "K": 1536, "N": 12288 },
+      "inputs": {
+        "a": { "shape": [1, 8192], "dtype": "float32", "dist": "normal", "seed": 312, "scale": 0.2 },
+        "b": { "shape": [8192, 2048], "dtype": "float32", "dist": "normal", "seed": 313, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "provenance": { "notes": "Measures MatMul over a decode-shaped (M=1) projection with K=8192 and N=2048." }
+    },
+    {
+      "name": "matmul-f16-band-m8-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [8, 2560], "dtype": "float16", "dist": "normal", "seed": 460, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 461, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [8, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m16-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 16, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [16, 2560], "dtype": "float16", "dist": "normal", "seed": 462, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 463, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f32-band-m16-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 16, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [16, 2560], "dtype": "float32", "dist": "normal", "seed": 464, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float32", "dist": "normal", "seed": 465, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m32-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 32, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [32, 2560], "dtype": "float16", "dist": "normal", "seed": 466, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 467, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [32, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m16-k8192-n2560-downproj",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 16, "K": 8192, "N": 2560 },
+      "inputs": {
+        "a": { "shape": [16, 8192], "dtype": "float16", "dist": "normal", "seed": 468, "scale": 0.2 },
+        "b": { "shape": [8192, 2560], "dtype": "float16", "dist": "normal", "seed": 469, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 2560], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m16-k8192-n256-narrow-splitk-screen",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 16, "K": 8192, "N": 256 },
+      "inputs": {
+        "a": { "shape": [16, 8192], "dtype": "float16", "dist": "normal", "seed": 470, "scale": 0.2 },
+        "b": { "shape": [8192, 256], "dtype": "float16", "dist": "normal", "seed": 471, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 256], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m2-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 2, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [2, 2560], "dtype": "float16", "dist": "normal", "seed": 472, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 473, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [2, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m4-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [4, 2560], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f32-prefill-m512-k512-n4096-shallow-k",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 512, "K": 512, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [512, 512], "dtype": "float32", "dist": "normal", "seed": 480, "scale": 0.2 },
+        "b": { "shape": [512, 4096], "dtype": "float32", "dist": "normal", "seed": 481, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-prefill-m512-k2048-n2048-deep-k",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 512, "K": 2048, "N": 2048 },
+      "inputs": {
+        "a": { "shape": [512, 2048], "dtype": "float32", "dist": "normal", "seed": 482, "scale": 0.2 },
+        "b": { "shape": [2048, 2048], "dtype": "float32", "dist": "normal", "seed": 483, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [512, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-folded-band-1x16-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 16, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [1, 16, 2560], "dtype": "float16", "dist": "normal", "seed": 540, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 541, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [1, 16, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-batched-band-b32-m16-k256-n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "B": 32, "M": 16, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [32, 16, 256], "dtype": "float16", "dist": "normal", "seed": 544, "scale": 0.2 },
+        "b": { "shape": [32, 256, 256], "dtype": "float16", "dist": "normal", "seed": 545, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [32, 16, 256], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.B * (args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-batched-band-b8-m64-k256-n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "B": 8, "M": 64, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 64, 256], "dtype": "float16", "dist": "normal", "seed": 546, "scale": 0.2 },
+        "b": { "shape": [8, 256, 256], "dtype": "float16", "dist": "normal", "seed": 547, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [8, 64, 256], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.B * (args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f32-batched-band-b8-m64-k256-n256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "B": 8, "M": 64, "K": 256, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 64, 256], "dtype": "float32", "dist": "normal", "seed": 548, "scale": 0.2 },
+        "b": { "shape": [8, 256, 256], "dtype": "float32", "dist": "normal", "seed": 549, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [8, 64, 256], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.B * (args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-batched-band-b4-m16-k512-n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "B": 4, "M": 16, "K": 512, "N": 512 },
+      "inputs": {
+        "a": { "shape": [4, 16, 512], "dtype": "float16", "dist": "normal", "seed": 550, "scale": 0.2 },
+        "b": { "shape": [4, 512, 512], "dtype": "float16", "dist": "normal", "seed": 551, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 16, 512], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.B * (args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-batched-band-b32-m64-k64-n128-attn",
+      "preset": "model",
+      "vars": { "dtype": "float16", "B": 32, "M": 64, "K": 64, "N": 128 },
+      "inputs": {
+        "a": { "shape": [32, 64, 64], "dtype": "float16", "dist": "normal", "seed": 552, "scale": 0.2 },
+        "b": { "shape": [32, 64, 128], "dtype": "float16", "dist": "normal", "seed": 553, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [32, 64, 128], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.B * (args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-batched-band-by-rank2-b8-m16-k1024-n768",
+      "preset": "model",
+      "vars": { "dtype": "float16", "B": 8, "M": 16, "K": 1024, "N": 768 },
+      "inputs": {
+        "a": { "shape": [8, 16, 1024], "dtype": "float16", "dist": "normal", "seed": 554, "scale": 0.2 },
+        "b": { "shape": [1024, 768], "dtype": "float16", "dist": "normal", "seed": 555, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [8, 16, 768], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.B * args.M * args.K + args.K * args.N + args.B * args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m4-k8192-n256-narrow",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 8192, "N": 256 },
+      "inputs": {
+        "a": { "shape": [4, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 256], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 256], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f32-band-m4-k2560-n4096",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 2560, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [4, 2560], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2560, 4096], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m4-k8192-n1024",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 8192, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 1024], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 1024], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-band-m4-k8192-n2048",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 8192, "N": 2048 },
+      "inputs": {
+        "a": { "shape": [4, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 2048], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [4, 2048], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-f16-deadband-m16-k4096-n4096-band-ceiling-control",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 16, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [16, 4096], "dtype": "float16", "dist": "normal", "seed": 560, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float16", "dist": "normal", "seed": 561, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-deadband-m24-k4096-n4096-pathology",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 24, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [24, 4096], "dtype": "float16", "dist": "normal", "seed": 562, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float16", "dist": "normal", "seed": 563, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [24, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-deadband-m64-k4096-n4096-tile-floor-control",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 64, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [64, 4096], "dtype": "float16", "dist": "normal", "seed": 566, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float16", "dist": "normal", "seed": 567, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [64, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-deadband-m16-k4096-n4096-band-ceiling-control",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 16, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [16, 4096], "dtype": "float32", "dist": "normal", "seed": 568, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float32", "dist": "normal", "seed": 569, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [16, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-deadband-m32-k4096-n4096-pathology",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 32, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [32, 4096], "dtype": "float32", "dist": "normal", "seed": 570, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float32", "dist": "normal", "seed": 571, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [32, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f32-deadband-m64-k4096-n4096-tile-floor-control",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 64, "K": 4096, "N": 4096 },
+      "inputs": {
+        "a": { "shape": [64, 4096], "dtype": "float32", "dist": "normal", "seed": 572, "scale": 0.2 },
+        "b": { "shape": [4096, 4096], "dtype": "float32", "dist": "normal", "seed": 573, "scale": 0.05 }
+      },
+      "outputs": { "y": { "shape": [64, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-gemv-matrix-vector-f32-m4864-k898-not-mult4-below-parallel-k-floor-pathology",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4864, "K": 898 },
+      "inputs": {
+        "a": { "shape": [4864, 898], "dtype": "float32", "dist": "normal", "seed": 582, "scale": 0.2 },
+        "b": { "shape": [898], "dtype": "float32", "dist": "normal", "seed": 583, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [4864], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.M * args.K + args.K + args.M) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-gemv-matrix-vector-f32-m4864-k1026-not-mult4-parallel-k-floor-control",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4864, "K": 1026 },
+      "inputs": {
+        "a": { "shape": [4864, 1026], "dtype": "float32", "dist": "normal", "seed": 584, "scale": 0.2 },
+        "b": { "shape": [1026], "dtype": "float32", "dist": "normal", "seed": 585, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [4864], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.M * args.K + args.K + args.M) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul-rank3-batch1-m1-k4096-n4096-f32",
+      "preset": "edge",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "b": { "dtype": "float32", "shape": [4096, 4096] }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 4096] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 4096 * 4096" }] }
+    },
+    {
+      "name": "matmul-rank2-m1-k4096-n4096-f32-control",
+      "preset": "edge",
+      "inputs": { "a": { "dtype": "float32", "shape": [1, 4096] }, "b": { "dtype": "float32", "shape": [4096, 4096] } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4096] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 4096 * 4096" }] }
+    },
+    {
+      "name": "split_band_float32_m4_k8192_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 8192, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 8192], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 1024], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "BAND_SPLIT_MATRIX_MIN_ROW_PADDING": [4, 32] }
+    },
+    {
+      "name": "split_band_float32_m8_k1024_n256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 1024, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 1024], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [1024, 256], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k8192_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 8192, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [8, 8192], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 1024], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k8192_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 8192, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 1024], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "BAND_SPLIT_MATRIX_MIN_ROW_PADDING": [4, 32] }
+    },
+    {
+      "name": "split_band_float16_m8_k1024_n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 1024, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 1024], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [1024, 256], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k8192_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 8192, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [8, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 1024], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m4_k1024_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 1024, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 1024], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [1024, 1024], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m4_k2048_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": { "shape": [4, 2048], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m4_k4096_n256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 4096, "N": 256 },
+      "inputs": {
+        "a": { "shape": [4, 4096], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 256], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k2048_n128",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 2048, "N": 128 },
+      "inputs": {
+        "a": { "shape": [8, 2048], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 128], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 128] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k2048_n256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 2048, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 2048], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 256], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4096], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k8192_n3072",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 8192, "N": 3072 },
+      "inputs": {
+        "a": { "shape": [8, 8192], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 3072], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 3072] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k1024_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 1024, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 1024], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [1024, 1024], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k2048_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": { "shape": [4, 2048], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k4096_n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 4096, "N": 256 },
+      "inputs": {
+        "a": { "shape": [4, 4096], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 256], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k2048_n128",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 2048, "N": 128 },
+      "inputs": {
+        "a": { "shape": [8, 2048], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 128], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 128] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k2048_n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 2048, "N": 256 },
+      "inputs": {
+        "a": { "shape": [8, 2048], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 256], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4096], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k8192_n3072",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 8192, "N": 3072 },
+      "inputs": {
+        "a": { "shape": [8, 8192], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [8192, 3072], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 3072] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m3_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 3, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [3, 4096], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m5_k2048_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 5, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": { "shape": [5, 2048], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m5_k4096_n256",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 5, "K": 4096, "N": 256 },
+      "inputs": {
+        "a": { "shape": [5, 4096], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 256], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m9_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 9, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [9, 4096], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [9, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k4064_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 4064, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4064], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4064, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m8_k4128_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 4128, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4128], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4128, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m4_k16384_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 16384, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 16384], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [16384, 1024], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m3_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 3, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [3, 4096], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m5_k2048_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 5, "K": 2048, "N": 512 },
+      "inputs": {
+        "a": { "shape": [5, 2048], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2048, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m5_k4096_n256",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 5, "K": 4096, "N": 256 },
+      "inputs": {
+        "a": { "shape": [5, 4096], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 256], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5, 256] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m9_k4096_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 9, "K": 4096, "N": 512 },
+      "inputs": {
+        "a": { "shape": [9, 4096], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4096, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [9, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k4064_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 4064, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4064], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4064, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m8_k4128_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 4128, "N": 512 },
+      "inputs": {
+        "a": { "shape": [8, 4128], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [4128, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k16384_n1024",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 16384, "N": 1024 },
+      "inputs": {
+        "a": { "shape": [4, 16384], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [16384, 1024], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 1024] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float32_m4_k2080_n512",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 4, "K": 2080, "N": 512 },
+      "inputs": {
+        "a": { "shape": [4, 2080], "dtype": "float32", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2080, 512], "dtype": "float32", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "split_band_float16_m4_k2080_n512",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 4, "K": 2080, "N": 512 },
+      "inputs": {
+        "a": { "shape": [4, 2080], "dtype": "float16", "dist": "normal", "seed": 474, "scale": 0.2 },
+        "b": { "shape": [2080, 512], "dtype": "float16", "dist": "normal", "seed": 475, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 512] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k1-n65",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 1, "N": 65 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 65] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k3-n257",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 3, "N": 257 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [3, 257],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 257] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k5-n4099",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 5, "N": 4099 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [5, 4099],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 4099] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k63-n16385",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 63, "N": 16385 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 63],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [63, 16385],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 16385] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k65-n4098",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 65, "N": 4098 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [65, 4098],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 4098] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k511-n16387",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 511, "N": 16387 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 511],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [511, 16387],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 16387] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k2049-n16385",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 2049, "N": 16385 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 2049],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2049, 16385],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 16385] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k2048-n50258",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 2048, "N": 50258 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 50258],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 50258] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k2048-n50259",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 2048, "N": 50259 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 50259],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 50259] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-tail-neighbor-f16-k2048-n50260",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 1, "K": 2048, "N": 50260 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.025 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 50260],
+          "data": { "kind": "fillFloat32", "sinStep": 0.008, "cosStep": 0.018 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 50260] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      },
+      "tunableSpace": { "TAIL_K_PREFETCH": [1, 2, 4, 8] }
+    },
+    {
+      "name": "matmul-f32-prefill-512x64x1000-unaligned-n-shallow-k",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "M": 512, "K": 64, "N": 1000 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1000],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1000] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-odd-n33-m16-k64",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 16, "K": 64, "N": 33 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [16, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.6 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 33],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.013, "scale": 0.6 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16, 33] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "matmul-f16-odd-n63-batched-b2-m32-k64",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "M": 32, "K": 64, "N": 63 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.6 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 63],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.013, "scale": 0.6 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 32, 63] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 2 * args.M * args.K * args.N" }] }
+    }
+  ]
+}

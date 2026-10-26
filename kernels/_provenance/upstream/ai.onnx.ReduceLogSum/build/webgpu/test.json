@@ -1,0 +1,769 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_reduce_log_sum_input_x": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125, 0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042, 0.21038256585597992, 0.12892629206180573, 0.31542834639549255, 0.36371076107025146, 0.5701967477798462, 0.4386015236377716, 0.9883738160133362, 0.10204481333494186, 0.20887675881385803, 0.16130951046943665, 0.6531082987785339, 0.25329160690307617, 0.4663107693195343, 0.24442559480667114]
+  },
+  "cases": [
+    {
+      "name": "all_axes_flat_rank1_boundary_8192",
+      "provenance": {
+        "notes": "Exactly 8,192 rank-1 elements exercise the inclusive lower boundary of the parallel full reduction."
+      },
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [8192], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "all_axes_flat_fullreduce_32x32x32_keepdims",
+      "attrs": { "keepdims": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [32, 32, 32], "data": { "kind": "linspace", "start": 0.1, "end": 2.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.0005, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "dispatch_cliff_axis1_rank2",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16776961, 1],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 0.5, 3.25, 1.5, 2.75, 0.75, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16776961], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "axis0",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "axis0_tiled_64x32",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "axis1",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_axis1_parallel_cancellation_finite_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "todo",
+        "reason": "The current parallel reduction changes the fixture's required sequential evaluation order, so f32 rounding is not bit-exact. An order-preserving reduction route can implement this behavior."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "Serial float32 row summation of repeated [1e20, 1, -1e20, 1] blocks keeps only the final trailing 1 before log; a parallel tree can preserve one small term per block and return log(256)."
+      },
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "cycle", "values": [100000000000000000000.0, 1.0, -100000000000000000000.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_axis1_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "The row sum is finite subnormal, so ReduceLogSum should produce a large finite negative log rather than -Infinity."
+      },
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1e-40, 1e-40, 1e-40, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_axis0_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "The axis-0 sums are finite subnormal values, so their logarithms should remain finite rather than return negative infinity."
+      },
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1e-40, 1e-39, 1e-38, 1e-40, 2e-39, 2e-38] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_axis0_tilecols_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "Tile-column axis-0 path: many positive subnormal inputs sum to a finite subnormal value whose log is finite."
+      },
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [64, 16], "data": { "kind": "constant", "value": 1e-40 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_last_axis_vec4_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "Vec4 last-axis path: finite subnormal row sums should produce finite logs."
+      },
+      "attrs": { "axes": [-1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1e-40, 1e-40, 1e-40, 1e-40, 1e-39, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_rank3_axis1_logsum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum",
+        "notes": "Rank-3 non-last-axis path: finite subnormal sums along axis 1 should produce finite logs."
+      },
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1e-40, 2e-40, 1e-40, 2e-40, 1e-39, 2e-39, 1e-39, 2e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "axis1_empty_cols_negative_infinity",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [2, 0], "data": { "kind": "values", "values": [] } } },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": ["-Infinity", "-Infinity"] }
+        }
+      }
+    },
+    {
+      "name": "axis0_empty_rows_negative_infinity",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": ["-Infinity", "-Infinity", "-Infinity"] }
+        }
+      }
+    },
+    {
+      "name": "f16_empty_reduction_negative_infinity",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float16", "shape": [1, 0], "data": { "kind": "values", "values": [] } } },
+      "outputs": {
+        "y": { "dtype": "float16", "shape": [1], "tolerance": 0, "data": { "kind": "values", "values": ["-Infinity"] } }
+      }
+    },
+    {
+      "name": "axis1_zero_rows_noop",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "axis_minus_one",
+      "attrs": { "axes": [-1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank3_axis_minus_one_keepdims",
+      "attrs": { "axes": [-1], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5, 5.0, 6.0, 7.0, 8.0, 2.0, 4.0, 6.0, 8.0, 1.25, 2.25, 3.25, 4.25, 0.75, 1.75, 2.75, 3.75]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank1_axis0_scalar_output",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 0.5, 4.0, 8.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_axis1_rank3_keepdims",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum"
+      },
+      "attrs": { "axes": [1], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_axis2_singleton_keepdims_noop",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum_samesize"
+      },
+      "attrs": { "axes": [2], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_axis0_rank1_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum_do_not_keepdims_2"
+      },
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_rank0_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum0DTensor"
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_mixed_infinities_axis1_nan_rows",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceInfLogSum"
+      },
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, "Infinity", "Infinity", 1.0, "Infinity", "-Infinity", "-Infinity", "Infinity", 1.0, "-Infinity", "-Infinity", 1.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_reduce_log_sum_empty_set",
+      "attrs": { "keepdims": 1, "axes": [1] },
+      "inputs": { "x": { "dtype": "float32", "shape": [2, 0, 4], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 4] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reduce_log_sum_empty_set",
+        "notes": "The ONNX int64 axes input is materialized as this compile-time axes list."
+      }
+    },
+    {
+      "name": "onnx_backend_reduce_log_sum_negative_axes",
+      "attrs": { "axes": [-2], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_reduce_log_sum_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reduce_log_sum_negative_axes",
+        "notes": "The ONNX int64 axes input is materialized as this compile-time axes list."
+      }
+    },
+    {
+      "name": "default_axes_rank3_no_keepdims_scalar",
+      "attrs": { "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_reduce_log_sum_default_axes_keepdims_random",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reduce_log_sum_default" },
+      "attrs": { "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_reduce_log_sum_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "subgroup_vec4_last_axis_2x256",
+      "attrs": { "axes": [-1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "subgroup_scalar_last_axis_2x65",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.11, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_noop_empty_axes_2d_elementwise_log",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum_NoopWithEmptyAxes_2D_ElementwiseLog"
+      },
+      "attrs": { "noop_with_empty_axes": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [2.7182817, 7.389056, 1.6487213, 20.085537] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_noop_empty_axes_scalar_log",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum_NoopWithEmptyAxes_Scalar"
+      },
+      "attrs": { "noop_with_empty_axes": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.7182817] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_noop_empty_axes_3d_elementwise_log",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSum_NoopWithEmptyAxes_3D_ElementwiseLog"
+      },
+      "attrs": { "noop_with_empty_axes": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 3],
+          "data": { "kind": "values", "values": [2.7182817, 7.389056, 1.6487213, 20.085537, 54.59815, 148.41316] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float_multi_axis_no_keepdims",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/reduction/reduction_ops_test.cc",
+        "test": "ReductionOpTest.ReduceLogSumAxes01",
+        "notes": "A compact positive tensor exercises multi-axis ReduceLogSum with a finite logarithm."
+      },
+      "attrs": { "axes": [0, 1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank3_lastaxis_cols1024_tree_nosubgroup",
+      "attrs": { "axes": [2], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 1024],
+          "data": {
+            "kind": "cycle",
+            "values": [1.0, 2.0, 0.5, 3.25, 1.5, 2.0, 0.75, 4.0, 3.5, 1.25, 0.25, 2.25, 5.0, 4.0, 2.75, 1.0, 6.5]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "axis0_splitk_8192x32",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8192, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "axis0_splitk_8192x48_keepdims",
+      "attrs": { "axes": [0], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8192, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 48], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "rank4_multi_axis_12_keepdims",
+      "attrs": { "axes": [1, 2], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 0.5, 1.5, 3.0, 0.25, 2.5, 1.25, 0.75, 2.0, 1.0, 0.5, 1.5, 2.5, 0.25, 1.75, 3.0, 0.5, 2.0, 1.0, 0.75, 1.25, 1.5, 2.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 1, 2], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "row_with_negative_sum_produces_nan",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, -4.0, -5.0, -6.0, 1.0, -2.0, 0.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "allowNaN": true, "tolerance": 0 } },
+      "provenance": {
+        "notes": "Row 0 sums to 6 and returns log(6); rows 1 and 2 sum to negative values and therefore return NaN."
+      }
+    },
+    {
+      "name": "row_summing_to_zero_produces_neg_inf",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, -1.0, 2.0, -2.0, 1.0, 0.0, 0.0, 0.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2],
+          "data": { "kind": "values", "values": ["-Infinity", 0.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "all_axes_flat_log_applied_after_combine",
+      "attrs": { "keepdims": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 8192], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "axis0_splitk_log_applied_after_combine",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [8192, 16], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "axis0_narrow_f32_8192x3_splitk",
+      "provenance": {
+        "notes": "An 8,192-by-3 axis-0 reduction exercises split-K with a narrow output. Constant ones verify that log is applied once after all partial sums are combined."
+      },
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [8192, 3], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "contiguous_suffix_axes12_parallel",
+      "provenance": {
+        "notes": "Contiguous axes {1,2} exercise the shared cooperative suffix reduction instead of one serial lane per output."
+      },
+      "attrs": { "axes": [1, 2], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.07, "offset": 1.0, "scale": 0.001 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "axis_split_rank3_axis1_2x8192x4",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 8192, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_axis_split_tiled_narrow_2x8192x4",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 8192, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "axis_split_rank3_axis1_wide_2x8192x32",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 8192, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 32], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_axis_split_wide_2x8192x32",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 8192, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 32], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_rank3_axis1_serial",
+      "attrs": { "axes": [1], "keepdims": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 1, 2], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_all_axes",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": { "x": { "dtype": "float16", "shape": [8192], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float16", "shape": [], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_axis0_splitk_8192x8",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8192, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_last_axis_vec4_8x1024",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_last_axis_scalar_8x1023",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8, 1023],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_all_axes_flat_65543",
+      "attrs": { "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [65543],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_suffix_vec4_4x8x128",
+      "attrs": { "axes": [1, 2], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4, 8, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_suffix_scalar_4x7x37",
+      "attrs": { "axes": [1, 2], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4, 7, 37],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_axis0_tilecols_4096x64",
+      "attrs": { "axes": [0], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4096, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64], "tolerance": 0.05, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "subgroup_rows_last_axis_f32_96x256",
+      "attrs": { "axes": [-1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [96, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [96], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "subgroup_rows_last_axis_f16_80x1024",
+      "attrs": { "axes": [1], "keepdims": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [80, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "scale": 0.2, "offset": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [80], "tolerance": 0.05, "relTolerance": 0.002 } }
+    }
+  ]
+}

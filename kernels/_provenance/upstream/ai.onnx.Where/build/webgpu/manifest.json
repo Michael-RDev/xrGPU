@@ -1,0 +1,112 @@
+{
+  "domain": "ai.onnx",
+  "name": "Where",
+  "sinceVersion": 16,
+  "inputs": { "condition": { "dtype": "C" }, "x": { "onnx": "X", "dtype": "T" }, "y": { "onnx": "Y", "dtype": "T" } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": "max(max(ranks.condition, ranks.x), ranks.y)",
+      "shape": "broadcastShape(broadcastShape(shapes.condition, shapes.x), shapes.y)"
+    }
+  },
+  "typeConstraints": {
+    "C": ["bool"],
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "scalar": "dtypes.T",
+    "cShape": "shapes.condition",
+    "xShape": "shapes.x",
+    "yShape": "shapes.y",
+    "oShape": "shapes.output",
+    "cRank": "ranks.condition",
+    "xRank": "ranks.x",
+    "yRank": "ranks.y",
+    "oRank": "ranks.output"
+  },
+  "when": ["f16Ok(dtypes.T)"],
+  "bindings": {
+    "condition": { "elementType": "u32" },
+    "output_main": { "name": "output", "elementType": "$vectorScalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output) / 4" }]
+    },
+    "condition_main": { "name": "condition", "elementType": "vec4<u32>" },
+    "x_main": { "name": "x", "elementType": "$vectorScalar" },
+    "y_main": { "name": "y", "elementType": "$vectorScalar" }
+  },
+  "variants": [
+    {
+      "id": "broadcast",
+      "when": ["ranks.condition <= ranks.output", "ranks.x <= ranks.output", "ranks.y <= ranks.output"],
+      "derive": {
+        "vec4Out": "dtypes.T != \"vec2<u32>\" and ranks.output >= 1 and numel(shapes.output) > 0 and dim(shapes.output, ranks.output - 1) % 4 == 0 and (ranks.condition == 0 or dim(shapes.condition, ranks.condition - 1) == 1 or dim(shapes.condition, ranks.condition - 1) == dim(shapes.output, ranks.output - 1)) and (ranks.x == 0 or dim(shapes.x, ranks.x - 1) == 1 or dim(shapes.x, ranks.x - 1) == dim(shapes.output, ranks.output - 1)) and (ranks.y == 0 or dim(shapes.y, ranks.y - 1) == 1 or dim(shapes.y, ranks.y - 1) == dim(shapes.output, ranks.output - 1))",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if vec4Out else dtypes.T",
+        "outCount": "numel(shapes.output) / 4 if vec4Out else numel(shapes.output)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Where",
+          "shader": "where-broadcast.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            "condition",
+            "x",
+            "y",
+            "output_main",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "outCount" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_same_shape_vec4",
+      "priority": 30,
+      "when": ["dtypes.T != \"vec2<u32>\" and (sameShape(shapes.condition, shapes.output))", "sameShape(shapes.x, shapes.output)", "sameShape(shapes.y, shapes.output)", "numel(shapes.output) > 0", "numel(shapes.output) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Where.Vec4",
+          "shader": "where-vec4.wgsl.jinja",
+          "derive": { "condMode": "\"vector\"" },
+          "bindings": ["condition_main", "x_main", "y_main", "output_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_condition_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"vec2<u32>\" and (numel(shapes.condition) == 1)", "sameShape(shapes.x, shapes.output)", "sameShape(shapes.y, shapes.output)", "numel(shapes.output) > 0", "numel(shapes.output) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Where.ScalarCondVec4",
+          "shader": "where-vec4.wgsl.jinja",
+          "derive": { "condMode": "\"scalar\"" },
+          "bindings": ["condition", "x_main", "y_main", "output_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

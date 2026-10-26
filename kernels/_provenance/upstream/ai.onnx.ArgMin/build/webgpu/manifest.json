@@ -1,0 +1,420 @@
+{
+  "domain": "ai.onnx",
+  "name": "ArgMin",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "data", "dtype": "T" } },
+  "outputs": {
+    "y": {
+      "onnx": "reduced",
+      "dtype": "I",
+      "rank": "ranks.x if attrs.keepdims == 1 else ranks.x - 1",
+      "shape": "prefix(shapes.x, normalizedAxis) + ([1] if attrs.keepdims == 1 else []) + suffix(shapes.x, normalizedAxis + 1)",
+      "storage": "uint32"
+    }
+  },
+  "attributes": { "axis": { "default": 0 }, "keepdims": { "default": 1 }, "select_last_index": { "default": 0 } },
+  "attributeConstraints": { "keepdims": { "values": [0, 1] }, "select_last_index": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32", "int16", "int8", "uint8"], "I": ["int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "TILE_COLUMNS": { "default": 16 },
+    "TILED_MIN_AXIS": { "default": 64 },
+    "TILED_MIN_OUTPUTS": { "default": 16 },
+    "SPLIT_MIN_AXIS": { "default": 8192 },
+    "SPLIT_MAX_OUTPUTS": { "default": 4096 },
+    "SPLIT_TARGET_AXIS": { "default": 256 },
+    "SPLIT_TILE_COLUMNS": { "default": 8 },
+    "MAX_SPLITS": { "default": 128 },
+    "ROW_SPLIT_MIN_AXIS": { "default": 32768 },
+    "ROW_SPLIT_MAX_OUTPUTS": { "default": 32 },
+    "ROW_SPLIT_TARGET_AXIS": { "default": 2048 },
+    "ROW_SPLIT_MAX_SPLITS": { "default": 64 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "narrowSubgroupRange": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "normalizedAxis": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x",
+    "axisInRange": "ranks.x >= 1 and normalizedAxis >= 0 and normalizedAxis < ranks.x",
+    "axisDim": "dim(shapes.x, normalizedAxis)",
+    "axisInner": "inner(shapes.x, normalizedAxis)",
+    "outputCount": "numel(shapes.y)",
+    "outputRankOk": "(attrs.keepdims == 1 and ranks.y == ranks.x) or (attrs.keepdims == 0 and ranks.y == ranks.x - 1)",
+    "outputShapeOk": "outputRankOk and outputCount * axisDim == numel(shapes.x)",
+    "baseContract": "axisInRange and axisDim > 0 and outputShapeOk and f16Ok(dtypes.T)",
+    "lastAxis": "normalizedAxis == ranks.x - 1",
+    "nativeParallelType": "dtypes.T == \"f32\" or dtypes.T == \"i32\" or dtypes.T == \"u32\"",
+    "rowParallelType": "nativeParallelType or dtypes.T == \"f16\"",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "narrowLargeAxisTilePreferred": "narrowSubgroupRange and outputCount >= workgroupSize",
+    "threadDispatchFits": "ceilDiv(outputCount, workgroupSize) <= foldedDispatchCapacity",
+    "rowDispatchFits": "outputCount <= foldedDispatchCapacity",
+    "rowStorageFits": "workgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "parallelRowWorthwhile": "axisDim >= 256 or outputCount < 32768",
+    "splitCount": "min(tunables.MAX_SPLITS, pow2ceil(ceilDiv(axisDim, tunables.SPLIT_TARGET_AXIS)))",
+    "splitScratchBytes": "splitCount * outputCount * 8",
+    "splitScratchFits": "splitScratchBytes <= device.limits.maxStorageBufferBindingSize and splitScratchBytes <= device.limits.maxBufferSize",
+    "splitDispatchFits": "splitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(outputCount, workgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "splitTileDispatchFits": "splitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(outputCount, tunables.SPLIT_TILE_COLUMNS) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rowSplitCount": "min(tunables.ROW_SPLIT_MAX_SPLITS, pow2ceil(ceilDiv(axisDim, tunables.ROW_SPLIT_TARGET_AXIS)))",
+    "rowSplitScratchBytes": "rowSplitCount * outputCount * 8",
+    "rowSplitScratchFits": "rowSplitScratchBytes <= device.limits.maxStorageBufferBindingSize and rowSplitScratchBytes <= device.limits.maxBufferSize",
+    "rowSplitDispatchFits": "outputCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and rowSplitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "tileDispatchFits": "ceilDiv(outputCount, tunables.TILE_COLUMNS) <= foldedDispatchCapacity",
+    "narrowOddRowPortablePreferred": "narrowSubgroupRange and axisDim >= workgroupSize * 8 and outputCount >= workgroupSize",
+    "selectLastIndex": "attrs.select_last_index != 0",
+    "modeSpec": "\"min\""
+  },
+  "variants": [
+    {
+      "id": "last_axis_split_vec4",
+      "priority": 41,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim >= tunables.ROW_SPLIT_MIN_AXIS", "axisDim % 4 == 0", "outputCount <= tunables.ROW_SPLIT_MAX_OUTPUTS", "rowSplitScratchFits", "rowSplitDispatchFits", "rowStorageFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "workgroupSize",
+        "split": "rowSplitCount"
+      },
+      "intermediates": [
+        { "id": "partials_val", "dtype": "uint32", "shape": "[rowSplitCount * outputCount]" },
+        { "id": "partials_idx", "dtype": "uint32", "shape": "[rowSplitCount * outputCount]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ArgMin.LastAxisSplitVec4Reduce",
+          "shader": "reduce-arg-row-split.wgsl.jinja",
+          "derive": { "vec4": true, "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["x", "partials_val", "partials_idx", "params"],
+          "dispatch": { "x": "outputCount", "y": "rowSplitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "ArgMin.LastAxisSplitCombine",
+          "shader": "reduce-arg-axis-split-combine.wgsl.jinja",
+          "bindings": ["partials_val_u32", "partials_idx_u32", "y", "params_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_split",
+      "priority": 41,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim >= tunables.ROW_SPLIT_MIN_AXIS", "axisDim % 4 != 0", "outputCount <= tunables.ROW_SPLIT_MAX_OUTPUTS", "rowSplitScratchFits", "rowSplitDispatchFits", "rowStorageFits"],
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "workgroupSize", "split": "rowSplitCount" },
+      "intermediates": [
+        { "id": "partials_val", "dtype": "uint32", "shape": "[rowSplitCount * outputCount]" },
+        { "id": "partials_idx", "dtype": "uint32", "shape": "[rowSplitCount * outputCount]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ArgMin.LastAxisSplitReduce",
+          "shader": "reduce-arg-row-split.wgsl.jinja",
+          "derive": { "vec4": false, "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["x_main", "partials_val", "partials_idx", "params__uniform"],
+          "dispatch": { "x": "outputCount", "y": "rowSplitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "ArgMin.LastAxisSplitCombine",
+          "shader": "reduce-arg-axis-split-combine.wgsl.jinja",
+          "bindings": ["partials_val_u32", "partials_idx_u32", "y", "params_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_split_tiled_narrow",
+      "priority": 31,
+      "when": ["baseContract", "nativeParallelType", "not lastAxis", "axisDim >= tunables.SPLIT_MIN_AXIS", "outputCount >= tunables.SPLIT_TILE_COLUMNS", "outputCount <= 2 * tunables.SPLIT_TILE_COLUMNS", "workgroupSize % tunables.SPLIT_TILE_COLUMNS == 0", "splitScratchFits", "splitTileDispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "workgroupSize": "workgroupSize",
+        "split": "splitCount",
+        "tileCols": "tunables.SPLIT_TILE_COLUMNS"
+      },
+      "intermediates": [
+        { "id": "partials_val", "dtype": "uint32", "shape": "[splitCount * outputCount]" },
+        { "id": "partials_idx", "dtype": "uint32", "shape": "[splitCount * outputCount]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ArgMin.AxisSplitTiledReduce",
+          "shader": "reduce-arg-axis-split-tiled.wgsl.jinja",
+          "bindings": ["x_main", "partials_val", "partials_idx", "params_main"],
+          "dispatch": { "x": "ceilDiv(outputCount, tunables.SPLIT_TILE_COLUMNS)", "y": "splitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "ArgMin.AxisSplitCombine",
+          "shader": "reduce-arg-axis-split-combine.wgsl.jinja",
+          "bindings": ["partials_val_u32", "partials_idx_u32", "y", "params_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_min_last_axis_vec4",
+      "priority": 41,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim >= 4", "axisDim % 4 == 0", "has(device.adapterInfo, \"subgroupMinSize\")", "has(device.adapterInfo, \"subgroupMaxSize\")", "device.adapterInfo.subgroupMinSize >= 4", "device.adapterInfo.subgroupMinSize <= device.adapterInfo.subgroupMaxSize", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeInvocationsPerWorkgroup", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeWorkgroupSizeX", "axisDim >= device.adapterInfo.subgroupMinSize * 4", "ceilDiv(axisDim, 4) <= device.adapterInfo.subgroupMinSize * 16", "outputCount >= device.adapterInfo.subgroupMinSize * 4", "rowDispatchFits"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "device.adapterInfo.subgroupMinSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.SubgroupMinLastAxisVec4",
+          "shader": "reduce-arg-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": true, "singleSubgroup": true },
+          "bindings": ["x", "y", "params_last_axis_vec4"],
+          "dispatch": { "x": "min(outputCount, 65535)", "y": "ceilDiv(outputCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_min_last_axis",
+      "priority": 41,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim % 4 != 0", "has(device.adapterInfo, \"subgroupMinSize\")", "has(device.adapterInfo, \"subgroupMaxSize\")", "device.adapterInfo.subgroupMinSize >= 4", "device.adapterInfo.subgroupMinSize <= device.adapterInfo.subgroupMaxSize", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeInvocationsPerWorkgroup", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeWorkgroupSizeX", "axisDim >= device.adapterInfo.subgroupMinSize * 4", "axisDim <= device.adapterInfo.subgroupMinSize * 64", "outputCount >= device.adapterInfo.subgroupMinSize * 4", "rowDispatchFits"],
+      "requires": { "features": ["subgroups"] },
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "device.adapterInfo.subgroupMinSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.SubgroupMinLastAxis",
+          "shader": "reduce-arg-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": false, "singleSubgroup": true },
+          "bindings": ["x_main", "y", "params_last_axis"],
+          "dispatch": { "x": "min(outputCount, 65535)", "y": "ceilDiv(outputCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_vec4",
+      "priority": 40,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim >= 4", "axisDim % 4 == 0", "parallelRowWorthwhile", "rowDispatchFits", "rowStorageFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "min(workgroupSize, max(32, pow2ceil(ceilDiv(axisDim, 4))))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.LastAxisVec4",
+          "shader": "reduce-arg-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": true, "useSubgroups": "device.features.has(\"subgroups\")" },
+          "bindings": ["x", "y", "params_last_axis_vec4"],
+          "dispatch": { "x": "min(outputCount, 65535)", "y": "ceilDiv(outputCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis",
+      "priority": 39,
+      "when": ["baseContract", "rowParallelType", "lastAxis", "axisDim % 4 != 0", "parallelRowWorthwhile", "rowDispatchFits", "rowStorageFits"],
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "min(workgroupSize, max(32, pow2ceil(axisDim)))" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.LastAxis",
+          "shader": "reduce-arg-row-subgroup.wgsl.jinja",
+          "derive": {
+            "vec4": false,
+            "useSubgroups": "device.features.has(\"subgroups\") and not narrowOddRowPortablePreferred",
+            "adjacentScalarLoads": "dtypes.T == \"f32\" and axisDim >= workgroupSize * 4"
+          },
+          "bindings": ["x_main", "y", "params_last_axis"],
+          "dispatch": { "x": "min(outputCount, 65535)", "y": "ceilDiv(outputCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_split_packed",
+      "priority": 32,
+      "when": ["baseContract", "nativeParallelType", "not lastAxis", "axisDim >= tunables.SPLIT_MIN_AXIS", "outputCount >= 1", "outputCount <= tunables.SPLIT_MAX_OUTPUTS", "splitScratchFits", "splitDispatchFits", "threadDispatchFits", "dtypes.T == \"f32\"", "axisInner % 4 == 0"],
+      "demoteWhen": ["narrowLargeAxisTilePreferred", "outputCount < workgroupSize * 2"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "workgroupSize": "workgroupSize",
+        "split": "splitCount",
+        "vectorScalar": "\"vec4<f32>\""
+      },
+      "intermediates": [
+        { "id": "partials_val", "dtype": "uint32", "shape": "[splitCount * outputCount]" },
+        { "id": "partials_idx", "dtype": "uint32", "shape": "[splitCount * outputCount]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ArgMin.AxisSplitPackedReduce",
+          "shader": "reduce-arg-axis-split-reduce.wgsl.jinja",
+          "derive": { "columnVectorWidth": 4 },
+          "bindings": ["x", "partials_val", "partials_idx", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv(outputCount, workgroupSize * 4), DISPATCH_FOLD_WIDTH)",
+            "y": "splitCount",
+            "z": "ceilDiv(ceilDiv(outputCount, workgroupSize * 4), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "ArgMin.AxisSplitCombine",
+          "shader": "reduce-arg-axis-split-combine.wgsl.jinja",
+          "bindings": ["partials_val_u32", "partials_idx_u32", "y", "params_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_split",
+      "priority": 30,
+      "when": ["baseContract", "nativeParallelType", "not lastAxis", "axisDim >= tunables.SPLIT_MIN_AXIS", "outputCount >= 1", "outputCount <= tunables.SPLIT_MAX_OUTPUTS", "splitScratchFits", "splitDispatchFits", "threadDispatchFits"],
+      "demoteWhen": ["narrowLargeAxisTilePreferred"],
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "workgroupSize", "split": "splitCount" },
+      "intermediates": [
+        { "id": "partials_val", "dtype": "uint32", "shape": "[splitCount * outputCount]" },
+        { "id": "partials_idx", "dtype": "uint32", "shape": "[splitCount * outputCount]" }
+      ],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ArgMin.AxisSplitReduce",
+          "shader": "reduce-arg-axis-split-reduce.wgsl.jinja",
+          "bindings": ["x_main", "partials_val", "partials_idx", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), DISPATCH_FOLD_WIDTH)",
+            "y": "splitCount",
+            "z": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "ArgMin.AxisSplitCombine",
+          "shader": "reduce-arg-axis-split-combine.wgsl.jinja",
+          "bindings": ["partials_val_u32", "partials_idx_u32", "y", "params_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_tiled",
+      "priority": 20,
+      "when": ["baseContract", "nativeParallelType", "not lastAxis", "axisDim >= tunables.TILED_MIN_AXIS", "outputCount >= tunables.TILED_MIN_OUTPUTS", "workgroupSize % tunables.TILE_COLUMNS == 0", "rowStorageFits", "tileDispatchFits"],
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "workgroupSize", "tileCols": "tunables.TILE_COLUMNS" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.AxisTiled",
+          "shader": "reduce-arg-axis-tiled.wgsl.jinja",
+          "bindings": ["x_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (tunables.TILE_COLUMNS)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (tunables.TILE_COLUMNS)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_serial",
+      "priority": 0,
+      "when": ["baseContract", "threadDispatchFits"],
+      "supersededBy": ["axis_tiled"],
+      "derive": { "scalar": "dtypes.T", "workgroupSize": "workgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ArgMin.AxisSerial",
+          "shader": "reduce-arg-axis.wgsl.jinja",
+          "bindings": ["x_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "partials_val": { "buffer": "storage", "elementType": "u32" },
+    "partials_idx": { "buffer": "storage", "elementType": "u32" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputCount" },
+        { "name": "chunkCount", "type": "u32", "value": "axisDim / 4" }
+      ]
+    },
+    "partials_val_u32": { "name": "partials_val", "buffer": "read-only-storage", "elementType": "u32" },
+    "partials_idx_u32": { "name": "partials_idx", "buffer": "read-only-storage", "elementType": "u32" },
+    "y": { "elementType": "u32" },
+    "params_combine": { "name": "params", "struct": [{ "name": "outputCount", "type": "u32", "value": "outputCount" }] },
+    "x_main": { "name": "x", "elementType": "$scalar" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputCount" },
+        { "name": "chunkCount", "type": "u32", "value": "axisDim" }
+      ]
+    },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "axisDim", "type": "u32", "value": "axisDim" },
+        { "name": "outputCount", "type": "u32", "value": "outputCount" },
+        { "name": "innerSize", "type": "u32", "value": "axisInner" }
+      ]
+    },
+    "params_last_axis_vec4": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputCount" },
+        { "name": "chunkCount", "type": "u32", "value": "axisDim / 4" },
+        {
+          "name": "rowStride",
+          "type": "u32",
+          "value": "max(1, min(outputCount, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+        }
+      ]
+    },
+    "params_last_axis": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputCount" },
+        { "name": "chunkCount", "type": "u32", "value": "axisDim" },
+        {
+          "name": "rowStride",
+          "type": "u32",
+          "value": "max(1, min(outputCount, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+        }
+      ]
+    }
+  }
+}

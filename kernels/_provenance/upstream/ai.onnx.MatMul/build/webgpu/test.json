@@ -1,0 +1,3888 @@
+{
+  "usageCase": "matrix",
+  "fixtureArrays": {
+    "ort_3d_batch_input_b": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+    "ort_4d_batch_input_b": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+    "ort_webgpu_3d_broadcast_b_m1_input_a": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47],
+    "onnx_backend_rank4_by_rank1_input_a": [0.6252314448356628, -1.602057695388794, -1.1043833494186401, 0.05216507986187935, -0.73956298828125, 1.543014645576477, -1.2928569316864014, 0.2670508623123169, -0.039282817393541336, -1.1680934429168701, 0.523276686668396, -0.1715463250875473, 0.7717905640602112, 0.8235041499137878, 2.163235902786255, 1.336527943611145, -0.3691818416118622, -0.2393791824579239, 1.0996595621109009, 0.6552637219429016, 0.6401315331459045, -1.6169559955596924, -0.024326125159859657, -0.7380309104919434],
+    "onnx_backend_broadcast_rank4_input_a": [0.37642553448677063, -1.0994007587432861, 0.29823818802833557, 1.3263858556747437, -0.694567859172821, -0.14963454008102417, -0.4351535439491272, 1.8492637872695923, 0.6722947359085083, 0.40746182203292847, -0.7699160575866699, 0.5392491817474365, -0.6743326783180237, 0.0318305566906929, -0.6358460783958435, 0.676433265209198, 0.5765908360481262, -0.20829875767230988, 0.39600670337677, -1.0930615663528442, -1.4912575483322144, 0.43939170241355896, 0.16667349636554718, 0.6350314617156982, 2.3831448554992676, 0.9444794654846191, -0.9128222465515137, 1.117016315460205, -1.31590735912323, -0.46158459782600403, -0.06824160367250443, 1.7133426666259766, -0.7447548508644104, -0.8264385461807251, -0.09845252335071564, -0.6634783148765564],
+    "onnx_backend_broadcast_rank4_input_b": [1.1266359090805054, -1.0799314975738525, -1.1474686861038208, -0.43782004714012146, -0.49803245067596436, 1.9295320510864258, 0.9494208097457886, 0.08755124360322952, -1.225435495376587, 0.8443629741668701, -1.0002152919769287, -1.5447710752487183, 1.1880297660827637, 0.31694260239601135, 0.9208588004112244, 0.31872764229774475]
+  },
+  "cases": [
+    {
+      "name": "f32_rank2_vec4_variable32_m256_k64_n1000",
+      "provenance": {
+        "notes": "M=256, K=64, and N=1000 float32 operands form a compact matrix product whose 1000-column output width is not divisible by 32."
+      },
+      "tunables": { "NOTRANS_VEC4_MIN_BLOCKS": 32 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [256, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.1, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1000],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.1, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256, 1000], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "matrix",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank2_f32_m512_k64_n512_register_tile_block_floor",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "A large square rank-2 product with K=64 exercises register-blocked tiles at their minimum contraction width. M=N=512 supplies complete output tiles, while alpha=0.5 makes the epilogue scale observable."
+      }
+    },
+    {
+      "name": "f32_subnormal_times_large_scale_dot_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal operand required by this fixture. Backend evidence: WebGPU/Metal flushes the 1e-39 operand to zero, so the dot product cannot reach the expected finite value."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MatMulOpTest",
+        "notes": "A dot product of subnormal inputs against large finite weights should accumulate to an ordinary finite value, not collapse to zero."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [1e-39, 2e-39, 5e-39, 1e-38] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 1], "data": { "kind": "constant", "value": 1e+38 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_normal_inputs_subnormal_dot_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal result required by this fixture. Backend evidence: WebGPU/Metal flushes the 3e-40 dot product to zero."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType",
+        "notes": "Normal float32 operands can produce a valid subnormal dot-product output; matrix accumulation should not flush those products to zero."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [1e-20, 2e-20] } },
+        "b": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "constant", "value": 1e-20 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1], "tolerance": 0, "data": { "kind": "values", "values": [3e-40] } }
+      }
+    },
+    {
+      "name": "f32_subgroup_matrix_subnormal_dot_products_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal results required by this fixture. Backend evidence: WebGPU/Metal flushes the approximately 3e-39 subgroup-matrix dot products to zero."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType",
+        "notes": "M=32, K=32, N=64 with finite subnormal dot products that must not flush to zero."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 32], "data": { "kind": "constant", "value": 1e-20 } },
+        "b": { "dtype": "float32", "shape": [32, 64], "data": { "kind": "constant", "value": 1e-20 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 64], "tolerance": 1e-43 } }
+    },
+    {
+      "name": "empty_m_noop",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_n_noop",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float32", "shape": [4, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 0], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "zero_k_outputs_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulZeroKFloatType"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4, 0], "data": { "kind": "values", "values": [] } },
+        "b": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "matrix_subgroup_aligned",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "batched3",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "batched3_band_vec4_f16_b64_m16_k32_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 16, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 32, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 16, 128], "tolerance": 0.01, "relTolerance": 0.005 } },
+      "provenance": {
+        "notes": "The batched vec4 band route in f16 at the row ceiling (16 rows per matrix) with 64 matrices of 128 columns: one column group each, so the workgroup floor is met by the batch alone."
+      }
+    },
+    {
+      "name": "batched3_band_vec4_b32_m8_k64_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 8, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 8, 256], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Thirty-two independent 8-by-64 and 64-by-256 matrix products check batch indexing and output values."
+      }
+    },
+    {
+      "name": "batched3_broadcast_a",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank3_by_rank2",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank3_by_vector",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.5, -1.25, 2.0, -0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank2_by_rank3_shared_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_by_rank3",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.25, -0.5, 0.75, -2.0] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank5_broadcast_both_batch_sides",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 1, 3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 1, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 3, 2, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_by_rank2_shared_weight",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.21 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.27 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_by_vector_shared_weight",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.21 }
+        },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.75, -1.5, 2.25, -0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank2_by_rank4_shared_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_by_rank4_shared_input",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-0.25, 1.5, -2.25, 0.75] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_matrix",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [5], "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "matrix_vector",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float32", "shape": [5], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "dot",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [5], "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 } },
+        "b": { "dtype": "float32", "shape": [5], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "dot_splitk_largek_16384",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.005, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "dot_odd_k_1027_single_workgroup_fold",
+      "provenance": {
+        "notes": "A 1027-element odd-length float32 dot product checks that the complete reduction sums correctly without relying on an even split of the elements."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1027],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1027],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.005, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "int32_dot_odd_k_1027_single_workgroup_fold",
+      "provenance": {
+        "notes": "Integer operands must accumulate in their own type through the single-workgroup fold: mixed-sign cycles over an odd K give a sum every lane and every fold level contributes to, and one that float32 widening would still represent, so this pins the typed fold rather than the range."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1027], "data": { "kind": "cycle", "values": [3, -7, 11, 5, -2, 9, -4] } },
+        "b": { "dtype": "int32", "shape": [1027], "data": { "kind": "cycle", "values": [2, 5, -3, 7, 1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [] } }
+    },
+    {
+      "name": "dot_f16_odd_k_1027_single_workgroup_fold",
+      "provenance": {
+        "notes": "A float16 dot product of two 1,027-element vectors, an odd K, reduces to one float16 value."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1027],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1027],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "dot_true_scalar_output",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, -2.0, 3.0, 4.0] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [5.0, 6.0, -7.0, 8.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_left_1d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test left 1D"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.0, 1.0] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 2, 1],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_right_1d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test right 1D"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0] }
+        },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_left_1d_right_2d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test left 1D right 2D"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.0, 1.0] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_scalar_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test scalar output"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 1.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_2d_basic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 2D"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_2d_special_rank3_by_rank2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 2D special"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_2d_special_rank3_by_broadcast_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 2D special 2"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_batch",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 3D batch"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 1, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 3, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_3d_batch_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_4d_batch",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 4D batch"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 1, 3],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_4d_batch_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_webgpu_3d_broadcast_b_m1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 3D tensors with M = 1"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [6, 1, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_webgpu_3d_broadcast_b_m1_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8, 3],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_4d_batch_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6, 1, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_webgpu_3d_broadcast_b_m2_n4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 3D tensors with batchA = 3, M = 2, N = 4"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 2, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_webgpu_3d_broadcast_b_m1_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 4], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_webgpu_4d_broadcast_b_m1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test 4D tensors with M = 1"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 1, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_webgpu_3d_broadcast_b_m1_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 1, 8, 3],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_4d_batch_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_same_rank_broadcast_small",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test same ranks different broadcast small 1"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }
+        },
+        "b": { "dtype": "float32", "shape": [1, 2, 2, 1], "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_padding_broadcast_a_rank4_by_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test padding and broadcast A > B"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 1, 1, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 0.0, 0.0, 1.0, 2.0, -1.0, 3.0, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_padding_broadcast_b_rank3_by_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulFloatType / GenerateTestCases: test padding and broadcast B > A"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -1.0, 0.5, 2.0, -3.0, 4.0, -2.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 2, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 0.0, -1.0, 2.0, 0.5, 3.0, 2.0, -4.0, -2.0, 1.0, 1.5, -0.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fastmath_k_tail_k13",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulFloatTypeFastMathKTailDoesNotReadPaddedA",
+        "notes": "Diverges from the upstream test's inputs (inputs.b constant 1.0 -> cycle [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]); the expected output is recomputed by the CPU reference for the new inputs. With K=13 and every B row holding its column index, output lane j is (j + 1) times the sum of the 13 A elements, so a tail read past K changes every lane by a different amount."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 13], "data": { "kind": "linspace", "start": 1.0, "end": 13.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [13, 8],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fastmath_k_tail_k14",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulFloatTypeFastMathKTailDoesNotReadPaddedA",
+        "notes": "Diverges from the upstream test's inputs (inputs.b constant 1.0 -> cycle [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]); the expected output is recomputed by the CPU reference for the new inputs. With K=14 and every B row holding its column index, output lane j is (j + 1) times the sum of the 14 A elements, so a tail read past K changes every lane by a different amount."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 14], "data": { "kind": "linspace", "start": 1.0, "end": 14.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [14, 8],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fastmath_k_tail_k15",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulFloatTypeFastMathKTailDoesNotReadPaddedA",
+        "notes": "Diverges from the upstream test's inputs (inputs.b constant 1.0 -> cycle [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]); the expected output is recomputed by the CPU reference for the new inputs. With K=15 and every B row holding its column index, output lane j is (j + 1) times the sum of the 15 A elements, so a tail read past K changes every lane by a different amount."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 15], "data": { "kind": "linspace", "start": 1.0, "end": 15.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [15, 8],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fastmath_k_tail_k16",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulFloatTypeFastMathKTailDoesNotReadPaddedA",
+        "notes": "Diverges from the upstream test's inputs (inputs.b constant 1.0 -> cycle [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]); the expected output is recomputed by the CPU reference for the new inputs. Aligned control case with K=16; every B row holds its column index, so output lane j is (j + 1) times the sum of the real A elements."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 16], "data": { "kind": "linspace", "start": 1.0, "end": 16.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [16, 8],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fastmath_k_tail_k17",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulFloatTypeFastMathKTailDoesNotReadPaddedA",
+        "notes": "Diverges from the upstream test's inputs (inputs.b constant 1.0 -> cycle [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]); the expected output is recomputed by the CPU reference for the new inputs. With K=17 and every B row holding its column index, output lane j is (j + 1) times the sum of the 17 A elements, so a tail read past K changes every lane by a different amount."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 17], "data": { "kind": "linspace", "start": 1.0, "end": 17.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [17, 8],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float16_signed_rows",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMul_Float16"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float16", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "tolerance": 0.001,
+          "data": { "kind": "values", "values": [10.0, 10.0, 10.0, -10.0, -10.0, -10.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_int32_2d_basic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type / GenerateTestCases: test 2D"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "int32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }
+        },
+        "b": {
+          "dtype": "int32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [42, 48, 54, 114, 136, 158, 186, 224, 262] }
+        }
+      }
+    },
+    {
+      "name": "ort_uint32_left_1d_right_2d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulUint32Type / GenerateTestCases: test left 1D right 2D"
+      },
+      "inputs": {
+        "a": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [0, 1] } },
+        "b": { "dtype": "uint32", "shape": [2, 3], "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [3, 4, 5] } } }
+    },
+    {
+      "name": "ort_int32_zero_k_outputs_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulZeroKInt32Type",
+        "notes": "Valid int32 MatMul with K=0; output is the integer additive identity."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [4, 0], "data": { "kind": "values", "values": [] } },
+        "b": { "dtype": "int32", "shape": [0, 4], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [4, 4],
+          "data": { "kind": "values", "values": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+        }
+      }
+    },
+    {
+      "name": "int32_exact_above_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type",
+        "notes": "Exact int32 MatMul must preserve values above the float32 mantissa limit; converting the operands through float32 loses the low bit."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [16777217] } } }
+    },
+    {
+      "name": "int32_negative_exact_below_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type",
+        "notes": "Exact int32 MatMul must preserve negative values beyond the f32 mantissa limit; this catches float-accumulator integer paths."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [-16777217] } },
+        "b": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [-16777217] } } }
+    },
+    {
+      "name": "uint32_exact_above_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulUint32Type",
+        "notes": "Exact uint32 MatMul must not round integer-looking values through f32 when values exceed 2^24."
+      },
+      "inputs": {
+        "a": { "dtype": "uint32", "shape": [1, 1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "uint32", "shape": [1, 1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [1, 1], "data": { "kind": "values", "values": [16777217] } } }
+    },
+    {
+      "name": "ort_int32_rank1_rank1_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type / GenerateTestCases: test scalar output"
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 1, 2] } },
+        "b": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 1, 2] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [5] } } }
+    },
+    {
+      "name": "ort_uint32_3d_batch",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulUint32Type / GenerateTestCases: test 3D batch"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "uint32",
+          "shape": [3, 1, 3],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8] }
+        },
+        "b": {
+          "dtype": "uint32",
+          "shape": [3, 3, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_3d_batch_input_b" } }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [10, 13, 100, 112, 298, 319] }
+        }
+      }
+    },
+    {
+      "name": "ort_fastmath_int32_padding_broadcast_a_gt_b",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulInt32Type_FastMath / GenerateTestCases: test padding and broadcast A > B",
+        "notes": "ValueRange<int32_t> inputs exercise exact integer accumulation through a broadcasted batch MatMul shape."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [3, 1, 1, 6], "data": { "kind": "linspace", "start": 0, "end": 17 } },
+        "b": { "dtype": "int32", "shape": [2, 6, 7], "data": { "kind": "linspace", "start": 0, "end": 83 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [3, 2, 1, 7],
+          "data": {
+            "kind": "values",
+            "values": [385, 400, 415, 430, 445, 460, 475, 1015, 1030, 1045, 1060, 1075, 1090, 1105, 1015, 1066, 1117, 1168, 1219, 1270, 1321, 3157, 3208, 3259, 3310, 3361, 3412, 3463, 1645, 1732, 1819, 1906, 1993, 2080, 2167, 5299, 5386, 5473, 5560, 5647, 5734, 5821]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_fastmath_uint32_4d_batch",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_fastmath_test.cc",
+        "test": "MathOpTest.MatMulUint32Type_FastMath / GenerateTestCases: test 4D batch",
+        "notes": "ValueRange<uint32_t> inputs exercise exact integer accumulation through a 4D batched MatMul shape."
+      },
+      "inputs": {
+        "a": { "dtype": "uint32", "shape": [2, 2, 1, 20], "data": { "kind": "linspace", "start": 0, "end": 79 } },
+        "b": { "dtype": "uint32", "shape": [2, 2, 20, 2], "data": { "kind": "linspace", "start": 0, "end": 159 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 2, 1, 2],
+          "data": { "kind": "values", "values": [4940, 5130, 36140, 36730, 99340, 100330, 194540, 195930] }
+        }
+      }
+    },
+    {
+      "name": "rank4_broadcast_batches",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_rank1_rank1_scalar_output",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_1d_1d",
+        "test": "test_matmul_1d_1d"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.31721821427345276, 0.7863279581069946, -0.4664191007614136] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [-0.9444462656974792, -0.410049706697464, -0.017020413652062416] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_rank1_by_rank3",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_1d_3d",
+        "test": "test_matmul_1d_3d"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": {
+            "kind": "values",
+            "values": [0.8568305969238281, -0.6510255932807922, -1.034242868423462, 0.6815944910049438]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 4, 1],
+          "data": {
+            "kind": "values",
+            "values": [-0.8034096360206604, -0.6895498037338257, -0.4555324912071228, 0.01747915893793106, -0.3539939224720001, -1.3749512434005737, -0.6436184048652649, -2.223403215408325]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_rank4_by_rank1",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_4d_1d",
+        "test": "test_matmul_4d_1d"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 3],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_rank4_by_rank1_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.279924601316452, -0.09815038740634918, 0.9101788997650146] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_broadcast_rank4",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_bcast",
+        "test": "test_matmul_bcast"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 1, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_broadcast_rank4_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_broadcast_rank4_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_matmul_2d",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_2d" }
+    },
+    {
+      "name": "onnx_backend_matmul_3d",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 4, 3],
+          "data": {
+            "kind": "values",
+            "values": [-1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902, -0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 3] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_3d" }
+    },
+    {
+      "name": "onnx_backend_matmul_4d",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.1394007205963135, -1.234825849533081, 0.4023416340351105, -0.6848101019859314, -0.8707971572875977, -0.5788496732711792, -0.3115525245666504, 0.056165341287851334, -1.1651498079299927, 0.9008265137672424, 0.4656624495983124, -1.5362436771392822, 1.4882521629333496, 1.895889163017273, 1.1787796020507812, -0.1799248307943344, -1.0707526206970215, 1.0544517040252686, -0.4031769335269928, 1.222445011138916, 0.2082749754190445, 0.9766390323638916, 0.3563663959503174, 0.7065731883049011]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.01050002034753561, 1.7858705520629883, 0.12691208720207214, 0.4019893705844879, 1.8831506967544556, -1.3477590084075928, -1.2704850435256958, 0.969396710395813, -1.1731233596801758, 1.9436211585998535, -0.4136189818382263, -0.747454822063446, 1.922942042350769, 1.4805147647857666, 1.8675589561462402, 0.9060446619987488, -0.8612256646156311, 1.910064935684204, -0.26800337433815, 0.8024563789367676, 0.9472519755363464, -0.15501008927822113, 0.6140793561935425, 0.922206699848175]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 3, 3] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_4d" }
+    },
+    {
+      "name": "onnx_backend_matmul_1d_1d",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_1d_1d" },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.31721821427345276, 0.7863279581069946, -0.4664191007614136] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [-0.9444462656974792, -0.410049706697464, -0.017020413652062416] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_matmul_1d_3d",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_1d_3d" },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": {
+            "kind": "values",
+            "values": [0.8568305969238281, -0.6510255932807922, -1.034242868423462, 0.6815944910049438]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 4, 1],
+          "data": {
+            "kind": "values",
+            "values": [-0.8034096360206604, -0.6895498037338257, -0.4555324912071228, 0.01747915893793106, -0.3539939224720001, -1.3749512434005737, -0.6436184048652649, -2.223403215408325]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_matmul_4d_1d",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_4d_1d" },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 3],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_rank4_by_rank1_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.279924601316452, -0.09815038740634918, 0.9101788997650146] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 4], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_matmul_bcast",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_matmul_bcast" },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 1, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_broadcast_rank4_input_a" } }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_broadcast_rank4_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2, 3, 2], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "matrix_subgroup_small_m",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "batched3_subgroup_aligned",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 128, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_batched_split_k_shape_batch2_m4_k768_n64",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulBatchedSplitK",
+        "notes": "Transcribed from onnxruntime's MathOpTest.MatMulBatchedSplitK (matmul_test.cc), with deterministic generated inputs replacing the original's large inline arrays. Batch=2, M=4, K=768, N=64, and offset operands keep outputs proportional to the reduction length, so a dropped, duplicated, or incorrectly weighted partial cannot hide behind zero-mean cancellation."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4, 768],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.02, "offset": 0.05 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 768, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.02, "offset": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4, 64], "tolerance": 0.0002, "relTolerance": 0.0002 } }
+    },
+    {
+      "name": "batched3_subgroup_aligned_m_tail",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 130, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 32, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 130, 128], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "batched4_subgroup_aligned",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 128, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "gemv_matrix_vector_tail_k1026_cooperative",
+      "provenance": {
+        "notes": "A matrix-vector product with M=1024 rows and K=1026 checks that the two elements past the nearest 32-element reduction boundary are included in the result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1024, 1026],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1026],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1024], "tolerance": 0.00002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_matrix_vector_k1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256], "tolerance": 0.00001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_matrix_vector_small_k_multiple_of_4",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [6, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float32", "shape": [8], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "gemv_vector_matrix_k1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256], "tolerance": 0.00001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_rank2_m1_decode_row",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 256], "tolerance": 0.00001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_vector_matrix_n132_lane_tail",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [64], "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 132],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [132], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "dispatch_cliff_mtile_rows_524296",
+      "provenance": {
+        "notes": "M=524,296 produces 65,537 eight-row tiles and a folded y=65,535, z=2 dispatch. Distinct row data makes incorrect y/z tile reconstruction observable."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [524296, 2],
+          "data": { "kind": "cycle", "values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7] }
+        },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "cycle", "values": [1.0, -1.0, 0.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [524296, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f16_subgroup_matrix",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.21 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [128, 64], "tolerance": 0.02, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "matrix_subgroup_partial_m_edge_m58x32x64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [58, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [58, 64], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f16_batched3_subgroup_matrix",
+      "provenance": {
+        "notes": "Offset operands keep each batched K=32 result near K*aOffset*bOffset, while differing per-batch data makes batch-stride errors observable. The scale also exposes errors in the 8x8x8 accumulation chain."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.07, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 128, 64], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f32_batched3_prefill_b4_m128_k128_n128",
+      "provenance": {
+        "notes": "A compact rank-3 batch with M>=128, K divisible by 32, and N divisible by 64 exercises subgroup-matrix MatMul and the batched tiled reduced-tier path."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.071, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.047, "cosStep": 0.083, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 128, 128], "tolerance": 0.0002, "relTolerance": 0.0002 } }
+    },
+    {
+      "name": "f16_batched3_scalar_fallback_small_m",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 16, 24],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 24, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.27 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 16, 8], "tolerance": 0.02, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "f16_decode_m1_odd_n_scalar_fallback",
+      "provenance": {
+        "notes": "Offset operands keep each 1x64 by 64x50 result near K*aOffset*bOffset. The odd N dimension exercises the final per-column tail while making reduction-count and tail errors observable."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 50],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 50], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f32_decode_m1_odd_vocab_tail4",
+      "provenance": {
+        "notes": "A realistic odd vocabulary row stride cannot use the packed vec4 GEMV binding. N=131 exercises 32 complete four-column groups plus the guarded three-column tail in rank2_m1_vector_matrix_tail4."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 131],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 131], "tolerance": 0.00002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "tiled_reg_f32_512x64x1024_register_blocked",
+      "provenance": { "notes": "A rank-two matrix product with K=64 checks four-aligned output columns." },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "tiled_reg_f32_splitk_m128_k1024_n256",
+      "provenance": {
+        "notes": "Four output tiles over K=1,024 take eight slices each, reaching the 32-workgroup floor for split-K and exercising the float32 partial combine."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 256], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "band_vec4_splitk_f32_m4_k4096_n256",
+      "provenance": { "notes": "A K=4096 matrix product with 256 output columns checks full float32 reduction." },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 256], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "band_vec4_splitk_f16_m16_k2048_n512",
+      "provenance": {
+        "notes": "A K=2048 float16 matrix product checks float32 accumulation before rounding once to float16 output."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [16, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16, 512], "tolerance": 0.002 } }
+    },
+    {
+      "name": "tiled_reg_f32_512x64x1000_ragged_lowered_floor",
+      "provenance": {
+        "notes": "A 512x64 by 64x1000 product uses complete 128-row tiles and a final 40-column vector-store tail. Distinct generated inputs make column-tail errors observable."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1000],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1000], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_prefill_tiled_reg_m512_k256_n1024",
+      "provenance": {
+        "notes": "Compact float16 rank-two matrix product with float32 accumulation. Offset operands keep each K=256 dot product near K*aOffset*bOffset instead of cancelling toward zero, so a dropped reduction tile, an incorrect register-block drain, or an output-scale error stays observable at float16 tolerance."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [512, 1024], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "int32_exact_above_float24_m2_tiled_path",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type",
+        "notes": "A two-row int32 matrix product with values above 2^24 and an identity B matrix must reproduce A exactly."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "int32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, -16777217, 33554433] }
+        },
+        "b": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 0, 1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, -16777217, 33554433] }
+        }
+      }
+    },
+    {
+      "name": "uint32_exact_above_float24_m2_tiled_path",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulUint32Type",
+        "notes": "An M=2 uint32 matrix product with values above 2^24 and an identity B matrix must preserve every integer exactly."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "uint32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, 50331649, 33554433] }
+        },
+        "b": { "dtype": "uint32", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 0, 1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, 50331649, 33554433] }
+        }
+      }
+    },
+    {
+      "name": "int32_exact_above_float24_batched3_tiled_path",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type",
+        "notes": "A rank-3 int32 matrix product with batch size one, M=2, values above 2^24, and an identity B must preserve every integer exactly."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "int32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, -33554433, 20000001] }
+        },
+        "b": { "dtype": "int32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [1, 0, 0, 1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [16777217, 16777219, -33554433, 20000001] }
+        }
+      }
+    },
+    {
+      "name": "empty_k_rank1_dot_zero_scalar",
+      "provenance": {
+        "notes": "K=0 rank1xrank1 dot: the single-lane dot kernel's K-loop runs zero times, so the scalar-output dot is the additive identity 0."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } },
+        "b": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] }, "tolerance": 0 }
+      }
+    },
+    {
+      "name": "int32_m1_n_not_mult4_scalar_exact_above_float24",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+        "test": "MathOpTest.MatMulInt32Type",
+        "notes": "a=16,777,217 (2^24+1) exceeds float32's exact-integer range; M=1, K=1, N=3 int32 operands must reproduce this value exactly in every output column rather than rounding through float32."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1, 1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "int32", "shape": [1, 3], "data": { "kind": "values", "values": [1, 1, 1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [1, 3],
+          "data": { "kind": "values", "values": [16777217, 16777217, 16777217] }
+        }
+      }
+    },
+    {
+      "name": "batched_tiled_reg_b32_m128_k64_n128",
+      "provenance": { "notes": "Rank-3 batched matrix multiplication with 128 output tile groups." },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 128, 128], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "batched4_broadcast_tiled_reg_b2h16_m64_k32_n64",
+      "provenance": {
+        "notes": "Compact rank-four broadcast matrix product. B broadcasts across batch while retaining independent heads; tiled batch-offset folding must reuse the correct B head for both output batches."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 16, 64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 16, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 16, 64, 64], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "batched4_broadcast_a_tiled_reg_b2h16_m64_k32_n64",
+      "provenance": {
+        "notes": "An A batch axis of extent one gives the tiled batch-offset fold a zero A stride against a varying B stride, exercising A-side broadcasting independently."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 16, 64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 16, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 16, 64, 64], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "batched4_by_rank2_shared_weight_tiled_candidate_tails",
+      "provenance": {
+        "notes": "A rank-2 weight shared across a 2x4 batch multiplies M=65, K=33, N=66, each just past a power-of-two boundary; distinct A batches verify B stays unbatched while output offsets advance correctly per batch."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4, 65, 33],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [33, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4, 65, 66], "tolerance": 0.0002, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "rank3_by_rank2_shared_weight_fast_paths",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 128, 32],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "sinStep": 0.031, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 128, 64], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "folded_rows_b256x1x512_by_512x1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [256, 1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256, 1, 1024], "tolerance": 0.005 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/matmul.cc",
+        "test": "batched [B,1,K] / [1,M,K] by [K,N] folds to a single 2D GEMM",
+        "notes": "A stack of single-row (or single-batch) matrices times a shared rank-2 weight is contiguous as one (rows, K) x (K, N) product; the fold routes it onto the 2D register-blocked and subgroup-matrix kernels instead of per-batch tiles."
+      }
+    },
+    {
+      "name": "folded_rows_1x256x512_by_512x1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 256, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 256, 1024], "tolerance": 0.005 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/matmul.cc",
+        "test": "batched [B,1,K] / [1,M,K] by [K,N] folds to a single 2D GEMM",
+        "notes": "A stack of single-row (or single-batch) matrices times a shared rank-2 weight is contiguous as one (rows, K) x (K, N) product; the fold routes it onto the 2D register-blocked and subgroup-matrix kernels instead of per-batch tiles."
+      }
+    },
+    {
+      "name": "folded_rows_f16_b64x1x256_by_256x256",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/matmul.cc",
+        "test": "batched [B,1,K] / [1,M,K] by [K,N] folds to a single 2D GEMM",
+        "notes": "Diverges from the upstream test's inputs (inputs.b fillFloat32 -> fillFloat32; inputs.a fillFloat32 -> fillFloat32); the expected output is recomputed by the CPU reference for the new inputs. A stack of single-row (or single-batch) matrices times a shared rank-2 weight is contiguous as one (rows, K) x (K, N) product; the fold routes it onto the 2D register-blocked and subgroup-matrix kernels instead of per-batch tiles. Offset operands keep outputs near K*aOffset*bOffset, making a folded-row miscount or dropped reduction tile observable."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 1, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 1, 256], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "empty_rank3_broadcast_zero_with_one",
+      "provenance": {
+        "notes": "ONNX/NumPy broadcasting preserves a zero batch dimension when paired with one; it is not the numeric maximum of the two dimensions."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [0, 2, 3], "data": { "kind": "values", "values": [] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [0, 2, 4],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [] }
+        }
+      }
+    },
+    {
+      "name": "empty_rank4_broadcast_zero_with_one",
+      "provenance": { "notes": "Pins zero-with-one broadcasting in a non-leading batch dimension of rank-4 MatMul." },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 0, 2, 3], "data": { "kind": "values", "values": [] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 0, 2, 4],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [] }
+        }
+      }
+    },
+    {
+      "name": "int32_dot_preserves_value_above_f32_exact_range",
+      "provenance": {
+        "notes": "A value immediately above 2^24 catches integer dot products that incorrectly widen operands through float32."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [] } }
+    },
+    {
+      "name": "uint32_vector_matrix_preserves_values_above_f32_exact_range",
+      "provenance": { "notes": "Pins native uint32 accumulation for the rank-1 by rank-2 fallback." },
+      "inputs": {
+        "a": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "uint32", "shape": [1, 2], "data": { "kind": "values", "values": [1, 2] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2] } }
+    },
+    {
+      "name": "int32_matrix_vector_preserves_values_above_f32_exact_range",
+      "provenance": { "notes": "Pins native int32 accumulation for the rank-2 by rank-1 fallback, including sign." },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [2, 1], "data": { "kind": "values", "values": [16777217, -16777217] } },
+        "b": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [2] } }
+    },
+    {
+      "name": "uint32_batched_by_vector_preserves_values_above_f32_exact_range",
+      "provenance": { "notes": "Pins native uint32 accumulation when a batched matrix is multiplied by one vector." },
+      "inputs": {
+        "a": { "dtype": "uint32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [16777217, 16777219] } },
+        "b": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 1] } }
+    },
+    {
+      "name": "int32_vector_by_batched_preserves_values_above_f32_exact_range",
+      "provenance": { "notes": "Pins native int32 accumulation when one vector is multiplied by batched matrices." },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [16777217] } },
+        "b": { "dtype": "int32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [1, -1] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [2, 1] } }
+    },
+    {
+      "name": "int32_rank2_tiled_reg_m1024_k64_n512",
+      "provenance": {
+        "notes": "int32 on the register-blocked tile checks native integer accumulation and its integer ALPHA constant. Products exceed f32's exact 24-bit range, so a floating-point accumulator would produce a detectable error."
+      },
+      "inputs": {
+        "a": { "dtype": "int32", "shape": [1024, 64], "data": { "kind": "cycle", "values": [3, -2, 5, -1, 4, -3] } },
+        "b": { "dtype": "int32", "shape": [64, 512], "data": { "kind": "cycle", "values": [3, -2, 5, -1, 4, -3] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [1024, 512], "tolerance": 0, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_matrix_vector_k256_f16",
+      "provenance": {
+        "notes": "A float16 matrix-times-vector contraction with K divisible by four exercises the subgroup matrix-vector path."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float16", "shape": [256], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64], "tolerance": 0.05, "relTolerance": 0.01 } }
+    },
+    {
+      "name": "batched_by_vector_b3_m4_k8_f16",
+      "provenance": {
+        "notes": "float16 on the batched-matrix-by-vector path checks batched offsets and half-precision loads and stores."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [3, 4, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": { "dtype": "float16", "shape": [8], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 4], "tolerance": 0.01, "relTolerance": 0.01 } }
+    },
+    {
+      "name": "f16_subgroup_matrix_splitk_m8_k1024_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1024, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 128], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_subgroup_matrix_splitk_m16_k1024_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 64], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f16_subgroup_matrix_splitk_partial_m10_k2048_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [10, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.031 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [10, 64], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_subgroup_matrix_splitk_partial_m40_k1024_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [40, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.041, "cosStep": 0.089, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [40, 128], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f16_subgroup_matrix_band_m4_k256_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [256, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 128], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_subgroup_matrix_band_m2_k64_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 64], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_folded_sgmat_splitk_1x8_k1024_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 8, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1024, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 8, 128], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_folded_sgmat_splitk_16x1_k1024_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 1, 64], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f16_batched_sgmat_band_b4_m16_k64_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 16, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 16, 128], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_batched_by_rank2_sgmat_band_b3_m10_k32_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 10, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 10, 64], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_rank3_by_rank2_band_fold_b2_m2_k64_n128",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 2, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2, 128], "tolerance": 0.001 } },
+      "provenance": {
+        "notes": "Rank-3 A against a shared rank-2 weight folds to a four-row band: the vec4 band route reads B once for every folded row where no subgroup-matrix tile is available."
+      }
+    },
+    {
+      "name": "f32_rank2_band_m3_k37_n8",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 37],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [37, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Three-row band with a K that is not a multiple of the slice count: the band route walks the reduction tail per slice and drains the rows through one partials array."
+      }
+    },
+    {
+      "name": "f16_rank2_band_m8_k100_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 100],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [100, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 256], "tolerance": 0.005 } },
+      "provenance": {
+        "notes": "Eight-row f16 band: eight accumulators per lane with a K that is not a multiple of the slice count."
+      }
+    },
+    {
+      "name": "f32_rank3_by_rank2_fold_tiled_b4_m20_k70_n96",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 20, 70],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [70, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 20, 96], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Batched rows too many for the band and too few for the register tile fold onto the 32x32 tile with partial M, N and K tiles."
+      }
+    },
+    {
+      "name": "f32_rank4_by_rank2_fold_tiled_reg_b2x2_m160_k72_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 160, 72],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [72, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 160, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Rank-4 A against a rank-2 weight folds 640 rows onto the register tile; K is not a multiple of 32 so the vec4 no-transpose fold stays out."
+      }
+    },
+    {
+      "name": "f16_rank3_by_rank2_fold_notrans_vec4_b2_m64_k64_n4096",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 64, 4096], "tolerance": 0.005 } },
+      "provenance": {
+        "notes": "f16 rank-3 rows fold onto the vec4 no-transpose register tile once the folded row count reaches its 128-row block and the block count clears the floor."
+      }
+    },
+    {
+      "name": "f32_rank2_band_m16_k70_n64",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 70],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [70, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "A compact M=16, K=70, N=64 float32 matrix product checks a reduction length that is not a multiple of 32."
+      }
+    },
+    {
+      "name": "f16_rank2_vec4_register_tile_64row_block_m256_k64_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [256, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [256, 512], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "f16_batched3_vec4_register_tile_b8_m128_k64_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 128, 256], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "f32_batched4_vec4_register_tile_b2x2_m128_k32_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2, 32, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 128, 256], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_prefill_tiled_reg_128row_m512_k128_n2048",
+      "provenance": {
+        "notes": "A float16 matrix product with 128 output tile groups checks complete row and column coverage."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [512, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.027, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [512, 2048], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "f16_batched3_small_tile_b16_m128_k64_n256",
+      "provenance": {
+        "notes": "A batched float16 matrix product with 16 independent batches of M=128, K=64, N=256 checks batch independence at a fully tile-aligned shape."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [16, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [16, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16, 128, 256], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "gemv_rank3_leading_batch_m1_decode_row_f32",
+      "provenance": {
+        "notes": "A decode projection as an ONNX graph spells it: the [batch, sequence, hidden] activation reaches the matmul at rank 3 with one row, never reshaped down. The leading axes fold to a single row, so this is the same arithmetic as the rank-2 spelling."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 256], "tolerance": 0.00001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "gemv_rank3_leading_batch_m1_decode_row_f16",
+      "provenance": {
+        "notes": "A decode projection as an ONNX graph spells it: the [batch, sequence, hidden] activation reaches the matmul at rank 3 with one row, never reshaped down. The leading axes fold to a single row, so this is the same arithmetic as the rank-2 spelling."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 1, 256], "tolerance": 0.005, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "band_split_matrix_float32_m4_k1024_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 1024], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=4 rows against K=1024, N=1024 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m5_k1024_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [5, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 1024], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=5 rows against K=1024, N=1024 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m4_k2048_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=4 rows against K=2048, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m5_k2048_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [5, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=5 rows against K=2048, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m5_k4096_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [5, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 256], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=5 rows against K=4096, N=256 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4096_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m9_k4096_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [9, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [9, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=9 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m7_k4128_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [7, 4128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=7 rows against K=4128, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4064_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4064],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4064, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4064, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m4_k4097_n516",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 4097],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4097, 516],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 516], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=4 rows against K=4097, N=516 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m4_k8192_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 8192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8192, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 1024], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=4 rows against K=8192, N=1024 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k1024_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 1024], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=4 rows against K=1024, N=1024 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m5_k1024_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [5, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5, 1024], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=5 rows against K=1024, N=1024 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k2048_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=4 rows against K=2048, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m5_k2048_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [5, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=5 rows against K=2048, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k4096_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 256], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=4 rows against K=4096, N=256 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m5_k4096_n256",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [5, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5, 256], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=5 rows against K=4096, N=256 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m8_k4096_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m9_k4096_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [9, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [9, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=9 rows against K=4096, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m7_k4128_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [7, 4128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=7 rows against K=4128, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m8_k4064_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4064],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4064, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4064, N=512 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k4097_n516",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 4097],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4097, 516],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 516], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=4 rows against K=4097, N=516 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k8192_n1024",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 8192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8192, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 1024], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "M=4 rows against K=8192, N=1024 check float16 matrix multiplication at a narrow row count relative to a deep reduction."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4096_n512_padding8",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      },
+      "tunables": { "BAND_SPLIT_MATRIX_MIN_ROW_PADDING": 8 }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4096_n512_target512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      },
+      "tunables": { "BAND_SPLIT_TARGET_WORKGROUPS": 512 }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4096_n512_a_budget4096",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      },
+      "tunables": { "BAND_VEC4_WIDE_MAX_A_BYTES": 4096 }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4096_n512_a_budget8192",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "M=8 rows against K=4096, N=512 check float32 matrix multiplication at a narrow row count relative to a deep reduction."
+      },
+      "tunables": { "BAND_VEC4_WIDE_MAX_A_BYTES": 8192 }
+    },
+    {
+      "name": "band_split_matrix_float32_m4_k2080_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 2080],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2080, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "K is aligned to the matrix tile but cannot use matrix split-K. The split band covers every reduction element, including its per-split tail, at the row-scaled dispatch floor."
+      }
+    },
+    {
+      "name": "band_split_matrix_float32_m8_k4128_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8, 4128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "K is aligned to the matrix tile but cannot use matrix split-K. The split band covers every reduction element, including its per-split tail, at the row-scaled dispatch floor."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m4_k2080_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 2080],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2080, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "K is aligned to the matrix tile but cannot use matrix split-K. The split band covers every reduction element, including its per-split tail, at the row-scaled dispatch floor."
+      }
+    },
+    {
+      "name": "band_split_matrix_float16_m8_k4128_n512",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 512], "tolerance": 0.002 } },
+      "provenance": {
+        "notes": "K is aligned to the matrix tile but cannot use matrix split-K. The split band covers every reduction element, including its per-split tail, at the row-scaled dispatch floor."
+      }
+    },
+    {
+      "name": "f16_tail_prefetch_k0_n33",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 0],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [0, 33],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 33], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k1_n33",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1, 33],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 33], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k3_n34",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [3, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 34], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k4_n35",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 35],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 35], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k5_n65",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [5, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 65], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k6_n66",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [6, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 66], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k7_n67",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [7, 67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 67], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k8_n65",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 65], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_k9_n67_request1",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 67], "tolerance": 0.01, "relTolerance": 0.001 } },
+      "tunables": { "TAIL_K_PREFETCH": 1 }
+    },
+    {
+      "name": "f16_tail_prefetch_k9_n67_request2",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 67], "tolerance": 0.01, "relTolerance": 0.001 } },
+      "tunables": { "TAIL_K_PREFETCH": 2 }
+    },
+    {
+      "name": "f16_tail_prefetch_k9_n67_request8",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 67], "tolerance": 0.01, "relTolerance": 0.001 } },
+      "tunables": { "TAIL_K_PREFETCH": 8 }
+    },
+    {
+      "name": "f16_tail_prefetch_k9_n67_request17",
+      "provenance": {
+        "notes": "Exercises ordered f32 accumulation, bounded K prefetch, and complete or partial prefetch groups at a scalar-storage output stride."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.18, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 67], "tolerance": 0.01, "relTolerance": 0.001 } },
+      "tunables": { "TAIL_K_PREFETCH": 17 }
+    },
+    {
+      "name": "f16_tail_prefetch_last_k_NaN",
+      "provenance": {
+        "notes": "The final partial prefetch group must preserve a nonfinite operand in the final output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "values", "values": [1.0, -0.5, 0.25, 0.0, 1.0, 0.5, -1.0, 0.25, 1.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 5],
+          "data": {
+            "kind": "values",
+            "values": [-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, "NaN"]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 5],
+          "tolerance": 0.01,
+          "relTolerance": 0.001,
+          "allowNaN": true,
+          "data": { "kind": "values", "values": [0.4375, -0.6875, -0.9375, -1.1875, "NaN"] }
+        }
+      }
+    },
+    {
+      "name": "f16_tail_prefetch_last_k_Infinity",
+      "provenance": {
+        "notes": "The final partial prefetch group must preserve a nonfinite operand in the final output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "values", "values": [1.0, -0.5, 0.25, 0.0, 1.0, 0.5, -1.0, 0.25, 1.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 5],
+          "data": {
+            "kind": "values",
+            "values": [-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 5], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_tail_prefetch_last_k_negative_Infinity",
+      "provenance": {
+        "notes": "The final partial prefetch group must preserve a nonfinite operand in the final output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 9],
+          "data": { "kind": "values", "values": [1.0, -0.5, 0.25, 0.0, 1.0, 0.5, -1.0, 0.25, 1.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [9, 5],
+          "data": {
+            "kind": "values",
+            "values": [-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, -0.75, -0.5, "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 5], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_sgmat_single_row_trailing_tile_m33_k32_n64",
+      "provenance": {
+        "notes": "M=33 is one row past a 32-row boundary (K=32, N=64, float16); checks that the single extra row is computed correctly."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.21 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [33, 64], "tolerance": 0.02, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "f32_sgmat_single_row_trailing_tile_m65_k64_n128",
+      "provenance": {
+        "notes": "Two whole 32-row tiles plus a one-row tail, so a trailing-tile bug cannot hide behind m_base == 0."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 128], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "ort_sgmat_odd_n15_m32_k64",
+      "provenance": {
+        "notes": "Transcribed from ORT MathOpTest.MatMulSubgroupMatrix, sub-case \"OddN15 (N=15)\". A is ((i%7)-3)*0.1 and B is ((i%5)-2)*0.1 over the flat tensors, exactly as RunSubgroupMatrixMatMulTest fills them (matmul_test.cc); tolerance matches its SetOutputTolerance(0.02). The partial final column tile must preserve every output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 64],
+          "data": { "kind": "cycle", "values": [-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 15],
+          "data": { "kind": "cycle", "values": [-0.2, -0.1, 0.0, 0.1, 0.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 15], "tolerance": 0.0028, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "ort_sgmat_odd_n33_m16_k64",
+      "provenance": {
+        "notes": "Transcribed from ORT MathOpTest.MatMulSubgroupMatrix, sub-case \"OddN33 (N=33)\". A is ((i%7)-3)*0.1 and B is ((i%5)-2)*0.1 over the flat tensors, exactly as RunSubgroupMatrixMatMulTest fills them (matmul_test.cc); tolerance matches its SetOutputTolerance(0.02). The partial final column tile must preserve every output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [16, 64],
+          "data": { "kind": "cycle", "values": [-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 33],
+          "data": { "kind": "cycle", "values": [-0.2, -0.1, 0.0, 0.1, 0.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16, 33], "tolerance": 0.0049, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "ort_sgmat_odd_n63_batched_a_b2_m32_k64",
+      "provenance": {
+        "notes": "Transcribed from ORT MathOpTest.MatMulSubgroupMatrix, sub-case \"OddN BatchedA (2*32 -> M=64,N=63)\". A is ((i%7)-3)*0.1 and B is ((i%5)-2)*0.1 over the flat tensors, exactly as RunSubgroupMatrixMatMulTest fills them (matmul_test.cc); tolerance matches its SetOutputTolerance(0.02). The partial final column tile must preserve every output column."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 32, 64],
+          "data": { "kind": "cycle", "values": [-0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 63],
+          "data": { "kind": "cycle", "values": [-0.2, -0.1, 0.0, 0.1, 0.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 32, 63], "tolerance": 0.0049, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "sgmat_n_tail_f32_m64_k64_n65",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. N = 64 + 1 leaves a single live column in the trailing tile, the narrowest tail the guard has to keep."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.041, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 65], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_n_tail_f16_m64_k64_n96",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. N = 64 + 32 splits the trailing tile exactly down the middle of its two 32-column subtiles, so only one subgroup's stores survive."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.6 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.013, "scale": 0.6 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.005, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "sgmat_n_tail_f32_m64_k64_n127",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. N = 64 + 63 leaves one dead column in the trailing tile, the widest tail the guard has to drop."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.043, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 127],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.019, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 127], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_n_padding_ratio_admits_f32_m64_k64_n32",
+      "provenance": {
+        "notes": "M=64, K=64, N=32 float32 operands check the matrix product at a power-of-two column count; its N=31 sibling is one column narrower."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.017, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 32], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_n_padding_ratio_rejects_f32_m64_k64_n31",
+      "provenance": {
+        "notes": "M=64, K=64, N=31 float32 operands check the matrix product one column narrower than its N=32 sibling."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 31],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.017, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 31], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_n_tail_splitk_f32_m16_k1024_n96",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. A split-K launch writes float32 partials through the same guarded store, so an unguarded column would corrupt the next split's partial block rather than the output."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 96], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "sgmat_n_tail_folded_rows_f32_1x64_k64_n65",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. A rank-3 A with a unit leading axis folds to one 2D product, so the fold and the column tail are exercised together."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.041, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64, 65], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_n_tail_folded_rows_splitk_f32_16x1_k1024_n96",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. The folded-row split-K route writes float32 partials for a rank-3 A with a unit row axis."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 1, 96], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "sgmat_n_tail_batched3_f16_b2_m64_k64_n65",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. Two dense rank-3 batches make the per-batch output stride visible: a store that ignored the column guard would land in the next batch's first row."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.6 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2, 64, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.013, "scale": 0.6 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 64, 65], "tolerance": 0.005, "relTolerance": 0.02 } }
+    },
+    {
+      "name": "sgmat_n_tail_batched4_f32_b2x2_m32_k64_n65",
+      "provenance": {
+        "notes": "The 64-wide subgroup-matrix column tile computes ceilDiv(N, 64) * 64 columns: its trailing tile reads column N - 1 in place of every column at or past N and drops those stores, so a wrong clamp or a missing store guard shows up as a wrong last column or a write past the output. Two rank-4 batch axes exercise the broadcast-offset decomposition alongside the column tail."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2, 32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2, 64, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.041, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 32, 65], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f32_rank2_row_tail_m1000_k64_n1024",
+      "provenance": {
+        "notes": "M=1000 leaves 8 rows past a 32-row boundary, with K=64 and N=1024; the extra rows must be included correctly in the result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1000, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.061, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.043, "cosStep": 0.079, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1000, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f32_rank2_splitk_row_tail_m129_k1024_n256",
+      "provenance": {
+        "notes": "M=129 leaves one row beyond a 128-row group; the final row must receive the complete K=1024 reduction and be stored at the correct output offset."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [129, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.071, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.047, "cosStep": 0.083, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [129, 256], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f32_rank2_m64_row_tail_m65_k64_n2048",
+      "provenance": {
+        "notes": "M=65 is one row past a 64-row boundary (K=64, N=2048); the single extra row must be included correctly in the result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.067, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.053, "cosStep": 0.089, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 2048], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_rank2_small_tile_row_tail_m600_k64_n1024",
+      "provenance": {
+        "notes": "M=600 leaves 24 rows past a 32-row boundary and 88 past a 128-row boundary (K=64, N=1024, float16). Offset operands keep each dot product away from zero, so a dropped or duplicated row stays observable at float16 tolerance."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [600, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [600, 1024], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f16_rank2_m64_row_tail_m127_k64_n2048",
+      "provenance": {
+        "notes": "M=127 is one row short of two 64-row blocks (K=64, N=2048, float16); the final partial block must be included correctly in the result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [127, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [127, 2048], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f32_folded_rows_row_tail_1x300_k64_n1024",
+      "provenance": {
+        "notes": "A [1,300,64] left operand checks all 300 output rows, including the partial final row group."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 300, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.041, "cosStep": 0.063, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.027, "cosStep": 0.077, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 300, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_folded_rows_row_tail_1x600_k64_n1024",
+      "provenance": {
+        "notes": "A rank-3 [1,600,64] float16 input folds to 600 rows, leaving 88 past a 128-row boundary (K=64, N=1024); the extra rows must be included correctly in the result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 600, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.027, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.033, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 600, 1024], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "f32_batched3_by_rank2_row_tail_b3_m70_k64_n512",
+      "provenance": {
+        "notes": "Three 70-row matrices fold to 210 output rows; the final rows of each batch must retain their distinct offsets."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 70, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.033, "cosStep": 0.059, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.049, "cosStep": 0.081, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 70, 512], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f32_batched_notrans_row_tail_b2_m200_k64_n256",
+      "provenance": {
+        "notes": "Two batches of M=200 rows each leave 8 rows past a 64-row boundary (K=64, N=256, float32); each batch's extra rows must land at their own output offset."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.039, "cosStep": 0.057, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.051, "cosStep": 0.087, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 200, 256], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f16_batched_notrans_row_tail_b4_m200_k64_n512",
+      "provenance": {
+        "notes": "Four batches of M=200 rows each leave 72 rows past a 128-row boundary (K=64, N=512, float16); each batch's extra rows must land at their own output offset."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.021, "cosStep": 0.029, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 64, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.015, "cosStep": 0.035, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 200, 512], "tolerance": 0.01, "relTolerance": 0.001 } }
+    }
+  ]
+}

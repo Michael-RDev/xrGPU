@@ -1,0 +1,69 @@
+{
+  "domain": "com.microsoft",
+  "name": "GatedAdd",
+  "sinceVersion": 1,
+  "inputs": { "X": { "dtype": "T" }, "Y": { "dtype": "T" }, "gate": { "dtype": "T" } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.X", "shape": "shapes.X" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "channels": "dim(shapes.X, ranks.X - 1)",
+    "gateContract": "ranks.X >= 1 and channels > 0 and ranks.Y == ranks.X and ranks.gate == ranks.X and sameShape(shapes.Y, shapes.X) and sameShape(shapes.output, shapes.X) and dim(shapes.gate, ranks.gate - 1) == 1 and sameShape(prefix(shapes.gate, ranks.gate - 1), prefix(shapes.X, ranks.X - 1)) and f16Ok(dtypes.T)",
+    "vec4Rows": "channels % 4 == 0 and numel(shapes.X) % 4 == 0",
+    "scalar": "dtypes.T",
+    "hidden": "channels if channels > 0 else 1"
+  },
+  "when": ["gateContract"],
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 30,
+      "when": ["vec4Rows", "numel(shapes.X) > 0"],
+      "derive": { "vec4": true, "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedAdd.Vec4",
+          "shader": "gated-add.wgsl.jinja",
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$vectorScalar" },
+            { "arg": "Y", "name": "y", "elementType": "$vectorScalar" },
+            "gate",
+            { "arg": "output", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "priority": 0,
+      "derive": { "vec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedAdd.Scalar",
+          "shader": "gated-add.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$scalar" },
+            { "arg": "Y", "name": "y", "elementType": "$scalar" },
+            "gate",
+            "output",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

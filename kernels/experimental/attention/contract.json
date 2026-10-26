@@ -1,0 +1,32 @@
+{
+  "contract_version": 1,
+  "operation": "attention",
+  "status": "prototype",
+  "target": "Quest 3 / Adreno 740",
+  "dtype": "float32",
+  "layout": "contiguous [batch, heads, sequence, channels] storage buffers",
+  "semantics": "softmax(Q @ K.T / sqrt(head_dim) + optional additive mask) @ V",
+  "limits": {
+    "query_length": [1, 256],
+    "key_length": [1, 256],
+    "head_dim": [1, 128],
+    "value_dim": [1, 128],
+    "max_total_storage_bytes": 67108864,
+    "input_absolute_max": 1000,
+    "mask_absolute_max": 1000000
+  },
+  "mask": "Optional finite FP32 [1 or batch, 1, 1, key_length], broadcast across heads and queries. Finite additive masks, including -10000, are supported; boolean masks, infinities, causal mode and dropout are outside this prototype contract.",
+  "bindings": {"0": "output", "1": "query", "2": "key", "3": "value", "4": "mask (one float dummy buffer if absent)"},
+  "push_constants": "8 uint32, in order: query_length, key_length, head_dim, value_dim, heads, batches, mask_batch_stride, use_mask",
+  "dispatch": "vkCmdDispatch(query_length, batches * heads, 1)",
+  "variants": [32, 64, 128],
+  "shared_memory_bytes": "4 * (128 + 256 + WORKGROUP_SIZE)",
+  "atol": 0.0001,
+  "rtol": 0.0001,
+  "discovery_seeds": [41731, 41737],
+  "confirmation_seeds": [81173, 81181],
+  "runtime_integration": false,
+  "gpu_correctness_validated": false,
+  "performance_validated": false,
+  "integration_requirement": "Standalone source experiment only. A graph rewrite and packing/conversion measurements are required before inference integration or production qualification. Compare against pinned stock attention with the same inputs and include boundary conversion costs."
+}

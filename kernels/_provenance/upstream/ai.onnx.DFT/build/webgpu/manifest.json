@@ -1,0 +1,756 @@
+{
+  "domain": "ai.onnx",
+  "name": "DFT",
+  "sinceVersion": 20,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "dft_length": { "dtype": "L", "rank": 0, "optional": true },
+    "axis": { "dtype": "I", "rank": 0, "optional": true, "storage": "int32", "narrowing": "checked" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input" } },
+  "attributes": { "inverse": { "default": 0 }, "onesided": { "default": 0 } },
+  "attributeConstraints": { "inverse": { "values": [0, 1] }, "onesided": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16"], "L": ["int32"], "I": ["int64"] },
+  "when": ["f16Ok(dtypes.T)"],
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 128 },
+    "TILED_REAL_WORKGROUP_SIZE": { "default": 256 },
+    "TILED_REAL_MIN_LENGTH": { "default": 512 },
+    "RUNTIME_AXIS_FFT_MIN_LENGTH": { "default": 64 }
+  },
+  "derive": {
+    "ioScalar": "dtypes.T",
+    "dftAxisAttr": "ranks.input - 2",
+    "dftAttrOuter": "outer(shapes.input, dftAxisAttr)",
+    "dftAttrInputInner": "inner(shapes.input, dftAxisAttr) / dim(shapes.input, ranks.input - 1)",
+    "dftAttrOutputOuter": "outer(shapes.output, dftAxisAttr)",
+    "dftAttrOutputInner": "inner(shapes.output, dftAxisAttr) / dim(shapes.output, ranks.output - 1)",
+    "outputRows": "numel(shapes.output) / dim(shapes.output, ranks.output - 1)",
+    "rank3BatchDispatchFits": "dim(shapes.input, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank3Axis1SharedFftFits": "rank3BatchDispatchFits and pow2ceil(dim(shapes.input, 1)) == dim(shapes.input, 1) and dim(shapes.input, 1) >= 4 and dim(shapes.input, 1) * 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "rank3Axis1StorageFftFits": "rank3BatchDispatchFits and pow2ceil(dim(shapes.input, 1)) == dim(shapes.input, 1) and dim(shapes.input, 1) >= 4 and dim(shapes.input, 1) * 16 > device.limits.maxComputeWorkgroupStorageSize",
+    "rank3Axis1FftLog2": "log2ceil(dim(shapes.input, 1))",
+    "fftAnyAxisLen0": "dim(shapes.input, 0) if ranks.input - 1 > 0 else 0",
+    "fftAnyAxisLen1": "dim(shapes.input, 1) if ranks.input - 1 > 1 else 0",
+    "fftAnyAxisLen2": "dim(shapes.input, 2) if ranks.input - 1 > 2 else 0",
+    "fftAnyAxisLen3": "dim(shapes.input, 3) if ranks.input - 1 > 3 else 0",
+    "fftAnyAxisLen4": "dim(shapes.input, 4) if ranks.input - 1 > 4 else 0",
+    "fftAnyAxisLen5": "dim(shapes.input, 5) if ranks.input - 1 > 5 else 0",
+    "fftAnyAxisLen6": "dim(shapes.input, 6) if ranks.input - 1 > 6 else 0",
+    "fftAnyAxisCand0": "fftAnyAxisLen0 if (fftAnyAxisLen0 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen0) == fftAnyAxisLen0 and fftAnyAxisLen0 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand1": "fftAnyAxisLen1 if (fftAnyAxisLen1 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen1) == fftAnyAxisLen1 and fftAnyAxisLen1 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand2": "fftAnyAxisLen2 if (fftAnyAxisLen2 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen2) == fftAnyAxisLen2 and fftAnyAxisLen2 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand3": "fftAnyAxisLen3 if (fftAnyAxisLen3 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen3) == fftAnyAxisLen3 and fftAnyAxisLen3 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand4": "fftAnyAxisLen4 if (fftAnyAxisLen4 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen4) == fftAnyAxisLen4 and fftAnyAxisLen4 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand5": "fftAnyAxisLen5 if (fftAnyAxisLen5 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen5) == fftAnyAxisLen5 and fftAnyAxisLen5 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisCand6": "fftAnyAxisLen6 if (fftAnyAxisLen6 >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH and pow2ceil(fftAnyAxisLen6) == fftAnyAxisLen6 and fftAnyAxisLen6 * 16 <= device.limits.maxComputeWorkgroupStorageSize) else 0",
+    "fftAnyAxisMaxLen": "max(fftAnyAxisCand0, max(fftAnyAxisCand1, max(fftAnyAxisCand2, max(fftAnyAxisCand3, max(fftAnyAxisCand4, max(fftAnyAxisCand5, fftAnyAxisCand6))))))",
+    "fftAnyAxisMinLen": "min((fftAnyAxisCand0 if fftAnyAxisCand0 > 0 else 1073741824), min((fftAnyAxisCand1 if fftAnyAxisCand1 > 0 else 1073741824), min((fftAnyAxisCand2 if fftAnyAxisCand2 > 0 else 1073741824), min((fftAnyAxisCand3 if fftAnyAxisCand3 > 0 else 1073741824), min((fftAnyAxisCand4 if fftAnyAxisCand4 > 0 else 1073741824), min((fftAnyAxisCand5 if fftAnyAxisCand5 > 0 else 1073741824), (fftAnyAxisCand6 if fftAnyAxisCand6 > 0 else 1073741824)))))))",
+    "fftAnyAxisLogicalCount": "numel(shapes.input) / dim(shapes.input, ranks.input - 1) if ranks.input >= 1 and dim(shapes.input, ranks.input - 1) > 0 else 0",
+    "fftAnyAxisTransforms": "fftAnyAxisLogicalCount / fftAnyAxisMinLen if fftAnyAxisMaxLen >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH else 0",
+    "mixedFftRadix2": "pick([[dim(shapes.input, 1) % 256 == 0, 256], [dim(shapes.input, 1) % 128 == 0, 128], [dim(shapes.input, 1) % 64 == 0, 64], [dim(shapes.input, 1) % 32 == 0, 32], [dim(shapes.input, 1) % 16 == 0, 16], [dim(shapes.input, 1) % 8 == 0, 8], [dim(shapes.input, 1) % 4 == 0, 4]], 1)",
+    "mixedFftWorkgroupSize": "min(tunables.WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "mixedFftTail": "dim(shapes.input, 1) / mixedFftRadix2",
+    "mixedFftTailAfter3": "mixedFftTail / pick([[mixedFftTail % 81 == 0, 81], [mixedFftTail % 27 == 0, 27], [mixedFftTail % 9 == 0, 9], [mixedFftTail % 3 == 0, 3]], 1)",
+    "mixedFftTailAfter5": "mixedFftTailAfter3 / pick([[mixedFftTailAfter3 % 125 == 0, 125], [mixedFftTailAfter3 % 25 == 0, 25], [mixedFftTailAfter3 % 5 == 0, 5]], 1)",
+    "mixedFftTailAfter7": "mixedFftTailAfter5 / pick([[mixedFftTailAfter5 % 49 == 0, 49], [mixedFftTailAfter5 % 7 == 0, 7]], 1)",
+    "mixedFftSmoothTail": "pow2ceil(mixedFftTailAfter7) == mixedFftTailAfter7",
+    "realResidualShapeFits": "not present.axis and not present.dft_length and ranks.input == 3 and ranks.output == 3 and attrs.inverse == 0 and dim(shapes.input, 0) == dim(shapes.output, 0) and dim(shapes.input, 0) > 0 and rank3BatchDispatchFits and dim(shapes.input, 2) == 1 and dim(shapes.output, 2) == 2 and pow2ceil(dim(shapes.input, 1)) == dim(shapes.input, 1) and dim(shapes.input, 1) >= 4 and ((attrs.onesided == 0 and dim(shapes.output, 1) == dim(shapes.input, 1)) or (attrs.onesided != 0 and dim(shapes.output, 1) == floor(dim(shapes.input, 1) / 2) + 1)) and numel(shapes.input) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) and numel(shapes.output) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "realResidualTwiddlesFit": "mixedFftWorkgroupSize > 0 and (floor(dim(shapes.input, 1) / 2) + 1) * 16 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) and ceilDiv(floor(dim(shapes.input, 1) / 2) + 1, mixedFftWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "realStoragePacked": "realResidualShapeFits and realResidualTwiddlesFit and dim(shapes.input, 1) * 8 <= device.limits.maxComputeWorkgroupStorageSize and dim(shapes.input, 1) * 16 > device.limits.maxComputeWorkgroupStorageSize",
+    "realStorageResidual": "realResidualShapeFits and realResidualTwiddlesFit and dim(shapes.input, 1) * 8 > device.limits.maxComputeWorkgroupStorageSize and dim(shapes.input, 0) * dim(shapes.input, 1) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "residualSpectrumLength": "dim(shapes.input, 1) / (2 if dim(shapes.input, 2) == 1 else 1)",
+    "residualTileCapacity": "floor(device.limits.maxComputeWorkgroupStorageSize / 16)",
+    "residualTileFullLength": "min(residualSpectrumLength, pow2ceil(residualTileCapacity) / (1 if pow2ceil(residualTileCapacity) == residualTileCapacity else 2))",
+    "residualTileHalfCapacity": "floor(device.limits.maxComputeWorkgroupStorageSize / 32)",
+    "residualTileHalfLength": "min(residualSpectrumLength, pow2ceil(residualTileHalfCapacity) / (1 if pow2ceil(residualTileHalfCapacity) == residualTileHalfCapacity else 2))",
+    "residualMemoryTileLength": "residualTileHalfLength if residualTileHalfLength >= 2 and residualSpectrumLength / residualTileHalfLength <= 2 * log2ceil(residualSpectrumLength) else residualTileFullLength",
+    "residualComplexParallelTileLength": "max(2, pow2ceil(residualSpectrumLength * max(1, dim(shapes.input, 0) / 2) / max(1, 2 * log2ceil(residualSpectrumLength))))",
+    "residualTileLength": "min(residualComplexParallelTileLength, residualMemoryTileLength) if dim(shapes.input, 2) == 2 else residualMemoryTileLength",
+    "residualTileCount": "residualSpectrumLength / max(1, residualTileLength)",
+    "residualTileDispatchFits": "dim(shapes.input, 0) * residualTileCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.input, 0) * dim(shapes.output, 1), mixedFftWorkgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "complexStorageShapeFits": "not present.axis and not present.dft_length and ranks.input == 3 and ranks.output == 3 and attrs.inverse == 0 and attrs.onesided == 0 and dim(shapes.input, 0) == dim(shapes.output, 0) and dim(shapes.input, 0) > 0 and rank3Axis1StorageFftFits and dim(shapes.input, 2) == 2 and dim(shapes.output, 2) == 2 and dim(shapes.output, 1) == dim(shapes.input, 1)",
+    "complexStorageResidual": "complexStorageShapeFits and realResidualTwiddlesFit and numel(shapes.input) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) and numel(shapes.output) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) and dim(shapes.input, 0) * dim(shapes.input, 1) * 8 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "compensatedDft": "(not present.axis and not present.dft_length and ranks.input >= 2 and ranks.input <= 3 and dim(shapes.input, ranks.input - 1) == 1 and attrs.inverse == 0 and dim(shapes.input, ranks.input - 2) >= tunables.TILED_REAL_MIN_LENGTH and dim(shapes.input, ranks.input - 2) * 4 <= device.limits.maxComputeWorkgroupStorageSize and outer(shapes.input, ranks.input - 2) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) or realStorageResidual or complexStorageShapeFits"
+  },
+  "bindings": {
+    "input": { "elementType": "$T" },
+    "axis_in": { "arg": "axis", "elementType": "i32", "length": 1 },
+    "output": { "elementType": "$T" },
+    "dft_len_in": { "arg": "dft_length", "elementType": "i32", "length": 1 },
+    "params": { "struct": [{ "name": "inner", "type": "u32", "value": "dftAttrInputInner" }] },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "outputRows" },
+        { "name": "rank", "type": "u32", "value": "ranks.input" },
+        { "name": "inputComponents", "type": "u32", "value": "dim(shapes.input, ranks.input - 1)" },
+        { "name": "outputComponents", "type": "u32", "value": "dim(shapes.output, ranks.output - 1)" },
+        { "name": "inverse", "type": "u32", "value": "attrs.inverse" },
+        { "name": "onesided", "type": "u32", "value": "attrs.onesided" },
+        { "name": "inD0", "type": "u32", "value": "dim(shapes.input, ranks.input - 8) if ranks.input >= 8 else 1" },
+        { "name": "inD1", "type": "u32", "value": "dim(shapes.input, ranks.input - 7) if ranks.input >= 7 else 1" },
+        { "name": "inD2", "type": "u32", "value": "dim(shapes.input, ranks.input - 6) if ranks.input >= 6 else 1" },
+        { "name": "inD3", "type": "u32", "value": "dim(shapes.input, ranks.input - 5) if ranks.input >= 5 else 1" },
+        { "name": "inD4", "type": "u32", "value": "dim(shapes.input, ranks.input - 4) if ranks.input >= 4 else 1" },
+        { "name": "inD5", "type": "u32", "value": "dim(shapes.input, ranks.input - 3) if ranks.input >= 3 else 1" },
+        { "name": "inD6", "type": "u32", "value": "dim(shapes.input, ranks.input - 2)" },
+        { "name": "outD0", "type": "u32", "value": "dim(shapes.output, ranks.output - 8) if ranks.output >= 8 else 1" },
+        { "name": "outD1", "type": "u32", "value": "dim(shapes.output, ranks.output - 7) if ranks.output >= 7 else 1" },
+        { "name": "outD2", "type": "u32", "value": "dim(shapes.output, ranks.output - 6) if ranks.output >= 6 else 1" },
+        { "name": "outD3", "type": "u32", "value": "dim(shapes.output, ranks.output - 5) if ranks.output >= 5 else 1" },
+        { "name": "outD4", "type": "u32", "value": "dim(shapes.output, ranks.output - 4) if ranks.output >= 4 else 1" },
+        { "name": "outD5", "type": "u32", "value": "dim(shapes.output, ranks.output - 3) if ranks.output >= 3 else 1" },
+        { "name": "outD6", "type": "u32", "value": "dim(shapes.output, ranks.output - 2)" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "outputRows" },
+        { "name": "rank", "type": "u32", "value": "4" },
+        { "name": "inputComponents", "type": "u32", "value": "dim(shapes.input, ranks.input - 1)" },
+        { "name": "outputComponents", "type": "u32", "value": "dim(shapes.output, ranks.output - 1)" },
+        { "name": "inverse", "type": "u32", "value": "attrs.inverse" },
+        { "name": "onesided", "type": "u32", "value": "attrs.onesided" },
+        { "name": "inD0", "type": "u32", "value": 1 },
+        { "name": "inD1", "type": "u32", "value": 1 },
+        { "name": "inD2", "type": "u32", "value": 1 },
+        { "name": "inD3", "type": "u32", "value": 1 },
+        { "name": "inD4", "type": "u32", "value": "dftAttrOuter" },
+        { "name": "inD5", "type": "u32", "value": "dim(shapes.input, dftAxisAttr)" },
+        { "name": "inD6", "type": "u32", "value": "dftAttrInputInner" },
+        { "name": "outD0", "type": "u32", "value": 1 },
+        { "name": "outD1", "type": "u32", "value": 1 },
+        { "name": "outD2", "type": "u32", "value": 1 },
+        { "name": "outD3", "type": "u32", "value": 1 },
+        { "name": "outD4", "type": "u32", "value": "dftAttrOutputOuter" },
+        { "name": "outD5", "type": "u32", "value": "dim(shapes.output, dftAxisAttr)" },
+        { "name": "outD6", "type": "u32", "value": "dftAttrOutputInner" },
+        { "name": "axisAttr", "type": "u32", "value": "1" }
+      ]
+    },
+    "params_rank_dims": {
+      "name": "params",
+      "struct": [
+        { "name": "rank", "type": "u32", "value": "ranks.input" },
+        { "name": "inD0", "type": "u32", "value": "dim(shapes.input, ranks.input - 8) if ranks.input >= 8 else 1" },
+        { "name": "inD1", "type": "u32", "value": "dim(shapes.input, ranks.input - 7) if ranks.input >= 7 else 1" },
+        { "name": "inD2", "type": "u32", "value": "dim(shapes.input, ranks.input - 6) if ranks.input >= 6 else 1" },
+        { "name": "inD3", "type": "u32", "value": "dim(shapes.input, ranks.input - 5) if ranks.input >= 5 else 1" },
+        { "name": "inD4", "type": "u32", "value": "dim(shapes.input, ranks.input - 4) if ranks.input >= 4 else 1" },
+        { "name": "inD5", "type": "u32", "value": "dim(shapes.input, ranks.input - 3) if ranks.input >= 3 else 1" },
+        { "name": "inD6", "type": "u32", "value": "dim(shapes.input, ranks.input - 2) if ranks.input >= 2 else 1" }
+      ]
+    },
+    "params_naive": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "outputRows" },
+        { "name": "signalLength", "type": "u32", "value": "dim(shapes.input, dftAxisAttr)" },
+        { "name": "inputComponents", "type": "u32", "value": "dim(shapes.input, ranks.input - 1)" },
+        { "name": "outputComponents", "type": "u32", "value": "dim(shapes.output, ranks.output - 1)" },
+        { "name": "outputLength", "type": "u32", "value": "dim(shapes.output, dftAxisAttr)" },
+        { "name": "inverse", "type": "u32", "value": "attrs.inverse" },
+        { "name": "onesided", "type": "u32", "value": "attrs.onesided" }
+      ]
+    },
+    "params_rank4": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "outputRows" },
+        { "name": "inputD1", "type": "u32", "value": "dim(shapes.input, 1)" },
+        { "name": "inputD2", "type": "u32", "value": "dim(shapes.input, 2)" },
+        { "name": "outputD1", "type": "u32", "value": "dim(shapes.output, 1)" },
+        { "name": "outputD2", "type": "u32", "value": "dim(shapes.output, 2)" },
+        { "name": "inputComponents", "type": "u32", "value": "dim(shapes.input, 3)" },
+        { "name": "outputComponents", "type": "u32", "value": "dim(shapes.output, 3)" },
+        { "name": "inverse", "type": "u32", "value": "attrs.inverse" },
+        { "name": "onesided", "type": "u32", "value": "attrs.onesided" }
+      ]
+    },
+    "roots_in": { "scratch": "twiddles", "name": "twiddles", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "params_tiles": {
+      "name": "params",
+      "struct": [
+        { "name": "inner", "type": "u32", "value": "dftAttrInputInner" },
+        { "name": "tileCount", "type": "u32", "value": "dim(shapes.input, 0) * residualTileCount" }
+      ]
+    },
+    "tileReal": { "scratch": "residualReal", "name": "partialReal", "elementType": "vec2<f32>" },
+    "tileImag": { "scratch": "residualImag", "name": "partialImag", "elementType": "vec2<f32>" },
+    "partialReal": { "scratch": "residualReal", "buffer": "read-only-storage", "elementType": "vec2<f32>" },
+    "partialImag": { "scratch": "residualImag", "buffer": "read-only-storage", "elementType": "vec2<f32>" },
+    "params_gather": {
+      "name": "params",
+      "struct": [{ "name": "count", "type": "u32", "value": "dim(shapes.input, 0) * dim(shapes.output, 1)" }]
+    },
+    "residual_re": { "scratch": "residualReal", "name": "re", "elementType": "vec2<f32>" },
+    "residual_im": { "scratch": "residualImag", "name": "im", "elementType": "vec2<f32>" }
+  },
+  "variants": [
+    {
+      "id": "batch_axis1_fft_real_residual_tiles",
+      "priority": 35,
+      "when": ["realStorageResidual", "residualTileLength >= 2", "residualTileCount <= 2 * log2ceil(residualSpectrumLength)", "residualSpectrumLength * residualTileCount <= 4294967295", "residualTileDispatchFits"],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "DFT.ResidualTwiddles",
+          "shader": "dft-residual-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.input, 1)", "workgroupSizeSpec": "mixedFftWorkgroupSize" },
+          "bindings": [{ "scratch": "twiddles", "elementType": "vec4<f32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tiles",
+          "name": "DFT.ResidualTiles",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "residualTileLength",
+            "numBins": "residualTileLength",
+            "inComp": 2,
+            "inverse": "attrs.inverse != 0",
+            "realPacked": false,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualRootTable": true,
+            "residualStorage": false,
+            "fullFftLength": "residualSpectrumLength",
+            "residualTiles": true,
+            "tileCountSpec": "residualTileCount",
+            "complexSpectrum": false
+          },
+          "bindings": ["input", "params_tiles", "roots_in", "tileReal", "tileImag"],
+          "dispatch": {
+            "x": "min(dim(shapes.input, 0) * residualTileCount, 65535)",
+            "y": "ceilDiv(dim(shapes.input, 0) * residualTileCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gather",
+          "name": "DFT.ResidualGather",
+          "shader": "dft-residual-gather.wgsl.jinja",
+          "derive": {
+            "fftLength": "residualSpectrumLength",
+            "numBins": "dim(shapes.output, 1)",
+            "tileLengthSpec": "residualTileLength",
+            "tileCountSpec": "residualTileCount",
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualGather": true,
+            "complexSpectrum": false
+          },
+          "bindings": ["output", "roots_in", "partialReal", "partialImag", "params_gather"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.input, 0) * dim(shapes.output, 1)), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.input, 0) * dim(shapes.output, 1)), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "intermediates": [
+        { "id": "twiddles", "dtype": "float32", "shape": "[floor(dim(shapes.input, 1) / 2) + 1, 4]" },
+        { "id": "residualReal", "dtype": "float32", "shape": "[numel(shapes.input)]" },
+        { "id": "residualImag", "dtype": "float32", "shape": "[numel(shapes.input)]" }
+      ]
+    },
+    {
+      "id": "batch_axis1_fft_complex_residual_tiles",
+      "priority": 35,
+      "when": ["complexStorageResidual", "residualTileLength >= 2", "residualTileCount <= 2 * log2ceil(residualSpectrumLength)", "residualSpectrumLength * residualTileCount <= 4294967295", "residualTileDispatchFits"],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "DFT.ResidualTwiddles",
+          "shader": "dft-residual-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.input, 1)", "workgroupSizeSpec": "mixedFftWorkgroupSize" },
+          "bindings": [{ "scratch": "twiddles", "elementType": "vec4<f32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tiles",
+          "name": "DFT.ResidualTiles",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "residualTileLength",
+            "numBins": "residualTileLength",
+            "inComp": 2,
+            "inverse": "attrs.inverse != 0",
+            "realPacked": false,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualRootTable": true,
+            "residualStorage": false,
+            "fullFftLength": "residualSpectrumLength",
+            "residualTiles": true,
+            "tileCountSpec": "residualTileCount",
+            "complexSpectrum": true
+          },
+          "bindings": ["input", "params_tiles", "roots_in", "tileReal", "tileImag"],
+          "dispatch": {
+            "x": "min(dim(shapes.input, 0) * residualTileCount, 65535)",
+            "y": "ceilDiv(dim(shapes.input, 0) * residualTileCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gather",
+          "name": "DFT.ResidualGather",
+          "shader": "dft-residual-gather.wgsl.jinja",
+          "derive": {
+            "fftLength": "residualSpectrumLength",
+            "numBins": "dim(shapes.output, 1)",
+            "tileLengthSpec": "residualTileLength",
+            "tileCountSpec": "residualTileCount",
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualGather": true,
+            "complexSpectrum": true
+          },
+          "bindings": ["output", "roots_in", "partialReal", "partialImag", "params_gather"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.input, 0) * dim(shapes.output, 1)), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.input, 0) * dim(shapes.output, 1)), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "intermediates": [
+        { "id": "twiddles", "dtype": "float32", "shape": "[floor(dim(shapes.input, 1) / 2) + 1, 4]" },
+        { "id": "residualReal", "dtype": "float32", "shape": "[numel(shapes.input)]" },
+        { "id": "residualImag", "dtype": "float32", "shape": "[numel(shapes.input)]" }
+      ]
+    },
+    {
+      "id": "batch_axis1_fft_real_residual_storage",
+      "priority": 34,
+      "when": ["realStorageResidual"],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "DFT.ResidualTwiddles",
+          "shader": "dft-residual-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.input, 1)", "workgroupSizeSpec": "mixedFftWorkgroupSize" },
+          "bindings": [{ "scratch": "twiddles", "elementType": "vec4<f32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "DFT.RealPackedResidual",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1) / 2",
+            "numBins": "dim(shapes.output, dftAxisAttr)",
+            "inComp": 2,
+            "inverse": "attrs.inverse != 0",
+            "realPacked": true,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualRootTable": true,
+            "residualStorage": true
+          },
+          "bindings": ["input", "output", "params", "roots_in", "residual_re", "residual_im"],
+          "dispatch": { "x": "dftAttrOuter * dftAttrInputInner" }
+        }
+      ],
+      "intermediates": [
+        { "id": "twiddles", "dtype": "float32", "shape": "[floor(dim(shapes.input, 1) / 2) + 1, 4]" },
+        { "id": "residualReal", "dtype": "float32", "shape": "[numel(shapes.input)]" },
+        { "id": "residualImag", "dtype": "float32", "shape": "[numel(shapes.input)]" }
+      ]
+    },
+    {
+      "id": "batch_axis1_fft_real_packed",
+      "priority": 33,
+      "when": ["realStoragePacked"],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "DFT.ResidualTwiddles",
+          "shader": "dft-residual-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.input, 1)", "workgroupSizeSpec": "mixedFftWorkgroupSize" },
+          "bindings": [{ "scratch": "twiddles", "elementType": "vec4<f32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "DFT.RealPackedResidual",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1) / 2",
+            "numBins": "dim(shapes.output, dftAxisAttr)",
+            "inComp": 2,
+            "inverse": "attrs.inverse != 0",
+            "realPacked": true,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualRootTable": true,
+            "residualStorage": false
+          },
+          "bindings": ["input", "output", "params", "roots_in"],
+          "dispatch": { "x": "dftAttrOuter * dftAttrInputInner" }
+        }
+      ],
+      "intermediates": [{ "id": "twiddles", "dtype": "float32", "shape": "[floor(dim(shapes.input, 1) / 2) + 1, 4]" }]
+    },
+    {
+      "id": "batch_axis1_fft_complex_residual_storage",
+      "priority": 34,
+      "when": ["complexStorageResidual"],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "DFT.ResidualTwiddles",
+          "shader": "dft-residual-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.input, 1)", "workgroupSizeSpec": "mixedFftWorkgroupSize" },
+          "bindings": [{ "scratch": "twiddles", "elementType": "vec4<f32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(dim(shapes.input, 1) / 2) + 1), (mixedFftWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "DFT.ComplexResidualStorage",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1)",
+            "numBins": "dim(shapes.output, dftAxisAttr)",
+            "inComp": 2,
+            "inverse": "attrs.inverse != 0",
+            "realPacked": false,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize",
+            "residualRootTable": true,
+            "residualStorage": true
+          },
+          "bindings": ["input", "output", "params", "roots_in", "residual_re", "residual_im"],
+          "dispatch": { "x": "dftAttrOuter * dftAttrInputInner" }
+        }
+      ],
+      "intermediates": [
+        { "id": "twiddles", "dtype": "float32", "shape": "[floor(dim(shapes.input, 1) / 2) + 1, 4]" },
+        { "id": "residualReal", "dtype": "float32", "shape": "[numel(shapes.input)]" },
+        { "id": "residualImag", "dtype": "float32", "shape": "[numel(shapes.input)]" }
+      ]
+    },
+    {
+      "id": "batch_axis1_mixed_fft",
+      "priority": 34,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input == 3", "ranks.output == 3", "dftAxisAttr == 1", "attrs.inverse == 0", "dim(shapes.input, 0) == dim(shapes.output, 0)", "dim(shapes.input, 0) > 0", "rank3BatchDispatchFits", "dim(shapes.input, 1) >= tunables.TILED_REAL_MIN_LENGTH", "pow2ceil(dim(shapes.input, 1)) != dim(shapes.input, 1)", "dim(shapes.input, 1) * 16 <= device.limits.maxComputeWorkgroupStorageSize", "dim(shapes.input, 2) == 1", "dim(shapes.output, 2) == 2", "((attrs.onesided == 0 and dim(shapes.output, 1) == dim(shapes.input, 1)) or (attrs.onesided != 0 and dim(shapes.output, 1) == floor(dim(shapes.input, 1) / 2) + 1))", "mixedFftRadix2 >= 4", "dim(shapes.input, 1) / mixedFftRadix2 <= 128", "mixedFftWorkgroupSize > 0", "numel(shapes.input) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)", "numel(shapes.output) * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)", "mixedFftSmoothTail or 2 * ceilDiv(dim(shapes.output, 1), mixedFftWorkgroupSize) * mixedFftTail <= dim(shapes.input, 1)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.BatchAxis1MixedFft",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, dftAxisAttr)",
+            "numBins": "dim(shapes.output, dftAxisAttr)",
+            "inComp": "dim(shapes.input, ranks.input - 1)",
+            "inverse": "attrs.inverse != 0",
+            "radix2Length": "mixedFftRadix2",
+            "mixedRadixTail": true,
+            "stagedMixedRadix": true,
+            "workgroupSizeSpec": "mixedFftWorkgroupSize"
+          },
+          "bindings": ["input", "output", "params"],
+          "dispatch": { "x": "dftAttrOuter * dftAttrInputInner" }
+        }
+      ]
+    },
+    {
+      "id": "runtime_axis_shared_fft",
+      "priority": 6,
+      "when": ["present.axis", "numel(shapes.axis) == 1", "not present.dft_length", "attrs.onesided == 0", "ranks.input >= 2", "ranks.input <= 8", "ranks.input == ranks.output", "ranks.input != 3", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "dim(shapes.output, ranks.output - 1) == 2", "numel(shapes.output) == 2 * fftAnyAxisLogicalCount", "fftAnyAxisMaxLen >= tunables.RUNTIME_AXIS_FFT_MIN_LENGTH", "tunables.RUNTIME_AXIS_FFT_MIN_LENGTH >= 4", "pow2ceil(tunables.RUNTIME_AXIS_FFT_MIN_LENGTH) == tunables.RUNTIME_AXIS_FFT_MIN_LENGTH", "fftAnyAxisMaxLen * 16 <= device.limits.maxComputeWorkgroupStorageSize", "ceilDiv(fftAnyAxisTransforms, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "passes": [
+        {
+          "id": "shared_fft",
+          "name": "DFT.RuntimeAxisFftShared",
+          "shader": "dft-runtime-axis-fft-shared.wgsl.jinja",
+          "derive": {
+            "fftMaxLength": "fftAnyAxisMaxLen",
+            "fftMinLength": "tunables.RUNTIME_AXIS_FFT_MIN_LENGTH",
+            "inComp": "dim(shapes.input, ranks.input - 1)",
+            "inverse": "attrs.inverse != 0"
+          },
+          "bindings": ["input", "axis_in", "output", "params_rank_dims"],
+          "dispatch": { "x": "min(fftAnyAxisTransforms, 65535)", "y": "ceilDiv(fftAnyAxisTransforms, 65535)", "z": 1 }
+        },
+        {
+          "id": "other_axis_general",
+          "name": "DFT.RuntimeAxisOtherGeneral",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": {
+            "hasAxisInput": true,
+            "hasDftLengthInput": false,
+            "skipRuntimeAxis1": false,
+            "skipSharedFftAxes": true,
+            "sharedFftMinLength": "tunables.RUNTIME_AXIS_FFT_MIN_LENGTH",
+            "sharedFftMaxLength": "fftAnyAxisMaxLen"
+          },
+          "bindings": ["input", "output", "axis_in", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "batch_runtime_axis1_fft",
+      "priority": 30,
+      "when": ["present.axis", "numel(shapes.axis) == 1", "not present.dft_length", "ranks.input == 3", "ranks.output == 3", "attrs.onesided == 0", "dim(shapes.input, 0) == dim(shapes.output, 0)", "dim(shapes.input, 1) == dim(shapes.output, 1)", "rank3Axis1SharedFftFits", "dim(shapes.input, 2) >= 1", "dim(shapes.input, 2) <= 2", "dim(shapes.output, 2) == 2"],
+      "passes": [
+        {
+          "id": "axis1_fft",
+          "name": "DFT.BatchRuntimeAxis1FftShared",
+          "shader": "fft-stockham-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1)",
+            "numBins": "dim(shapes.output, 1)",
+            "inComp": "dim(shapes.input, 2)",
+            "inverse": "attrs.inverse != 0",
+            "runtimeAxis": true,
+            "axisRank": 3,
+            "expectedAxis": 1
+          },
+          "bindings": ["input", "axis_in", "output", "params"],
+          "dispatch": { "x": "dim(shapes.input, 0)" }
+        },
+        {
+          "id": "other_axis_general",
+          "name": "DFT.BatchRuntimeOtherAxisGeneral",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": { "hasAxisInput": true, "hasDftLengthInput": false, "skipRuntimeAxis1": true },
+          "bindings": ["input", "output", "axis_in", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "batch_axis1_fft_storage_inplace",
+      "priority": 31,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input == 3", "ranks.output == 3", "dftAxisAttr == 1", "attrs.onesided == 0", "dim(shapes.input, 0) == dim(shapes.output, 0)", "rank3BatchDispatchFits", "rank3Axis1StorageFftFits", "dim(shapes.output, 1) == dim(shapes.input, 1)", "dim(shapes.input, 2) >= 1", "dim(shapes.input, 2) <= 2", "dim(shapes.output, 2) == 2", "not realStoragePacked", "not realStorageResidual", "attrs.inverse != 0", "dtypes.T == \"f32\""],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.BatchAxis1FftStorageInplace",
+          "shader": "fft-radix2-dit-storage.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1)",
+            "log2Length": "rank3Axis1FftLog2",
+            "numBins": "dim(shapes.output, 1)",
+            "inComp": "dim(shapes.input, 2)",
+            "inverse": "attrs.inverse != 0"
+          },
+          "bindings": ["input", "output", "params"],
+          "dispatch": { "x": "dim(shapes.input, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "batch_axis1_tiled_real_nonpow2",
+      "priority": 29,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input == 3", "ranks.output == 3", "dftAxisAttr == 1", "attrs.inverse == 0", "dim(shapes.input, 0) == dim(shapes.output, 0)", "dim(shapes.input, 0) > 0", "rank3BatchDispatchFits", "dim(shapes.input, 1) >= tunables.TILED_REAL_MIN_LENGTH", "pow2ceil(dim(shapes.input, 1)) != dim(shapes.input, 1)", "dim(shapes.input, 1) * 4 <= device.limits.maxComputeWorkgroupStorageSize", "dim(shapes.input, 2) == 1", "dim(shapes.output, 2) == 2", "((attrs.onesided == 0 and dim(shapes.output, 1) == dim(shapes.input, 1)) or (attrs.onesided != 0 and dim(shapes.output, 1) == floor(dim(shapes.input, 1) / 2) + 1))", "ceilDiv(dim(shapes.output, 1), tunables.TILED_REAL_WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 256, "maxComputeWorkgroupSizeX": 256 } },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.BatchAxis1TiledRealNonPowerOfTwo",
+          "shader": "dft-tiled-real.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "transformLength": "dim(shapes.input, 1)",
+            "numBins": "dim(shapes.output, 1)",
+            "workgroupSizeSpec": "tunables.TILED_REAL_WORKGROUP_SIZE"
+          },
+          "bindings": ["input", "output", "params"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.output, 1), tunables.TILED_REAL_WORKGROUP_SIZE)",
+            "y": "dim(shapes.input, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_fft_shared",
+      "priority": 30,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input == ranks.output", "((ranks.input == 2 and dftAxisAttr == 0) or (ranks.input == 3 and dftAxisAttr == 1 and dim(shapes.input, 0) == dim(shapes.output, 0)) or (ranks.input == 4 and dftAxisAttr == 2 and dim(shapes.input, 0) == dim(shapes.output, 0) and dim(shapes.input, 1) == dim(shapes.output, 1)))", "pow2ceil(dim(shapes.input, dftAxisAttr)) == dim(shapes.input, dftAxisAttr)", "dim(shapes.input, dftAxisAttr) >= 4", "dim(shapes.input, dftAxisAttr) * 16 <= device.limits.maxComputeWorkgroupStorageSize", "outer(shapes.input, dftAxisAttr) * inner(shapes.input, dftAxisAttr) / dim(shapes.input, ranks.input - 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "((attrs.onesided == 0 and dim(shapes.output, dftAxisAttr) == dim(shapes.input, dftAxisAttr) and dim(shapes.output, ranks.input - 1) == 2) or (attrs.onesided != 0 and attrs.inverse == 0 and dim(shapes.input, ranks.input - 1) == 1 and dim(shapes.output, dftAxisAttr) == floor(dim(shapes.input, dftAxisAttr) / 2) + 1 and dim(shapes.output, ranks.input - 1) == 2))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.AxisFftShared",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, dftAxisAttr)",
+            "numBins": "dim(shapes.output, dftAxisAttr)",
+            "inComp": "dim(shapes.input, ranks.input - 1)",
+            "inverse": "attrs.inverse != 0"
+          },
+          "bindings": ["input", "output", "params"],
+          "dispatch": { "x": "dftAttrOuter * dftAttrInputInner" }
+        }
+      ]
+    },
+    {
+      "id": "batch_axis1_fft_explicit_equal_length",
+      "priority": 31,
+      "when": ["not present.axis", "present.dft_length", "numel(shapes.dft_length) == 1", "ranks.input == 3", "ranks.output == 3", "dftAxisAttr == 1", "dim(shapes.input, 0) == dim(shapes.output, 0)", "rank3Axis1SharedFftFits", "dim(shapes.input, 2) >= 1", "dim(shapes.input, 2) <= 2", "((attrs.onesided == 0 and dim(shapes.output, 1) == dim(shapes.input, 1) and dim(shapes.output, 2) == 2) or (attrs.onesided != 0 and attrs.inverse == 0 and dim(shapes.input, 2) == 1 and dim(shapes.output, 1) == floor(dim(shapes.input, 1) / 2) + 1 and dim(shapes.output, 2) == 2))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.BatchAxis1FftSharedExplicitLength",
+          "shader": "fft-stockham-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"dft\"",
+            "fftLength": "dim(shapes.input, 1)",
+            "numBins": "dim(shapes.output, 1)",
+            "inComp": "dim(shapes.input, 2)",
+            "inverse": "attrs.inverse != 0"
+          },
+          "bindings": ["input", "output", "params"],
+          "dispatch": { "x": "dim(shapes.input, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "contiguous_naive",
+      "priority": 10,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input >= 2", "ranks.input <= 3", "ranks.output == ranks.input", "ranks.input == 2 or dim(shapes.input, 0) == dim(shapes.output, 0)", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "((attrs.onesided == 0 and dim(shapes.output, dftAxisAttr) == dim(shapes.input, dftAxisAttr) and dim(shapes.output, ranks.input - 1) == 2) or (attrs.onesided != 0 and attrs.inverse == 0 and dim(shapes.input, ranks.input - 1) == 1 and dim(shapes.output, dftAxisAttr) == floor(dim(shapes.input, dftAxisAttr) / 2) + 1 and dim(shapes.output, ranks.input - 1) == 2) or (attrs.onesided != 0 and attrs.inverse != 0 and dim(shapes.input, ranks.input - 1) == 2 and dim(shapes.input, dftAxisAttr) == floor(dim(shapes.output, dftAxisAttr) / 2) + 1 and dim(shapes.output, ranks.input - 1) == 1))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.ContiguousNaive",
+          "shader": "dft-contiguous-naive.wgsl.jinja",
+          "derive": { "batched": "ranks.input == 3" },
+          "bindings": ["input", "output", "params_naive"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_axis2",
+      "priority": 10,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input == 4", "ranks.output == 4", "dftAxisAttr == 2", "dim(shapes.input, 0) == dim(shapes.output, 0)", "dim(shapes.input, 1) == dim(shapes.output, 1)", "dim(shapes.input, 3) >= 1", "dim(shapes.input, 3) <= 2", "((attrs.onesided == 0 and dim(shapes.output, 2) == dim(shapes.input, 2) and dim(shapes.output, 3) == 2) or (attrs.onesided != 0 and attrs.inverse == 0 and dim(shapes.input, 3) == 1 and dim(shapes.output, 2) == floor(dim(shapes.input, 2) / 2) + 1 and dim(shapes.output, 3) == 2) or (attrs.onesided != 0 and attrs.inverse != 0 and dim(shapes.input, 3) == 2 and dim(shapes.input, 2) == floor(dim(shapes.output, 2) / 2) + 1 and dim(shapes.output, 3) == 1))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.Rank4Axis2",
+          "shader": "dft-rank4.wgsl.jinja",
+          "bindings": ["input", "output", "params_rank4"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "general_attr",
+      "priority": 5,
+      "when": ["not present.axis", "not present.dft_length", "ranks.input >= 2", "dftAxisAttr <= ranks.input - 2", "ranks.input == ranks.output", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "dim(shapes.output, ranks.output - 1) >= 1", "dim(shapes.output, ranks.output - 1) <= 2"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.General",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": { "hasAxisInput": false, "hasDftLengthInput": false, "skipRuntimeAxis1": false },
+          "bindings": ["input", "output", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "general_axis_len",
+      "priority": 5,
+      "when": ["present.axis and numel(shapes.axis) == 1", "present.dft_length and numel(shapes.dft_length) == 1", "ranks.input >= 2", "ranks.input <= 8", "ranks.input == ranks.output", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "dim(shapes.output, ranks.output - 1) >= 1", "dim(shapes.output, ranks.output - 1) <= 2"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.General",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": { "hasAxisInput": true, "hasDftLengthInput": true, "skipRuntimeAxis1": false },
+          "bindings": ["input", "output", "dft_len_in", "axis_in", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "general_axis",
+      "priority": 5,
+      "when": ["present.axis and numel(shapes.axis) == 1", "not present.dft_length", "ranks.input >= 2", "ranks.input <= 8", "ranks.input == ranks.output", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "dim(shapes.output, ranks.output - 1) >= 1", "dim(shapes.output, ranks.output - 1) <= 2"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.General",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": { "hasAxisInput": true, "hasDftLengthInput": false, "skipRuntimeAxis1": false },
+          "bindings": ["input", "output", "axis_in", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "general_len",
+      "priority": 5,
+      "when": ["not present.axis", "present.dft_length and numel(shapes.dft_length) == 1", "ranks.input >= 2", "dftAxisAttr <= ranks.input - 2", "ranks.input == ranks.output", "dim(shapes.input, ranks.input - 1) >= 1", "dim(shapes.input, ranks.input - 1) <= 2", "dim(shapes.output, ranks.output - 1) >= 1", "dim(shapes.output, ranks.output - 1) <= 2"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DFT.General",
+          "shader": "dft-general.wgsl.jinja",
+          "derive": { "hasAxisInput": false, "hasDftLengthInput": true, "skipRuntimeAxis1": false },
+          "bindings": ["input", "output", "dft_len_in", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

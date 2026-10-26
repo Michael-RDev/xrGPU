@@ -1,0 +1,616 @@
+{
+  "domain": "com.microsoft",
+  "name": "VarlenCausalConvWithState",
+  "sinceVersion": 1,
+  "inputs": {
+    "inputT": { "onnx": "input", "dtype": "T", "rank": 2 },
+    "weightT": { "onnx": "weight", "dtype": "T", "rank": 3 },
+    "cumulativeSequenceLengthT": { "onnx": "cumulative_sequence_length", "dtype": "M", "rank": 1, "storage": "int32" },
+    "biasT": { "onnx": "bias", "dtype": "T", "rank": 1, "optional": true },
+    "initialStateT": { "onnx": "initial_state", "dtype": "T", "rank": 3 },
+    "captureCountT": { "onnx": "capture_count", "dtype": "M", "rank": 1, "optional": true, "storage": "int32" }
+  },
+  "outputs": {
+    "outputT": { "onnx": "output", "dtype": "T", "rank": "ranks.inputT", "shape": "shapes.inputT" },
+    "finalStateT": { "onnx": "final_state", "dtype": "T", "rank": 3, "shape": "[batchSize, channels, stateLength]" },
+    "stateUpdateT": {
+      "onnx": "state_update",
+      "dtype": "T",
+      "rank": 3,
+      "optional": true,
+      "shape": "[batchSize, stateUpdateCapacity, channels]"
+    }
+  },
+  "attributes": {
+    "activation": { "default": "none" },
+    "dilation": { "default": 1 },
+    "state_update_capacity": { "default": 0 }
+  },
+  "attributeConstraints": { "activation": { "values": ["none", "silu", "swish"] } },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["int32"] },
+  "tunables": {
+    "workgroupSize": { "default": 256 },
+    "streamWorkgroupSize": { "default": 64 },
+    "streamChunk": { "default": 16 }
+  },
+  "derive": {
+    "totalTokens": "dim(shapes.inputT, 0)",
+    "channels": "dim(shapes.inputT, 1)",
+    "batchSize": "dim(shapes.cumulativeSequenceLengthT, 0) - 1",
+    "weightRankOk": "ranks.weightT == 3 and dim(shapes.weightT, 1) == 1",
+    "kernelSize": "dim(shapes.weightT, 2)",
+    "stateLength": "(kernelSize - 1) * attrs.dilation",
+    "stateUpdateCapacity": "attrs.state_update_capacity",
+    "capturePairOk": "present.captureCountT == (stateUpdateCapacity > 0)",
+    "stateShape": "ranks.initialStateT == 3 and dim(shapes.initialStateT, 0) == batchSize and dim(shapes.initialStateT, 1) == channels and dim(shapes.initialStateT, 2) == stateLength",
+    "finalStateShape": "ranks.finalStateT == 3 and dim(shapes.finalStateT, 0) == batchSize and dim(shapes.finalStateT, 1) == channels and dim(shapes.finalStateT, 2) == stateLength",
+    "captureShape": "not present.captureCountT or (ranks.captureCountT == 1 and dim(shapes.captureCountT, 0) == batchSize and tensorDtypes.captureCountT == \"int32\")",
+    "stateUpdateShape": "not present.stateUpdateT or (ranks.stateUpdateT == 3 and dim(shapes.stateUpdateT, 0) == batchSize and dim(shapes.stateUpdateT, 1) == stateUpdateCapacity and dim(shapes.stateUpdateT, 2) == channels and tensorDtypes.stateUpdateT == tensorDtypes.inputT)",
+    "commonContract": "ranks.inputT == 2 and weightRankOk and ranks.outputT == 2 and ranks.cumulativeSequenceLengthT == 1 and channels >= 1 and kernelSize >= 1 and batchSize >= 1 and totalTokens >= batchSize and stateUpdateCapacity >= 0 and stateUpdateCapacity <= 8 and floor(stateUpdateCapacity) == stateUpdateCapacity and capturePairOk and captureShape and stateUpdateShape and (tensorDtypes.inputT == \"float32\" or tensorDtypes.inputT == \"float16\") and tensorDtypes.weightT == tensorDtypes.inputT and tensorDtypes.outputT == tensorDtypes.inputT and tensorDtypes.initialStateT == tensorDtypes.inputT and tensorDtypes.finalStateT == tensorDtypes.inputT and tensorDtypes.cumulativeSequenceLengthT == \"int32\" and f16Ok(dtypes.T) and dim(shapes.weightT, 0) == channels and dim(shapes.outputT, 0) == totalTokens and dim(shapes.outputT, 1) == channels and stateShape and finalStateShape and attrs.dilation >= 1 and floor(attrs.dilation) == attrs.dilation",
+    "biasOk": "ranks.biasT == 1 and tensorDtypes.biasT == tensorDtypes.inputT and dim(shapes.biasT, 0) == channels",
+    "plainContract": "commonContract and not present.biasT and (not present.stateUpdateT or stateUpdateCapacity == 0)",
+    "biasContract": "commonContract and present.biasT and biasOk and (not present.stateUpdateT or stateUpdateCapacity == 0)",
+    "stateUpdateContract": "commonContract and not present.biasT and present.stateUpdateT and stateUpdateCapacity > 0",
+    "biasStateUpdateContract": "commonContract and present.biasT and biasOk and present.stateUpdateT and stateUpdateCapacity > 0",
+    "causalDilation": "attrs.dilation",
+    "unitWg": "min(tunables.streamWorkgroupSize, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "useSilu": "attrs.activation != \"none\""
+  },
+  "bindings": {
+    "input": { "arg": "inputT", "elementType": "$inputScalar" },
+    "weight": { "arg": "weightT", "elementType": "$inputScalar" },
+    "cumulative_sequence_length": { "arg": "cumulativeSequenceLengthT", "elementType": "i32" },
+    "initial_state": { "arg": "initialStateT", "elementType": "$inputScalar" },
+    "output": { "arg": "outputT", "elementType": "$outputScalar" },
+    "final_state": { "arg": "finalStateT", "elementType": "$outputScalar" },
+    "params": {
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "batchSize" },
+        { "name": "channels", "type": "u32", "value": "channels" },
+        { "name": "totalTokens", "type": "u32", "value": "totalTokens" },
+        { "name": "kernelSize", "type": "u32", "value": "kernelSize" }
+      ]
+    },
+    "bias": { "arg": "biasT", "elementType": "$inputScalar" },
+    "capture_count": { "arg": "captureCountT", "elementType": "i32" },
+    "state_update": { "arg": "stateUpdateT", "elementType": "$outputScalar" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "batchSize" },
+        { "name": "channels", "type": "u32", "value": "channels" },
+        { "name": "totalTokens", "type": "u32", "value": "totalTokens" },
+        { "name": "stateUpdateCapacity", "type": "u32", "value": "stateUpdateCapacity" }
+      ]
+    },
+    "input_unit": { "arg": "inputT", "name": "input", "elementType": "$unitStorageType" },
+    "bias_unit": { "arg": "biasT", "name": "bias", "elementType": "$unitStorageType" },
+    "output_unit": { "arg": "outputT", "name": "output", "elementType": "$unitStorageType" },
+    "state_update_unit": { "arg": "stateUpdateT", "name": "state_update", "elementType": "$unitStorageType" },
+    "params_unit": {
+      "name": "params",
+      "struct": [
+        { "name": "channels", "type": "u32", "value": "channels" },
+        { "name": "totalTokens", "type": "u32", "value": "totalTokens" }
+      ]
+    },
+    "weight_unit": { "arg": "weightT", "elementType": "$unitStorageType", "name": "weight" },
+    "initial_state_unit": { "arg": "initialStateT", "elementType": "$unitStorageType", "name": "initial_state" },
+    "final_state_unit": { "arg": "finalStateT", "elementType": "$unitStorageType", "name": "final_state" },
+    "input_capture": { "arg": "inputT", "name": "input", "elementType": "$captureStorageType" },
+    "state_update_capture": { "arg": "stateUpdateT", "name": "state_update", "elementType": "$captureStorageType" },
+    "params_capture": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "batchSize" },
+        { "name": "channels", "type": "u32", "value": "channels / captureVectorWidth" },
+        { "name": "totalTokens", "type": "u32", "value": "totalTokens" },
+        { "name": "stateUpdateCapacity", "type": "u32", "value": "stateUpdateCapacity" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "unit_plain",
+      "priority": 50,
+      "when": ["plainContract", "tensorDtypes.inputT == \"float32\"", "totalTokens == batchSize", "attrs.dilation == 1", "kernelSize >= 2", "kernelSize <= 8", "unitWg >= 1", "floor(unitWg) == unitWg"],
+      "derive": {
+        "hasBias": false,
+        "hasCapture": false,
+        "unitVectorWidth": "4 if channels % 4 == 0 else (2 if channels % 2 == 0 else 1)",
+        "unitStorageType": "dtypes.T if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+        "unitValueType": "\"f32\" if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.UnitSequence",
+          "shader": "varlen-unit-sequence.wgsl.jinja",
+          "bindings": ["input_unit", "weight_unit", "initial_state_unit", "output_unit", "final_state_unit", "params_unit"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "unit_bias",
+      "priority": 50,
+      "when": ["biasContract", "tensorDtypes.inputT == \"float32\"", "totalTokens == batchSize", "attrs.dilation == 1", "kernelSize >= 2", "kernelSize <= 8", "unitWg >= 1", "floor(unitWg) == unitWg"],
+      "derive": {
+        "hasBias": true,
+        "hasCapture": false,
+        "unitVectorWidth": "4 if channels % 4 == 0 else (2 if channels % 2 == 0 else 1)",
+        "unitStorageType": "dtypes.T if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+        "unitValueType": "\"f32\" if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.UnitSequence",
+          "shader": "varlen-unit-sequence.wgsl.jinja",
+          "bindings": ["input_unit", "weight_unit", "initial_state_unit", "bias_unit", "output_unit", "final_state_unit", "params_unit"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "unit_state_update",
+      "priority": 50,
+      "when": ["stateUpdateContract", "tensorDtypes.inputT == \"float32\"", "totalTokens == batchSize", "attrs.dilation == 1", "kernelSize >= 2", "kernelSize <= 8", "unitWg >= 1", "floor(unitWg) == unitWg"],
+      "derive": {
+        "hasBias": false,
+        "hasCapture": true,
+        "unitVectorWidth": "4 if channels % 4 == 0 else (2 if channels % 2 == 0 else 1)",
+        "unitStorageType": "dtypes.T if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+        "unitValueType": "\"f32\" if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.UnitSequence",
+          "shader": "varlen-unit-sequence.wgsl.jinja",
+          "bindings": ["input_unit", "weight_unit", "initial_state_unit", "output_unit", "final_state_unit", "params_unit", "capture_count", "state_update_unit"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "unit_bias_state_update",
+      "priority": 50,
+      "when": ["biasStateUpdateContract", "tensorDtypes.inputT == \"float32\"", "totalTokens == batchSize", "attrs.dilation == 1", "kernelSize >= 2", "kernelSize <= 8", "unitWg >= 1", "floor(unitWg) == unitWg"],
+      "derive": {
+        "hasBias": true,
+        "hasCapture": true,
+        "unitVectorWidth": "4 if channels % 4 == 0 else (2 if channels % 2 == 0 else 1)",
+        "unitStorageType": "dtypes.T if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+        "unitValueType": "\"f32\" if unitVectorWidth == 1 else \"vec\" ~ unitVectorWidth ~ \"<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.UnitSequence",
+          "shader": "varlen-unit-sequence.wgsl.jinja",
+          "bindings": ["input_unit", "weight_unit", "initial_state_unit", "bias_unit", "output_unit", "final_state_unit", "params_unit", "capture_count", "state_update_unit"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels / unitVectorWidth), (unitWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "capture_copy_state_update_stream",
+      "priority": 25,
+      "when": ["stateUpdateContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1", "tensorDtypes.inputT == \"float32\"", "channels % 2 == 0"],
+      "derive": {
+        "hasBias": false,
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input_capture", "cumulative_sequence_length", "capture_count", "state_update_capture", "params_capture"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "derive": {
+            "captureVectorWidth": "4 if channels % 4 == 0 else 2",
+            "captureStorageType": "\"vec\" ~ captureVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+            "outputScalar": "captureStorageType"
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "capture_copy_state_update",
+      "priority": 5,
+      "when": ["stateUpdateContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX", "tensorDtypes.inputT == \"float32\"", "channels % 2 == 0"],
+      "derive": {
+        "hasBias": false,
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input_capture", "cumulative_sequence_length", "capture_count", "state_update_capture", "params_capture"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "derive": {
+            "captureVectorWidth": "4 if channels % 4 == 0 else 2",
+            "captureStorageType": "\"vec\" ~ captureVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+            "outputScalar": "captureStorageType"
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "capture_copy_bias_state_update_stream",
+      "priority": 25,
+      "when": ["biasStateUpdateContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1", "tensorDtypes.inputT == \"float32\"", "channels % 2 == 0"],
+      "derive": {
+        "hasBias": true,
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input_capture", "cumulative_sequence_length", "capture_count", "state_update_capture", "params_capture"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "derive": {
+            "captureVectorWidth": "4 if channels % 4 == 0 else 2",
+            "captureStorageType": "\"vec\" ~ captureVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+            "outputScalar": "captureStorageType"
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "capture_copy_bias_state_update",
+      "priority": 5,
+      "when": ["biasStateUpdateContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX", "tensorDtypes.inputT == \"float32\"", "channels % 2 == 0"],
+      "derive": {
+        "hasBias": true,
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input_capture", "cumulative_sequence_length", "capture_count", "state_update_capture", "params_capture"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels / captureVectorWidth), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "derive": {
+            "captureVectorWidth": "4 if channels % 4 == 0 else 2",
+            "captureStorageType": "\"vec\" ~ captureVectorWidth ~ \"<\" ~ dtypes.T ~ \">\"",
+            "outputScalar": "captureStorageType"
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "plain_stream",
+      "priority": 20,
+      "when": ["plainContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "plain",
+      "priority": 0,
+      "when": ["plainContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bias_stream",
+      "priority": 20,
+      "when": ["biasContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bias",
+      "priority": 0,
+      "when": ["biasContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "state_update_stream",
+      "priority": 20,
+      "when": ["stateUpdateContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input", "cumulative_sequence_length", "capture_count", "state_update", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "state_update",
+      "priority": 0,
+      "when": ["stateUpdateContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input", "cumulative_sequence_length", "capture_count", "state_update", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bias_state_update_stream",
+      "priority": 20,
+      "when": ["biasStateUpdateContract", "kernelSize >= 2", "kernelSize <= 8", "tunables.streamChunk >= 1", "floor(tunables.streamChunk) == tunables.streamChunk", "tunables.streamWorkgroupSize >= 1", "floor(tunables.streamWorkgroupSize) == tunables.streamWorkgroupSize", "tunables.streamWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.streamWorkgroupSize <= device.limits.maxComputeWorkgroupSizeX", "attrs.dilation == 1"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.streamWorkgroupSize",
+        "chunkSize": "min(tunables.streamChunk, ceilDiv(totalTokens, batchSize))"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input", "cumulative_sequence_length", "capture_count", "state_update", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState.Stream",
+          "shader": "varlen-causal-conv-stream.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(totalTokens, chunkSize) * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bias_state_update",
+      "priority": 0,
+      "when": ["biasStateUpdateContract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "inputScalar": "dtypes.T",
+        "outputScalar": "dtypes.T",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "state_update",
+          "name": "VarlenCausalConvWithState.StateUpdate",
+          "shader": "varlen-state-update.wgsl.jinja",
+          "bindings": ["input", "cumulative_sequence_length", "capture_count", "state_update", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize * stateUpdateCapacity * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "VarlenCausalConvWithState",
+          "shader": "varlen-causal-conv.wgsl.jinja",
+          "bindings": ["input", "weight", "cumulative_sequence_length", "initial_state", "bias", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((totalTokens * channels), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

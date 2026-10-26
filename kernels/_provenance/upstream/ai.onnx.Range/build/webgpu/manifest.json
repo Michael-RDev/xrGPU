@@ -1,0 +1,51 @@
+{
+  "domain": "ai.onnx",
+  "name": "Range",
+  "sinceVersion": 27,
+  "inputs": {
+    "start": { "dtype": "T", "rank": 0 },
+    "limit": { "dtype": "T", "rank": 0 },
+    "delta": { "dtype": "T", "rank": 0 }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": 1 } },
+  "attributes": { "stash_type": { "default": 1 } },
+  "typeConstraints": { "T": ["float32", "float16", "int32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "scalar_inputs",
+      "when": ["ranks.start == 0", "ranks.limit == 0", "ranks.delta == 0", "ranks.output == 1", "(dtypes.T == \"f32\" or dtypes.T == \"f16\" or dtypes.T == \"i32\")", "f16Ok(dtypes.T)", "logicalDtypes.T != \"float16\" or attrs.stash_type == onnxDtypeCode(\"float32\")"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "isI32": "dtypes.T == \"i32\"",
+        "isF16": "dtypes.T == \"f16\"",
+        "vec4": "numel(shapes.output) > 0 and numel(shapes.output) % 4 == 0",
+        "outElement": "(\"vec4<\" ~ dtypes.T ~ \">\") if (numel(shapes.output) > 0 and numel(shapes.output) % 4 == 0) else dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Range",
+          "shader": "range.wgsl.jinja",
+          "bindings": [
+            { "arg": "start", "elementType": "$scalar", "length": 1 },
+            { "arg": "delta", "elementType": "$scalar", "length": 1 },
+            { "arg": "output", "elementType": "$outElement" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.output)" },
+                { "name": "countV4", "type": "u32", "value": "ceilDiv(numel(shapes.output), 4)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

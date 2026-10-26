@@ -1,0 +1,253 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_alpha2_rank4_positive_input_x": [0.8439682722091675, 0.5665143728256226, 0.058367349207401276, 0.029163669794797897, 0.12964272499084473, 0.5060197114944458, 0.7953830361366272, 0.9411345720291138, 0.9546573162078857, 0.17730942368507385, 0.46192094683647156, 0.264804482460022, 0.6746842265129089, 0.01665256917476654, 0.6247307658195496, 0.9240844249725342, 0.9722340703010559, 0.1196569874882698, 0.41356155276298523, 0.9129372835159302, 0.5933007597923279, 0.8192993402481079, 0.7862604260444641, 0.11799798905849457, 0.692484438419342, 0.5411941409111023, 0.07513222843408585]
+  },
+  "cases": [
+    {
+      "name": "f32_values",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-3.0, -1.0, -0.25, 0.0, 0.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_non_finite_and_saturation_edges",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": ["-Infinity", -1000.0, -2.0, 0.0, 0.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.00001, "allowNaN": true } }
+    },
+    {
+      "name": "f32_negative_subnormal_expm1_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Celu",
+        "notes": "For tiny negative inputs, alpha*(exp(x/alpha)-1) rounds to zero; returning the original subnormal is incorrect."
+      },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-43 } }
+    },
+    {
+      "name": "f32_negative_subnormal_expm1_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Celu",
+        "notes": "On an unaligned scalar path, tiny negative inputs round the expm1 branch to zero while positive subnormals pass through."
+      },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-43 } }
+    },
+    {
+      "name": "f32_near_zero_negative_expm1_cancellation",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Celu",
+        "notes": "Valid normal-range CELU cancellation edge: alpha * (exp(x / alpha) - 1) should preserve small negative values near zero."
+      },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-7, -5e-7, -0.000001, -0.00001] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 2e-8 } }
+    },
+    {
+      "name": "f32_near_zero_negative_expm1_cancellation_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Celu",
+        "notes": "Unaligned scalar-path inputs exercise cancellation near zero in the normal range."
+      },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-7, -5e-7, -0.000001] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 2e-8 } }
+    },
+    {
+      "name": "f32_custom_alpha_wider_range",
+      "attrs": { "alpha": 1.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-8.0, -2.0, -0.5, 0.0, 0.0, 0.5, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_negative_alpha_extreme_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Celu"
+      },
+      "attrs": { "alpha": -0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [14],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.17549435e-38, 1.17549435e-39, -1.17549435e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity", "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [14], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_alpha2_rank4_positive",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_celu", "test": "test_celu" },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 3, 3, 1],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_alpha2_rank4_positive_input_x" }
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3, 3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_celu",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_celu" },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 3, 3, 1],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_alpha2_rank4_positive_input_x" }
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3, 3, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "vec4_f32_lanes",
+      "attrs": { "alpha": 1.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-4.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 3.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "alpha": 0.75 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "expm1_safe_maclaurin_boundary_vec4",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-0.094, -0.0938, -0.09375, -0.0937, 0.0, 0.0937, 0.09375, 0.094] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "negative_alpha_positive_input_passthrough",
+      "attrs": { "alpha": -0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "alpha_one_identity_at_boundary_vec4",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1.0, -0.001, 0.0, 0.0, 0.001, 1.0, 2.0, 4.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [-0.6321205588285578, -0.0009995001665833, 0.0, 0.0, 0.001, 1.0, 2.0, 4.0]
+          },
+          "tolerance": 0.00001
+        }
+      }
+    },
+    {
+      "name": "onnx28_f16_vec4",
+      "provenance": {
+        "source": "ONNX Operators.md Celu-28",
+        "notes": "Float16 CELU covers negative exponential, signed-zero boundary and positive pass-through values."
+      },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-8.0, -2.0, -0.5, -0.01, 0.0, 0.5, 2.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.002 } }
+    },
+    {
+      "name": "onnx28_f16_scalar_tail",
+      "provenance": {
+        "source": "ONNX Operators.md Celu-28",
+        "notes": "A non-multiple-of-four element count exercises float16 CELU on the scalar tail as well as the vec4 bulk."
+      },
+      "attrs": { "alpha": 1.25 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [-1.5, -0.125, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3], "tolerance": 0.002 } }
+    }
+  ]
+}

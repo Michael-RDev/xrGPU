@@ -1,0 +1,1614 @@
+{
+  "domain": "ai.onnx",
+  "name": "Einsum",
+  "sinceVersion": 12,
+  "inputs": {
+    "a": { "onnx": "A", "dtype": "T" },
+    "b": { "onnx": "B", "dtype": "T", "optional": true },
+    "c": { "onnx": "C", "dtype": "T", "optional": true },
+    "d": { "onnx": "D", "dtype": "T", "optional": true }
+  },
+  "outputs": { "y": { "onnx": "Output", "dtype": "T" } },
+  "attributes": { "equation": {} },
+  "attributeConstraints": { "equation": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "MAX_REDUCTION_SPLITS": { "default": 256 },
+    "NARROW_REDUCTION_MAX_SPLITS": { "default": 128 },
+    "REDUCTION_SPLIT_TARGET": { "default": 256 },
+    "REDUCTION_SPLIT_MIN_ELEMENTS": { "default": 4096 },
+    "SCALAR_SPLIT_MIN_ELEMENTS": { "default": 8192 },
+    "NARROW_REDUCTION_MAX_COLUMNS": { "default": 32 },
+    "CONTRACT_SPLIT_K": { "default": 16 },
+    "CONTRACT_SPLIT_MIN_ELEMENTS": { "default": 1024 },
+    "CONTRACT_LOW_OCCUPANCY_WORKGROUPS": { "default": 128 },
+    "GEMV_TARGET_BLOCKS": { "default": 512 },
+    "BAND_BATCHED_MIN_WORKGROUPS": { "default": 64 },
+    "SUBGROUP_MATRIX_MIN_M": { "default": 2 },
+    "SUBGROUP_MATRIX_BATCH_MIN_M": { "default": 2 }
+  },
+  "derive": {
+    "gemvN": "dim(shapes.b, 1) if present.b else 1",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "gemvLanes": 32,
+    "vec4OutputTile": "4 * gemvLanes",
+    "gemvWorkgroups": "ceilDiv(gemvN, vec4OutputTile)",
+    "gemvSliceCap": "min(32, device.limits.maxComputeWorkgroupSizeY, floor(device.limits.maxComputeInvocationsPerWorkgroup / gemvLanes), floor(device.limits.maxComputeWorkgroupStorageSize / (16 * gemvLanes)))",
+    "gemvSlices": "max(1, min(gemvSliceCap, max(8, pow2ceil(ceilDiv(tunables.GEMV_TARGET_BLOCKS, gemvWorkgroups)))))",
+    "gemvResourcesFit": "gemvLanes <= device.limits.maxComputeWorkgroupSizeX and gemvSlices <= device.limits.maxComputeWorkgroupSizeY and gemvLanes * gemvSlices <= device.limits.maxComputeInvocationsPerWorkgroup and 16 * gemvLanes * gemvSlices <= device.limits.maxComputeWorkgroupStorageSize",
+    "bandBatchedWorkgroups": "dim(shapes.y, 0) * ceilDiv(dim(shapes.b, 2), vec4OutputTile) if present.b and ranks.y == 3 and ranks.b == 3 else 1",
+    "bandBatchedSlices": "max(1, min(gemvSliceCap, pow2ceil(ceilDiv(tunables.GEMV_TARGET_BLOCKS, bandBatchedWorkgroups))))",
+    "bandBatchedResourcesFit": "gemvLanes <= device.limits.maxComputeWorkgroupSizeX and bandBatchedSlices <= device.limits.maxComputeWorkgroupSizeY and gemvLanes * bandBatchedSlices <= device.limits.maxComputeInvocationsPerWorkgroup and 16 * gemvLanes * bandBatchedSlices <= device.limits.maxComputeWorkgroupStorageSize",
+    "abcBcdAdContract": "present.b and attrs.equation == \"abc,bcd->ad\" and ranks.a == 3 and ranks.b == 3 and ranks.y == 2 and dim(shapes.a, 1) == dim(shapes.b, 0) and dim(shapes.a, 2) == dim(shapes.b, 1) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.b, 2)",
+    "abcBcdAdNoC": "abcBcdAdContract and not present.c",
+    "ijJkIkEquationOk": "attrs.equation == \"ij,jk->ik\" or attrs.equation == \"ij,jk\" or attrs.equation == \"iK,Kk->ik\" or attrs.equation == \"Ki,ik->Kk\"",
+    "ijJkIkShapeOk": "ranks.a == 2 and ranks.b == 2 and ranks.y == 2 and dim(shapes.a, 1) == dim(shapes.b, 0) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.b, 1)",
+    "bijBjkBikContract": "present.b and (attrs.equation == \"bij,bjk->bik\" or attrs.equation == \"bij, bjk -> bik\") and ranks.a == 3 and ranks.b == 3 and ranks.y == 3 and dim(shapes.a, 0) == dim(shapes.b, 0) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.a, 2) == dim(shapes.b, 1) and dim(shapes.y, 1) == dim(shapes.a, 1) and dim(shapes.y, 2) == dim(shapes.b, 2)",
+    "abcBadAdContract": "present.b and attrs.equation == \"abc,bad->ad\" and ranks.a == 3 and ranks.b == 3 and ranks.y == 2 and dim(shapes.a, 1) == dim(shapes.b, 0) and dim(shapes.a, 0) == dim(shapes.b, 1) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.b, 2)",
+    "aibjAjbkContract": "present.b and attrs.equation == \"aibj,ajbk->aibk\" and ranks.a == 4 and ranks.b == 4 and ranks.y == 4 and dim(shapes.a, 0) == dim(shapes.b, 0) and dim(shapes.a, 2) == dim(shapes.b, 2) and dim(shapes.a, 3) == dim(shapes.b, 1) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.a, 1) and dim(shapes.y, 2) == dim(shapes.a, 2) and dim(shapes.y, 3) == dim(shapes.b, 3)",
+    "ajbiAjbkContract": "present.b and attrs.equation == \"ajbi,ajbk->aibk\" and ranks.a == 4 and ranks.b == 4 and ranks.y == 4 and dim(shapes.a, 0) == dim(shapes.b, 0) and dim(shapes.a, 1) == dim(shapes.b, 1) and dim(shapes.a, 2) == dim(shapes.b, 2) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.a, 3) and dim(shapes.y, 2) == dim(shapes.a, 2) and dim(shapes.y, 3) == dim(shapes.b, 3)",
+    "aibjAkbjContract": "present.b and attrs.equation == \"aibj,akbj->aibk\" and ranks.a == 4 and ranks.b == 4 and ranks.y == 4 and dim(shapes.a, 0) == dim(shapes.b, 0) and dim(shapes.a, 2) == dim(shapes.b, 2) and dim(shapes.a, 3) == dim(shapes.b, 3) and dim(shapes.y, 0) == dim(shapes.a, 0) and dim(shapes.y, 1) == dim(shapes.a, 1) and dim(shapes.y, 2) == dim(shapes.a, 2) and dim(shapes.y, 3) == dim(shapes.b, 1)",
+    "diagonal2ExtractContract": "not present.b and attrs.equation == \"ii->i\" and ranks.a == 2 and ranks.y == 1 and dim(shapes.a, 0) == dim(shapes.a, 1) and dim(shapes.y, 0) == dim(shapes.a, 0)",
+    "diagonal3ExtractContract": "not present.b and attrs.equation == \"iii->i\" and ranks.a == 3 and ranks.y == 1 and dim(shapes.a, 0) == dim(shapes.a, 1) and dim(shapes.a, 1) == dim(shapes.a, 2) and dim(shapes.y, 0) == dim(shapes.a, 0)",
+    "subgroupFloatTypeOk": "(dtypes.T == \"f16\" or dtypes.T == \"f32\") and f16Ok(dtypes.T)",
+    "dispatchLimit": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "batchPlaneElements": "dim(shapes.a, 1) * dim(shapes.a, 2) if ranks.a >= 3 else 0",
+    "batchPlaneSplitCount": "min(tunables.MAX_REDUCTION_SPLITS, ceilDiv(batchPlaneElements / 4, tunables.REDUCTION_SPLIT_TARGET)) if ranks.a >= 3 else 1",
+    "batchPlanePartialBytes": "batchPlaneSplitCount * dim(shapes.a, 0) * 4 if ranks.a >= 3 else 0",
+    "bilinearSplitCount": "min(tunables.MAX_REDUCTION_SPLITS, ceilDiv(numel(shapes.b) / 4, tunables.REDUCTION_SPLIT_TARGET)) if present.b else 1",
+    "bilinearPartialBytes": "bilinearSplitCount * 4",
+    "contractElements": "batchPlaneElements",
+    "contractPartialBytes": "tunables.CONTRACT_SPLIT_K * numel(shapes.y) * 4",
+    "dotSplitCount": "min(tunables.MAX_REDUCTION_SPLITS, ceilDiv(dim(shapes.a, 0) / 4, tunables.REDUCTION_SPLIT_TARGET)) if ranks.a >= 1 else 1",
+    "flatSplitCount": "min(tunables.MAX_REDUCTION_SPLITS, ceilDiv(numel(shapes.a) / 4, tunables.REDUCTION_SPLIT_TARGET))",
+    "reduceColsSplitCount": "min(tunables.NARROW_REDUCTION_MAX_SPLITS, pow2ceil(ceilDiv(dim(shapes.a, 0), tunables.REDUCTION_SPLIT_TARGET))) if ranks.a >= 2 else 1",
+    "reduceColsPartialBytes": "reduceColsSplitCount * dim(shapes.a, 1) * 4 if ranks.a >= 2 else 0",
+    "coalescedTileCols": "min(pow2ceil(dim(shapes.a, 1)), 8) if ranks.a >= 2 and dim(shapes.a, 1) > 0 else 1",
+    "scalar": "dtypes.T",
+    "workgroupSize": "tunables.WORKGROUP_SIZE",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "registerTile": 64,
+    "generalTile": 32
+  },
+  "bindings": {
+    "a": { "elementType": "$scalar" },
+    "partials": { "buffer": "storage", "elementType": "f32" },
+    "partials_f32": { "name": "partials", "buffer": "read-only-storage", "elementType": "f32" },
+    "y": { "elementType": "$scalar" },
+    "params": { "struct": [{ "name": "cols", "type": "u32", "value": "combineCols" }] },
+    "b": { "elementType": "$vectorScalar" },
+    "b_main": { "name": "b", "elementType": "$scalar" },
+    "x": { "arg": "a", "elementType": "$scalar" },
+    "params_main": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] },
+    "params_dim": { "name": "params", "struct": [{ "name": "dim", "type": "u32", "value": "dim(shapes.a, 0)" }] },
+    "params_ij_i": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.a, 1)" }
+      ]
+    },
+    "params_m_n_k": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "matmulM" },
+        { "name": "N", "type": "u32", "value": "matmulN" },
+        { "name": "K", "type": "u32", "value": "matmulK" }
+      ]
+    },
+    "c_main": { "name": "c", "elementType": "$scalar" },
+    "params_n_count": {
+      "name": "params",
+      "struct": [
+        { "name": "N", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.a, 3)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_ellipsis_ji_j": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "_pad0", "type": "u32", "required": true, "internal": true, "default": 0 }
+      ]
+    },
+    "params_ijk_ki": {
+      "name": "params",
+      "struct": [
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "kSize", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_iji_j": {
+      "name": "params",
+      "struct": [
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.a, 1)" }
+      ]
+    },
+    "params_abc_bad_ad": {
+      "name": "params",
+      "struct": [
+        { "name": "aSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "bSize", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "cSize", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "dSize", "type": "u32", "value": "dim(shapes.b, 2)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_abc_bcd_ad": {
+      "name": "params",
+      "struct": [
+        { "name": "bSize", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "cSize", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "dSize", "type": "u32", "value": "dim(shapes.b, 2)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "a_vec4_f32": { "name": "a", "elementType": "vec4<f32>" },
+    "b_vec4_f32": { "name": "b", "elementType": "vec4<f32>" },
+    "params_count4": {
+      "name": "params",
+      "struct": [{ "name": "count4", "type": "u32", "value": "dim(shapes.a, 0) / 4" }]
+    },
+    "x_a": { "arg": "a", "name": "x", "elementType": "f32" },
+    "params_count4_numel": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "floor(numel(shapes.a) / 4)" },
+        { "name": "numel", "type": "u32", "value": "numel(shapes.a)" }
+      ]
+    },
+    "d": { "elementType": "$scalar" },
+    "params_ij_ji": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_m_n_k_count": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "K", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_k": { "name": "params", "struct": [{ "name": "K", "type": "u32", "value": "dim(shapes.a, 0)" }] },
+    "params_batch_rows_cols": {
+      "name": "params",
+      "struct": [
+        { "name": "batch", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "rows", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "_pad0", "type": "u32", "required": true, "internal": true, "default": 0 }
+      ]
+    },
+    "params_iij_jk": {
+      "name": "params",
+      "struct": [
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.a, 2)" },
+        { "name": "kSize", "type": "u32", "value": "dim(shapes.b, 1)" }
+      ]
+    },
+    "params_ab_ba_ab": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "_pad0", "type": "u32", "required": true, "internal": true, "default": 0 }
+      ]
+    },
+    "params_k_n4": {
+      "name": "params",
+      "struct": [
+        { "name": "K", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "N4", "type": "u32", "value": "dim(shapes.b, 1) / 4" }
+      ]
+    },
+    "params_iji_2d": {
+      "name": "params",
+      "struct": [
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.a, 1)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "_pad0", "type": "u32", "required": true, "internal": true, "default": 0 }
+      ]
+    },
+    "params_outer_product": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "iSize", "type": "u32", "value": "dim(shapes.a, 0)" },
+        { "name": "jSize", "type": "u32", "value": "dim(shapes.b, 0)" },
+        { "name": "_pad0", "type": "u32", "required": true, "internal": true, "default": 0 }
+      ]
+    },
+    "params_4d_contract": {
+      "name": "params",
+      "struct": [
+        { "name": "iDim", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "bDim", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "kDim", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "jDim", "type": "u32", "value": "contractJDim" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "ellipsis_ji_scalar_per_batch_split",
+      "priority": 17,
+      "when": ["not present.b", "not present.c", "attrs.equation == \"...ji->...\"", "ranks.a == 3", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 0)", "batchPlaneElements >= tunables.REDUCTION_SPLIT_MIN_ELEMENTS", "batchPlaneSplitCount <= dispatchLimit", "dim(shapes.a, 0) <= dispatchLimit", "batchPlanePartialBytes <= storageBufferLimit", "f16Ok(dtypes.T)"],
+      "derive": {
+        "split": "batchPlaneSplitCount",
+        "vec4Plane": "batchPlaneElements % 4 == 0",
+        "planeElement": "vectorScalar if vec4Plane else scalar",
+        "count": "batchPlaneElements / 4 if vec4Plane else batchPlaneElements",
+        "batchCount": "dim(shapes.a, 0)",
+        "combineCols": "dim(shapes.a, 0)"
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[batchPlaneSplitCount * dim(shapes.a, 0)]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Einsum.BatchReduceAllSplitPartial",
+          "shader": "einsum-batch-reduce-all-split.wgsl.jinja",
+          "bindings": [{ "arg": "a", "elementType": "$planeElement" }, "partials"],
+          "dispatch": { "x": "split", "y": "dim(shapes.a, 0)" }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.BatchReduceAllSplitCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "dtypes.T == \"f16\"", "intMode": false },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_i_ij_j_scalar_split",
+      "priority": 17,
+      "when": ["present.b", "present.c", "attrs.equation == \"i,ij,j->\"", "ranks.a == 1", "ranks.b == 2", "ranks.c == 1", "ranks.y == 0", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dim(shapes.c, 0) == dim(shapes.b, 1)", "dim(shapes.b, 1) % 4 == 0", "numel(shapes.b) >= tunables.REDUCTION_SPLIT_MIN_ELEMENTS", "bilinearSplitCount <= dispatchLimit", "bilinearPartialBytes <= storageBufferLimit", "f16Ok(dtypes.T)"],
+      "derive": {
+        "split": "bilinearSplitCount",
+        "count4": "numel(shapes.b) / 4",
+        "cols4": "dim(shapes.b, 1) / 4",
+        "combineCols": 1
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[bilinearSplitCount]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Einsum.BilinearSplitPartial",
+          "shader": "einsum-bilinear-split.wgsl.jinja",
+          "bindings": ["a", "b", { "arg": "c", "elementType": "$vectorScalar" }, "partials"],
+          "dispatch": { "x": "split" }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.BilinearSplitCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "dtypes.T == \"f16\"", "intMode": false },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "abc_bcd_ad_subgroup_matrix_splitk",
+      "priority": 102,
+      "when": ["abcBcdAdNoC", "dim(shapes.a, 0) >= tunables.SUBGROUP_MATRIX_MIN_M", "contractElements >= tunables.CONTRACT_SPLIT_MIN_ELEMENTS", "contractElements % (tunables.CONTRACT_SPLIT_K * 32) == 0", "dim(shapes.b, 2) % 64 == 0", "ceilDiv(dim(shapes.a, 0), 32) * ceilDiv(dim(shapes.b, 2), 64) < tunables.CONTRACT_LOW_OCCUPANCY_WORKGROUPS", "ceilDiv(dim(shapes.b, 2), 64) <= dispatchLimit", "ceilDiv(dim(shapes.a, 0), 32) <= dispatchLimit", "tunables.CONTRACT_SPLIT_K <= dispatchLimit", "contractPartialBytes <= storageBufferLimit", "subgroupFloatTypeOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "fScalar": "\"f16\" if dtypes.T == \"f16\" else \"f32\"",
+        "hasBias": false,
+        "generalAddressing": true,
+        "tailSafe": false,
+        "outputBuffer": "\"partials\"",
+        "outScalar": "\"f32\"",
+        "alpha": 1,
+        "M": "dim(shapes.a, 0)",
+        "K": "contractElements",
+        "N": "dim(shapes.b, 2)",
+        "batchCount": 1,
+        "splitK": "tunables.CONTRACT_SPLIT_K",
+        "kPerSplit": "contractElements / tunables.CONTRACT_SPLIT_K",
+        "split": "tunables.CONTRACT_SPLIT_K",
+        "combineCols": "numel(shapes.y)"
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[tunables.CONTRACT_SPLIT_K * numel(shapes.y)]" }
+      ],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Einsum.Contract2DSubgroupMatrixSplitK",
+          "shader": "matmul-subgroup-matrix-ext.wgsl.jinja",
+          "derive": {
+            "aShape": ["dim(shapes.a, 0)", "dim(shapes.a, 1) * dim(shapes.a, 2)"],
+            "bShape": ["dim(shapes.b, 0) * dim(shapes.b, 1)", "dim(shapes.b, 2)"],
+            "aRank": 2,
+            "bRank": 2
+          },
+          "bindings": ["a", "b_main", "partials"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.b, 2), 64)",
+            "y": "ceilDiv(dim(shapes.a, 0), 32)",
+            "z": "tunables.CONTRACT_SPLIT_K"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.Contract2DSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "dtypes.T == \"f16\"", "intMode": false },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "abc_bcd_ad_tiled_reg_splitk",
+      "priority": 53,
+      "when": ["abcBcdAdNoC", "dim(shapes.a, 0) > 1", "contractElements >= tunables.CONTRACT_SPLIT_MIN_ELEMENTS", "contractElements % (tunables.CONTRACT_SPLIT_K * 16) == 0", "ceilDiv(dim(shapes.a, 0), registerTile) * ceilDiv(dim(shapes.b, 2), registerTile) < tunables.CONTRACT_LOW_OCCUPANCY_WORKGROUPS", "ceilDiv(dim(shapes.b, 2), registerTile) <= dispatchLimit", "ceilDiv(dim(shapes.a, 0), registerTile) <= dispatchLimit", "tunables.CONTRACT_SPLIT_K <= dispatchLimit", "contractPartialBytes <= storageBufferLimit", "f16Ok(dtypes.T)"],
+      "derive": { "split": "tunables.CONTRACT_SPLIT_K", "combineCols": "numel(shapes.y)" },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[tunables.CONTRACT_SPLIT_K * numel(shapes.y)]" }
+      ],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Einsum.Contract2DTiledRegSplitK",
+          "shader": "matmul-tiled-general-reg.wgsl.jinja",
+          "derive": {
+            "aShape": ["dim(shapes.a, 0)", "dim(shapes.a, 1) * dim(shapes.a, 2)"],
+            "bShape": ["dim(shapes.b, 0) * dim(shapes.b, 1)", "dim(shapes.b, 2)"],
+            "alpha": 1,
+            "aRank": 2,
+            "bRank": 2,
+            "transBatchA": false,
+            "outScalar": "\"f32\"",
+            "splitK": "tunables.CONTRACT_SPLIT_K",
+            "kPerSplit": "contractElements / tunables.CONTRACT_SPLIT_K"
+          },
+          "bindings": ["a", "b_main", { "scratch": "partials", "name": "y", "elementType": "f32" }],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.b, 2), registerTile)",
+            "y": "ceilDiv(dim(shapes.a, 0), registerTile)",
+            "z": "tunables.CONTRACT_SPLIT_K"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.Contract2DTiledSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "dtypes.T == \"f16\"", "intMode": false },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "abc_bcd_ad_tiled_reg",
+      "priority": 52,
+      "when": ["abcBcdAdNoC", "dim(shapes.a, 0) > 1", "ceilDiv(dim(shapes.b, 2), registerTile) <= dispatchLimit", "ceilDiv(dim(shapes.a, 0), registerTile) <= dispatchLimit", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Contract2DTiledReg",
+          "shader": "matmul-tiled-general-reg.wgsl.jinja",
+          "derive": {
+            "aShape": ["dim(shapes.a, 0)", "dim(shapes.a, 1) * dim(shapes.a, 2)"],
+            "bShape": ["dim(shapes.b, 0) * dim(shapes.b, 1)", "dim(shapes.b, 2)"],
+            "alpha": 1,
+            "aRank": 2,
+            "bRank": 2,
+            "transBatchA": false
+          },
+          "bindings": ["a", "b_main", "y"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.b, 2), registerTile)", "y": "ceilDiv(dim(shapes.a, 0), registerTile)" }
+        }
+      ]
+    },
+    {
+      "id": "bij_bjk_bik_band_vec4",
+      "priority": 61,
+      "when": ["bijBjkBikContract", "dim(shapes.a, 1) >= 2", "dim(shapes.a, 1) <= 16", "dim(shapes.a, 2) > 0", "dim(shapes.b, 2) > 0", "dim(shapes.b, 2) % 4 == 0", "ceilDiv(dim(shapes.b, 2), vec4OutputTile) <= dispatchLimit", "dim(shapes.y, 0) <= dispatchLimit", "bandBatchedWorkgroups >= tunables.BAND_BATCHED_MIN_WORKGROUPS", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "bandBatchedResourcesFit", "f16Ok(dtypes.T)"],
+      "derive": {
+        "outputBuffer": "\"y\"",
+        "gemvSlices": "bandBatchedSlices",
+        "batched": true,
+        "M": "dim(shapes.a, 1)",
+        "K": "dim(shapes.a, 2)",
+        "N": "dim(shapes.b, 2)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchedBandVec4",
+          "shader": "matmul-band-vec4.wgsl.jinja",
+          "bindings": ["a", "b", { "arg": "y", "elementType": "$vectorScalar" }],
+          "dispatch": { "x": "ceilDiv(dim(shapes.b, 2), vec4OutputTile)", "y": "dim(shapes.y, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ik_decode_gemv_vec4",
+      "priority": 60,
+      "when": ["present.b", "ijJkIkEquationOk", "ijJkIkShapeOk", "dim(shapes.a, 0) == 1", "dim(shapes.y, 0) == 1", "dim(shapes.b, 1) > 0", "dim(shapes.b, 1) % 4 == 0", "gemvWorkgroups <= dispatchLimit", "gemvResourcesFit", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DecodeGemvVec4",
+          "shader": "matmul-vector-matrix-vec4.wgsl.jinja",
+          "bindings": ["a", "b", { "arg": "y", "name": "c", "elementType": "$vectorScalar" }, "params_k_n4"],
+          "dispatch": { "x": "gemvWorkgroups" }
+        }
+      ]
+    },
+    {
+      "id": "identity",
+      "priority": 15,
+      "when": ["not present.b", "((attrs.equation == \"->\" and ranks.a == 0 and ranks.y == 0) or ((attrs.equation == \"i->i\" or attrs.equation == \"i\") and ranks.a == 1 and ranks.y == 1 and dim(shapes.y, 0) == dim(shapes.a, 0)))", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Identity",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": ["x", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ellipsis_ji_scalar_per_batch",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"...ji->...\"", "ranks.a == 3", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "supersededBy": ["ellipsis_ji_scalar_per_batch_split"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchReduceAll",
+          "shader": "einsum-batch-reduce-all.wgsl.jinja",
+          "bindings": ["a", "y", "params_batch_rows_cols"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ii_i",
+      "priority": 12,
+      "when": ["diagonal2ExtractContract or diagonal3ExtractContract", "f16Ok(dtypes.T)"],
+      "derive": { "diagonalRank": "ranks.a" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalExtract",
+          "shader": "einsum-diagonal-extract.wgsl.jinja",
+          "bindings": ["a", "y", "params_dim"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ab_ba_a",
+      "priority": 12,
+      "when": ["present.b", "attrs.equation == \"ab,ba->a\"", "ranks.a == 2", "ranks.b == 2", "ranks.y == 1", "dim(shapes.a, 1) == dim(shapes.b, 0)", "dim(shapes.a, 0) == dim(shapes.b, 1)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ABBAA",
+          "shader": "einsum-reduce-rows.wgsl.jinja",
+          "derive": { "reduceRows": true, "multiplyTranspose": true },
+          "bindings": ["a", "b_main", "y", "params_ij_i"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ki",
+      "priority": 20,
+      "when": ["present.b", "attrs.equation == \"ij,jk->ki\"", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "dim(shapes.a, 1) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.b, 1)", "dim(shapes.y, 1) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "derive": {
+        "transposeOutput": true,
+        "matmulM": "dim(shapes.a, 0)",
+        "matmulN": "dim(shapes.b, 1)",
+        "matmulK": "dim(shapes.a, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMulTransposeOut",
+          "shader": "einsum-matmul.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_m_n_k"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "iij_jk_k",
+      "priority": 14,
+      "when": ["present.b", "(attrs.equation == \"iij,jk\" or attrs.equation == \"iij,jk->k\")", "ranks.a == 3", "ranks.b == 2", "ranks.y == 1", "dim(shapes.a, 0) == dim(shapes.a, 1)", "dim(shapes.a, 2) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.b, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalMatMul",
+          "shader": "einsum-diag-matmul-iij-jk.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_iij_jk"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ab_ba_ab",
+      "priority": 14,
+      "when": ["present.b", "attrs.equation == \"ab,ba->ab\"", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "dim(shapes.a, 1) == dim(shapes.b, 0)", "dim(shapes.a, 0) == dim(shapes.b, 1)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.AbBaAb",
+          "shader": "einsum-ab-ba-ab.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_ab_ba_ab"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ik_tiled_reg",
+      "priority": 51,
+      "when": ["present.b", "f16Ok(dtypes.T)", "((ijJkIkEquationOk and ijJkIkShapeOk and ceil(dim(shapes.a, 0) / registerTile) * ceil(dim(shapes.b, 1) / registerTile) >= 128 and dim(shapes.b, 1) >= 1024 and dim(shapes.a, 1) >= 64 and ceilDiv(dim(shapes.b, 1), registerTile) <= dispatchLimit and ceilDiv(dim(shapes.a, 0), registerTile) <= dispatchLimit) or (bijBjkBikContract and dim(shapes.a, 1) >= 128 and dim(shapes.b, 2) >= 128 and dim(shapes.a, 2) >= 64 and ceil(dim(shapes.a, 1) / registerTile) * ceil(dim(shapes.b, 2) / registerTile) * dim(shapes.y, 0) >= 128 and ceilDiv(dim(shapes.y, 2), registerTile) <= dispatchLimit and ceilDiv(dim(shapes.y, 1), registerTile) <= dispatchLimit and dim(shapes.y, 0) <= dispatchLimit))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMulTiledReg",
+          "shader": "matmul-tiled-general-reg.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "transA": "false",
+            "transB": "false",
+            "alpha": "1.0",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "transBatchA": "false",
+            "transBatchB": "false"
+          },
+          "bindings": ["a", "b_main", "y"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 2), registerTile) if ranks.y == 3 else ceil(dim(shapes.b, 1) / registerTile)",
+            "y": "ceilDiv(dim(shapes.y, 1), registerTile) if ranks.y == 3 else ceil(dim(shapes.a, 0) / registerTile)",
+            "z": "dim(shapes.y, 0) if ranks.y == 3 else 1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ik_tiled",
+      "priority": 50,
+      "when": ["present.b", "f16Ok(dtypes.T)", "((ijJkIkEquationOk and ijJkIkShapeOk and dim(shapes.a, 0) > 1 and ceilDiv(dim(shapes.b, 1), generalTile) <= dispatchLimit and ceilDiv(dim(shapes.a, 0), generalTile) <= dispatchLimit) or (bijBjkBikContract and dim(shapes.a, 1) > 1 and ceilDiv(dim(shapes.y, 2), generalTile) <= dispatchLimit and ceilDiv(dim(shapes.y, 1), generalTile) <= dispatchLimit and dim(shapes.y, 0) <= dispatchLimit))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMulTiled",
+          "shader": "matmul-tiled-general.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "transA": "false",
+            "transB": "false",
+            "alpha": "1.0",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "transBatchA": "false",
+            "transBatchB": "false"
+          },
+          "bindings": ["a", "b_main", "y"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 2), generalTile) if ranks.y == 3 else ceil(dim(shapes.b, 1) / generalTile)",
+            "y": "ceilDiv(dim(shapes.y, 1), generalTile) if ranks.y == 3 else ceil(dim(shapes.a, 0) / generalTile)",
+            "z": "dim(shapes.y, 0) if ranks.y == 3 else 1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ellipsis_diag",
+      "priority": 15,
+      "when": ["not present.b", "(attrs.equation == \"...ii ->...i\" or attrs.equation == \"...ii->...i\")", "ranks.a == 3", "ranks.y == 2", "dim(shapes.a, 1) == dim(shapes.a, 2)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchDiagonal",
+          "shader": "einsum-batch-diagonal.wgsl.jinja",
+          "bindings": ["a", "y", "params_n_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ellipsis_iij_j",
+      "priority": 12,
+      "when": ["not present.b", "(attrs.equation == \"...iij->...j\" or attrs.equation == \"...iij\")", "ranks.a == 4", "ranks.y == 2", "dim(shapes.a, 1) == dim(shapes.a, 2)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 3)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchDiagonalIijJ",
+          "shader": "einsum-batch-diagonal-iij-j.wgsl.jinja",
+          "bindings": ["a", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ellipsis_ji_j",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"...ji->...j\"", "ranks.a == 3", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchReduceLast",
+          "shader": "einsum-batch-reduce-last.wgsl.jinja",
+          "bindings": ["a", "y", "params_ellipsis_ji_j"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ijk_ki",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"ijk->ki\"", "ranks.a == 3", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.a, 2)", "dim(shapes.y, 1) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ReduceMiddleTranspose",
+          "shader": "einsum-reduce-middle-transpose.wgsl.jinja",
+          "bindings": ["a", "y", "params_ijk_ki"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "iji_j",
+      "priority": 12,
+      "when": ["not present.b", "(attrs.equation == \"iji->j\" or attrs.equation == \"iji\")", "ranks.a == 3", "ranks.y == 1", "dim(shapes.a, 0) == dim(shapes.a, 2)", "dim(shapes.y, 0) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalIJIReduce",
+          "shader": "einsum-diagonal-iji-reduce.wgsl.jinja",
+          "bindings": ["a", "y", "params_iji_j"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "iji_ij",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"iji->ij\"", "ranks.a == 3", "ranks.y == 2", "dim(shapes.a, 0) == dim(shapes.a, 2)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "derive": { "transposeOutput": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalIJI",
+          "shader": "einsum-indexed-2d-output.wgsl.jinja",
+          "derive": { "outerProduct": 0 },
+          "bindings": ["a", "y", "params_iji_2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "iji_ji",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"iji->ji\"", "ranks.a == 3", "ranks.y == 2", "dim(shapes.a, 0) == dim(shapes.a, 2)", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dim(shapes.y, 1) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "derive": { "transposeOutput": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalIJITranspose",
+          "shader": "einsum-indexed-2d-output.wgsl.jinja",
+          "derive": { "outerProduct": 0 },
+          "bindings": ["a", "y", "params_iji_2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_i",
+      "when": ["not present.b", "attrs.equation == \"ij->i\"", "ranks.a == 2", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ReduceRows",
+          "shader": "einsum-reduce-rows.wgsl.jinja",
+          "derive": { "reduceRows": true, "multiplyTranspose": false },
+          "bindings": ["a", "y", "params_ij_i"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_j",
+      "when": ["not present.b", "attrs.equation == \"ij->j\"", "ranks.a == 2", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "supersededBy": ["ij_j_splitk_narrow_cooperative", "ij_j_splitk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ReduceCols",
+          "shader": "einsum-reduce-rows.wgsl.jinja",
+          "derive": { "reduceRows": false, "multiplyTranspose": false },
+          "bindings": ["a", "y", "params_ij_i"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_j_ij",
+      "priority": 10,
+      "when": ["present.b", "attrs.equation == \"i,j->ij\"", "ranks.a == 1", "ranks.b == 1", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.b, 0)", "f16Ok(dtypes.T)"],
+      "derive": { "transposeOutput": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.OuterProduct",
+          "shader": "einsum-indexed-2d-output.wgsl.jinja",
+          "derive": { "outerProduct": 1 },
+          "bindings": ["a", "b_main", "y", "params_outer_product"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_j_ji",
+      "priority": 10,
+      "when": ["present.b", "attrs.equation == \"i,j->ji\"", "ranks.a == 1", "ranks.b == 1", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.b, 0)", "dim(shapes.y, 1) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "derive": { "transposeOutput": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.OuterProductTranspose",
+          "shader": "einsum-indexed-2d-output.wgsl.jinja",
+          "derive": { "outerProduct": 1 },
+          "bindings": ["a", "b_main", "y", "params_outer_product"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "abc_bad_ad",
+      "priority": 14,
+      "when": ["abcBadAdContract", "f16Ok(dtypes.T)"],
+      "derive": { "bLayout": "\"bad\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.AbcBadAd",
+          "shader": "einsum-abc-contract.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_abc_bad_ad"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "abc_bcd_ad",
+      "priority": 14,
+      "when": ["abcBcdAdContract", "f16Ok(dtypes.T)"],
+      "derive": { "bLayout": "\"bcd\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.AbcBcdAd",
+          "shader": "einsum-abc-contract.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_abc_bcd_ad"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "aibj_ajbk_aibk",
+      "priority": 16,
+      "when": ["aibjAjbkContract", "f16Ok(dtypes.T)"],
+      "derive": { "transposeA": false, "transposeB": false, "contractJDim": "dim(shapes.a, 3)" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMul4dAibjAjbk",
+          "shader": "einsum-4d-contract.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_4d_contract"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ajbi_ajbk_aibk",
+      "priority": 16,
+      "when": ["ajbiAjbkContract", "f16Ok(dtypes.T)"],
+      "derive": { "transposeA": true, "transposeB": false, "contractJDim": "dim(shapes.a, 1)" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMul4dAjbiAjbk",
+          "shader": "einsum-4d-contract.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_4d_contract"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "aibj_akbj_aibk",
+      "priority": 16,
+      "when": ["aibjAkbjContract", "f16Ok(dtypes.T)"],
+      "derive": { "transposeA": false, "transposeB": true, "contractJDim": "dim(shapes.a, 3)" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMul4dAibjAkbj",
+          "shader": "einsum-4d-contract.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_4d_contract"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abc_cd_def_abd",
+      "priority": 14,
+      "when": ["present.b", "present.c", "attrs.equation == \"abc,cd,def->abd\"", "ranks.a == 3", "ranks.b == 2", "ranks.c == 3", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.b, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.b, 1)", "dim(shapes.c, 1)", "dim(shapes.c, 2)"],
+            "inputLabels": [[0, 1, 2], [2, 3], [3, 4, 5]],
+            "inputNames": ["\"a\"", "\"b\"", "\"c\""],
+            "outLabels": [0, 1, 3],
+            "sumLabels": [2, 4, 5]
+          },
+          "bindings": ["a", "b_main", "c_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abc_cd_edf_abe",
+      "priority": 14,
+      "when": ["present.b", "present.c", "attrs.equation == \"abc,cd,edf->abe\"", "ranks.a == 3", "ranks.b == 2", "ranks.c == 3", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.c, 0)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.b, 1)", "dim(shapes.c, 0)", "dim(shapes.c, 2)"],
+            "inputLabels": [[0, 1, 2], [2, 3], [4, 3, 5]],
+            "inputNames": ["\"a\"", "\"b\"", "\"c\""],
+            "outLabels": [0, 1, 4],
+            "sumLabels": [2, 3, 5]
+          },
+          "bindings": ["a", "b_main", "c_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abcde_ace",
+      "priority": 14,
+      "when": ["not present.b", "not present.c", "attrs.equation == \"abcde->ace\"", "ranks.a == 5", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 2)", "dim(shapes.y, 2) == dim(shapes.a, 4)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)"],
+            "inputLabels": [[0, 1, 2, 3, 4]],
+            "inputNames": ["\"a\""],
+            "outLabels": [0, 2, 4],
+            "sumLabels": [1, 3]
+          },
+          "bindings": ["a", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abcdef_adf",
+      "priority": 14,
+      "when": ["not present.b", "not present.c", "attrs.equation == \"abcdef->adf\"", "ranks.a == 6", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 3)", "dim(shapes.y, 2) == dim(shapes.a, 5)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)", "dim(shapes.a, 5)"],
+            "inputLabels": [[0, 1, 2, 3, 4, 5]],
+            "inputNames": ["\"a\""],
+            "outLabels": [0, 3, 5],
+            "sumLabels": [1, 2, 4]
+          },
+          "bindings": ["a", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_bcknd_bckns_bcnds",
+      "priority": 14,
+      "when": ["present.b", "not present.c", "attrs.equation == \"bcknd,bckns->bcnds\"", "ranks.a == 5", "ranks.b == 5", "ranks.y == 5", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.a, 3)", "dim(shapes.y, 3) == dim(shapes.a, 4)", "dim(shapes.y, 4) == dim(shapes.b, 4)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)", "dim(shapes.b, 4)"],
+            "inputLabels": [[0, 1, 2, 3, 4], [0, 1, 2, 3, 5]],
+            "inputNames": ["\"a\"", "\"b\""],
+            "outLabels": [0, 1, 3, 4, 5],
+            "sumLabels": [2]
+          },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abcde_abcdf_abef",
+      "priority": 14,
+      "when": ["present.b", "not present.c", "attrs.equation == \"abcde,abcdf->abef\"", "ranks.a == 5", "ranks.b == 5", "ranks.y == 4", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.a, 4)", "dim(shapes.y, 3) == dim(shapes.b, 4)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)", "dim(shapes.b, 4)"],
+            "inputLabels": [[0, 1, 2, 3, 4], [0, 1, 2, 3, 5]],
+            "inputNames": ["\"a\"", "\"b\""],
+            "outLabels": [0, 1, 4, 5],
+            "sumLabels": [2, 3]
+          },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abcde_afcde_abf",
+      "priority": 14,
+      "when": ["present.b", "not present.c", "attrs.equation == \"abcde,afcde->abf\"", "ranks.a == 5", "ranks.b == 5", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.b, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)", "dim(shapes.b, 1)"],
+            "inputLabels": [[0, 1, 2, 3, 4], [0, 5, 2, 3, 4]],
+            "inputNames": ["\"a\"", "\"b\""],
+            "outLabels": [0, 1, 5],
+            "sumLabels": [2, 3, 4]
+          },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_abcdef_abcdeg_abcfg",
+      "priority": 14,
+      "when": ["present.b", "not present.c", "attrs.equation == \"abcdef,abcdeg->abcfg\"", "ranks.a == 6", "ranks.b == 6", "ranks.y == 5", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "dim(shapes.y, 2) == dim(shapes.a, 2)", "dim(shapes.y, 3) == dim(shapes.a, 5)", "dim(shapes.y, 4) == dim(shapes.b, 5)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.a, 1)", "dim(shapes.a, 2)", "dim(shapes.a, 3)", "dim(shapes.a, 4)", "dim(shapes.a, 5)", "dim(shapes.b, 5)"],
+            "inputLabels": [[0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 6]],
+            "inputNames": ["\"a\"", "\"b\""],
+            "outLabels": [0, 1, 2, 5, 6],
+            "sumLabels": [3, 4]
+          },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_i_ij_j_scalar",
+      "priority": 14,
+      "when": ["present.b", "present.c", "attrs.equation == \"i,ij,j->\"", "ranks.a == 1", "ranks.b == 2", "ranks.c == 1", "ranks.y == 0", "f16Ok(dtypes.T)"],
+      "supersededBy": ["nd_i_ij_j_scalar_split"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.NdGeneric",
+          "shader": "einsum-nd-generic.wgsl.jinja",
+          "derive": {
+            "extents": ["dim(shapes.a, 0)", "dim(shapes.b, 1)"],
+            "inputLabels": [[0], [0, 1], [1]],
+            "inputNames": ["\"a\"", "\"b\"", "\"c\""],
+            "outLabels": [],
+            "sumLabels": [0, 1]
+          },
+          "bindings": ["a", "b_main", "c_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_i_scalar_splitk",
+      "priority": 16,
+      "when": ["present.b", "attrs.equation == \"i,i\"", "ranks.a == 1", "ranks.b == 1", "ranks.y == 0", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dtypes.T == \"f32\"", "dim(shapes.a, 0) >= tunables.SCALAR_SPLIT_MIN_ELEMENTS", "dim(shapes.a, 0) % 4 == 0", "dotSplitCount <= dispatchLimit", "dotSplitCount * 4 <= storageBufferLimit"],
+      "derive": { "split": "dotSplitCount", "combineCols": 1 },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[dotSplitCount]" }],
+      "passes": [
+        {
+          "id": "split_dot",
+          "name": "Einsum.InnerProductSplitK",
+          "shader": "dot-splitk-partial.wgsl.jinja",
+          "bindings": ["a_vec4_f32", "b_vec4_f32", "partials", "params_count4"],
+          "dispatch": { "x": "dotSplitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.InnerProductSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "ij_scalar_splitk",
+      "priority": 14,
+      "when": ["not present.b", "attrs.equation == \"ij->\"", "ranks.a == 2", "ranks.y == 0", "dtypes.T == \"f32\"", "numel(shapes.a) >= tunables.SCALAR_SPLIT_MIN_ELEMENTS", "flatSplitCount <= dispatchLimit", "flatSplitCount * 4 <= storageBufferLimit"],
+      "derive": { "split": "flatSplitCount", "combineCols": 1 },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[flatSplitCount]" }],
+      "passes": [
+        {
+          "id": "flat_partial",
+          "name": "Einsum.ReduceAll2DFlatPartial",
+          "shader": "reduce-flat-partial.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["x_a", "partials", "params_count4_numel"],
+          "dispatch": { "x": "flatSplitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.ReduceAll2DCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "ij_j_splitk_narrow_cooperative",
+      "priority": 16,
+      "when": ["not present.b", "attrs.equation == \"ij->j\"", "ranks.a == 2", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dtypes.T == \"f32\"", "dim(shapes.a, 0) >= tunables.SCALAR_SPLIT_MIN_ELEMENTS", "dim(shapes.a, 1) >= 1", "dim(shapes.a, 1) <= tunables.NARROW_REDUCTION_MAX_COLUMNS", "reduceColsSplitCount <= dispatchLimit", "dim(shapes.a, 1) <= dispatchLimit", "reduceColsPartialBytes <= storageBufferLimit", "tunables.WORKGROUP_SIZE % coalescedTileCols == 0", "tunables.WORKGROUP_SIZE * 4 <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "split": "reduceColsSplitCount", "combineCols": "dim(shapes.a, 1)" },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[reduceColsSplitCount * dim(shapes.a, 1)]" }],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "Einsum.ReduceColsSplitKNarrowCooperative",
+          "shader": "reduce-axis0-tilecols.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "splitSpec": "split", "tileCols": "coalescedTileCols" },
+          "bindings": [
+            "x_a",
+            "partials",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "axisDim", "type": "u32", "value": "dim(shapes.a, 0)" },
+                { "name": "inner", "type": "u32", "value": "dim(shapes.a, 1)" },
+                { "name": "outputs", "type": "u32", "value": "dim(shapes.a, 1)" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "ceilDiv(dim(shapes.a, 1), coalescedTileCols)", "y": "reduceColsSplitCount", "z": 1 }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.ReduceColsSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_j_splitk",
+      "priority": 14,
+      "when": ["not present.b", "attrs.equation == \"ij->j\"", "ranks.a == 2", "ranks.y == 1", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dtypes.T == \"f32\"", "dim(shapes.a, 0) >= tunables.SCALAR_SPLIT_MIN_ELEMENTS", "reduceColsSplitCount <= dispatchLimit", "dim(shapes.a, 1) <= dispatchLimit", "reduceColsPartialBytes <= storageBufferLimit"],
+      "derive": { "split": "reduceColsSplitCount", "combineCols": "dim(shapes.a, 1)" },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[reduceColsSplitCount * dim(shapes.a, 1)]" }],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "Einsum.ReduceColsSplitKReduce",
+          "shader": "reduce-axis0-splitk-reduce.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["x_a", "partials", "params_ij_i"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), DISPATCH_FOLD_WIDTH)",
+            "y": "reduceColsSplitCount",
+            "z": "ceilDiv(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "Einsum.ReduceColsSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"" },
+          "bindings": ["partials_f32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.a, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_ij_ij",
+      "when": ["present.b", "attrs.equation == \"ij,ij->ij\"", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dim(shapes.a, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Mul",
+          "shader": "einsum-mul.wgsl.jinja",
+          "derive": { "aScalar": false, "bScalar": false, "operands": "[\"a\", \"b\"]" },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_scalar_mul",
+      "priority": 12,
+      "when": ["present.b", "(attrs.equation == \",->\" or attrs.equation == \",\")", "ranks.a == 0", "ranks.b == 0", "ranks.y == 0", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ScalarScalarMul",
+          "shader": "einsum-mul.wgsl.jinja",
+          "derive": { "aScalar": true, "bScalar": true, "operands": "[\"a\", \"b\"]" },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": { "x": "min(1, 65535)", "y": "ceilDiv(1, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "scalar_matrix_mul",
+      "priority": 12,
+      "when": ["present.b", "(attrs.equation == \",...i->...i\" or attrs.equation == \",...i\")", "ranks.a == 0", "ranks.b == 2", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.b, 0)", "dim(shapes.y, 1) == dim(shapes.b, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ScalarMatrixMul",
+          "shader": "einsum-mul.wgsl.jinja",
+          "derive": { "aScalar": true, "bScalar": false, "operands": "[\"a\", \"b\"]" },
+          "bindings": ["a", "b_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_i_i_mul",
+      "when": ["present.b", "present.c", "attrs.equation == \"i,i,i->i\"", "ranks.a == 1", "sameShape(shapes.b, shapes.a)", "sameShape(shapes.c, shapes.a)", "sameShape(shapes.y, shapes.a)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Mul",
+          "shader": "einsum-mul.wgsl.jinja",
+          "derive": { "aScalar": false, "bScalar": false, "operands": "[\"a\", \"b\", \"c\"]" },
+          "bindings": ["a", "b_main", "c_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_i_i_i_mul",
+      "when": ["present.b", "present.c", "present.d", "attrs.equation == \"i,i,i,i->i\"", "ranks.a == 1", "sameShape(shapes.b, shapes.a)", "sameShape(shapes.c, shapes.a)", "sameShape(shapes.d, shapes.a)", "sameShape(shapes.y, shapes.a)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Mul",
+          "shader": "einsum-mul.wgsl.jinja",
+          "derive": { "aScalar": false, "bScalar": false, "operands": "[\"a\", \"b\", \"c\", \"d\"]" },
+          "bindings": ["a", "b_main", "c_main", "d", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ellipsis_ji_ij",
+      "priority": 12,
+      "when": ["not present.b", "(attrs.equation == \"...ji->...ij\" or attrs.equation == \"...ji\")", "ranks.a == 3", "ranks.y == 3", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.a, 2)", "dim(shapes.y, 2) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchTranspose",
+          "shader": "einsum-transpose.wgsl.jinja",
+          "derive": { "batched": true },
+          "bindings": ["a", "y", "params_ellipsis_ji_j"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_ji",
+      "priority": 10,
+      "when": ["not present.b", "(attrs.equation == \"ij->ji\" or attrs.equation == \"ji->ij\" or attrs.equation == \"ji\" or attrs.equation == \"...i->i...\")", "ranks.a == 2", "ranks.y == 2", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dim(shapes.y, 1) == dim(shapes.a, 0)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Transpose",
+          "shader": "einsum-transpose.wgsl.jinja",
+          "derive": { "batched": false },
+          "bindings": ["a", "y", "params_ij_ji"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ik",
+      "priority": 20,
+      "when": ["present.b", "ijJkIkEquationOk", "ijJkIkShapeOk", "f16Ok(dtypes.T)"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "transposeOutput": false,
+        "matmulM": "dim(shapes.y, 0)",
+        "matmulN": "dim(shapes.y, 1)",
+        "matmulK": "dim(shapes.a, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMul",
+          "shader": "einsum-matmul.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_m_n_k"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bij_bjk_bik",
+      "priority": 15,
+      "when": ["bijBjkBikContract", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.BatchMatMul",
+          "shader": "einsum-batch-matmul.wgsl.jinja",
+          "bindings": ["a", "b_main", "y", "params_m_n_k_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "abc_bcd_ad_subgroup_matrix",
+      "priority": 101,
+      "when": ["abcBcdAdNoC", "dim(shapes.a, 0) >= tunables.SUBGROUP_MATRIX_MIN_M", "(dim(shapes.a, 1) * dim(shapes.a, 2)) % 32 == 0", "dim(shapes.b, 2) % 64 == 0", "ceilDiv(dim(shapes.b, 2), 64) <= dispatchLimit", "ceilDiv(dim(shapes.a, 0), 32) <= dispatchLimit", "subgroupFloatTypeOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "fScalar": "\"f16\" if dtypes.T == \"f16\" else \"f32\"",
+        "hasBias": false,
+        "M": "dim(shapes.a, 0)",
+        "K": "dim(shapes.a, 1) * dim(shapes.a, 2)",
+        "N": "dim(shapes.b, 2)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.Contract2DSubgroupMatrix",
+          "shader": "matmul-subgroup-matrix-ext.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "y", "name": "c" }],
+          "dispatch": { "x": "ceilDiv(dim(shapes.b, 2), 64)", "y": "ceilDiv(dim(shapes.a, 0), 32)" }
+        }
+      ]
+    },
+    {
+      "id": "ij_jk_ik_subgroup_matrix",
+      "priority": 100,
+      "when": ["present.b", "subgroupFloatTypeOk", "((attrs.equation == \"ij,jk->ik\" and ijJkIkShapeOk and dim(shapes.a, 0) >= tunables.SUBGROUP_MATRIX_MIN_M and dim(shapes.a, 1) % 32 == 0 and dim(shapes.b, 1) % 64 == 0 and ceilDiv(dim(shapes.y, 1), 64) <= dispatchLimit and ceilDiv(dim(shapes.y, 0), 32) <= dispatchLimit) or (bijBjkBikContract and dim(shapes.y, 0) >= 1 and dim(shapes.a, 1) >= tunables.SUBGROUP_MATRIX_BATCH_MIN_M and dim(shapes.a, 2) % 32 == 0 and dim(shapes.b, 2) % 64 == 0 and ceilDiv(dim(shapes.y, 2), 64) <= dispatchLimit and ceilDiv(dim(shapes.y, 1), 32) <= dispatchLimit and dim(shapes.y, 0) <= dispatchLimit))", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "fScalar": "\"f16\" if dtypes.T == \"f16\" else \"f32\"",
+        "hasBias": false,
+        "M": "dim(shapes.a, 1) if ranks.a == 3 else dim(shapes.a, 0)",
+        "K": "dim(shapes.a, 2) if ranks.a == 3 else dim(shapes.a, 1)",
+        "N": "dim(shapes.b, 2) if ranks.a == 3 else dim(shapes.b, 1)",
+        "batchCount": "dim(shapes.y, 0) if ranks.y == 3 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.MatMulSubgroupMatrix",
+          "shader": "matmul-subgroup-matrix-ext.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "y", "name": "c" }],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 2), 64) if ranks.y == 3 else ceilDiv(dim(shapes.y, 1), 64)",
+            "y": "ceilDiv(dim(shapes.y, 1), 32) if ranks.y == 3 else ceilDiv(dim(shapes.y, 0), 32)",
+            "z": "dim(shapes.y, 0) if ranks.y == 3 else 1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "i_i_scalar",
+      "priority": 15,
+      "when": ["present.b", "attrs.equation == \"i,i\"", "ranks.a == 1", "ranks.b == 1", "ranks.y == 0", "dim(shapes.a, 0) == dim(shapes.b, 0)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.InnerProduct",
+          "shader": "einsum-serial-scalar.wgsl.jinja",
+          "derive": { "modeSpec": "\"dot\"" },
+          "bindings": ["a", "b_main", "y", "params_k"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "ij_scalar",
+      "priority": 12,
+      "when": ["not present.b", "attrs.equation == \"ij->\"", "ranks.a == 2", "ranks.y == 0", "f16Ok(dtypes.T)"],
+      "supersededBy": ["ij_scalar_splitk"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.ReduceAll2D",
+          "shader": "einsum-serial-scalar.wgsl.jinja",
+          "derive": { "modeSpec": "\"reduce2d\"" },
+          "bindings": ["a", "y", "params_ij_i"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "ii_scalar",
+      "priority": 12,
+      "when": ["not present.b", "((attrs.equation == \"ii\" and ranks.a == 2) or (attrs.equation == \"iii\" and ranks.a == 3 and dim(shapes.a, 1) == dim(shapes.a, 2)))", "ranks.y == 0", "dim(shapes.a, 0) == dim(shapes.a, 1)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T", "rank3Input": "ranks.a == 3" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Einsum.DiagonalSum",
+          "shader": "einsum-serial-scalar.wgsl.jinja",
+          "derive": { "modeSpec": "\"diagonal\"" },
+          "bindings": ["a", "y", "params_dim"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,592 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [128, 256] },
+  "cases": [
+    {
+      "name": "rotary-f32-b4s128h64",
+      "attrs": { "num_heads": 1 },
+      "preset": "smoke",
+      "vars": { "batch": 4, "seq": 128, "headSize": 64 },
+      "inputs": {
+        "x": { "shape": [4, 128, 64], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [4, 128, 32],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [4, 128, 32], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [4, 128, 64], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.headSize / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-b8s8192h128-large",
+      "attrs": { "num_heads": 1 },
+      "vars": { "batch": 8, "seq": 8192, "headSize": 128 },
+      "inputs": {
+        "x": { "shape": [8, 8192, 128], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [8, 8192, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [8, 8192, 64], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [8, 8192, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.headSize / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-rank4-b8h32s256h128-large",
+      "vars": { "batch": 8, "heads": 32, "seq": 256, "headSize": 128 },
+      "inputs": {
+        "x": { "shape": [8, 32, 256, 128], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [8, 256, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [8, 256, 64], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [8, 32, 256, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.heads * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.headSize / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-decode-q1-rank4-b1h32s1h128-single-row",
+      "preset": "smoke",
+      "vars": { "batch": 1, "heads": 32, "seq": 1, "headSize": 128 },
+      "inputs": {
+        "x": { "shape": [1, 32, 1, 128], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": { "shape": [1, 1, 64], "dtype": "float32", "dist": "uniform", "seed": 116, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [1, 1, 64], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 1, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.heads * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.headSize / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-partial-rotary-tail-b8s8192h128-read-amplification",
+      "preset": "smoke",
+      "vars": { "batch": 8, "seq": 8192, "headSize": 128, "rotaryDim": 64 },
+      "attrs": { "rotary_embedding_dim": 64, "num_heads": 1 },
+      "inputs": {
+        "x": { "shape": [8, 8192, 128], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [8, 8192, 32],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [8, 8192, 32], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [8, 8192, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.rotaryDim / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f16-b8s8192h128-large",
+      "attrs": { "num_heads": 1 },
+      "preset": "smoke",
+      "vars": { "batch": 8, "seq": 8192, "headSize": 128 },
+      "inputs": {
+        "x": { "shape": [8, 8192, 128], "dtype": "float16", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [8, 8192, 64],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [8, 8192, 64], "dtype": "float16", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [8, 8192, 128], "dtype": "float16" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.headSize * 2 * 2 + args.batch * args.seq * (args.headSize / 2) * 2 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-multihead-b4s1024h2048-nh32-packed-layout",
+      "attrs": { "num_heads": 32 },
+      "preset": "smoke",
+      "vars": { "batch": 4, "seq": 1024, "hidden": 2048, "headSize": 64 },
+      "inputs": {
+        "x": { "shape": [4, 1024, 2048], "dtype": "float32", "dist": "normal", "seed": 115, "scale": 0.2 },
+        "cos": {
+          "shape": [4, 1024, 32],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 116,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [4, 1024, 32], "dtype": "float32", "dist": "uniform", "seed": 117, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [4, 1024, 2048], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.hidden * 4 * 2 + args.batch * args.seq * (args.headSize / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-rank3-partial-rd126-tail-copy-full-read-amplification",
+      "preset": "stress",
+      "vars": { "batch": 8, "seq": 8192, "headSize": 128, "rotaryDim": 126 },
+      "attrs": { "rotary_embedding_dim": 126, "num_heads": 1 },
+      "inputs": {
+        "x": { "shape": [8, 8192, 128], "dtype": "float32", "dist": "normal", "seed": 215, "scale": 0.2 },
+        "cos": {
+          "shape": [8, 8192, 63],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 216,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [8, 8192, 63], "dtype": "float32", "dist": "uniform", "seed": 217, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [8, 8192, 128], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.rotaryDim / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rotary-f32-rank4-partial-rd126-tail-copy-b4h16s512h128",
+      "preset": "stress",
+      "vars": { "batch": 4, "heads": 16, "seq": 512, "headSize": 128, "rotaryDim": 126 },
+      "attrs": { "rotary_embedding_dim": 126 },
+      "inputs": {
+        "x": { "shape": [4, 16, 512, 128], "dtype": "float32", "dist": "normal", "seed": 315, "scale": 0.2 },
+        "cos": {
+          "shape": [4, 512, 63],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 316,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [4, 512, 63], "dtype": "float32", "dist": "uniform", "seed": 317, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [4, 16, 512, 128], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.heads * args.seq * args.headSize * 4 * 2 + args.batch * args.seq * (args.rotaryDim / 2) * 4 * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot94_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 47], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot94_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 47], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot100_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 50], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot100_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 50], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot92_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 46], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank3_head100_rot92_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 46], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot94_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 47], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot94_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 47], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot100_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 50], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot100_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 50], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot92_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 257, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 257, 46], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float32_rank4_head100_rot92_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [262, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [262, 46], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head128_rot126_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 384], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 63], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 63], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 384] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head128_rot126_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 384], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 63], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 63], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 384] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot94_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 47], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot94_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 47], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot100_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 50], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot100_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 50], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot92_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 46], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank3_head100_rot92_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92, "num_heads": 3 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 257, 300], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 46], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 257, 300] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head128_rot126_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 128], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 63], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 63], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 128] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head128_rot126_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 128], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 63], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 63], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 128] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot94_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 47], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot94_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 47], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 47], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot100_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 50], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot100_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 100 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 50], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 50], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot92_interleaved0_indexedfalse",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 257, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 257, 46], "dist": "uniform", "seed": 1603, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_float16_rank4_head100_rot92_interleaved0_indexedtrue",
+      "preset": "edge",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 3, 257, 100], "dist": "normal", "seed": 1601, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [262, 46], "dist": "uniform", "seed": 1602, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [262, 46], "dist": "uniform", "seed": 1603, "scale": 1 },
+        "positionIds": { "dtype": "uint32", "shape": [2, 257], "dist": "uniform", "seed": 1604, "min": 0, "max": 262 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 257, 100] } }
+    },
+    {
+      "name": "geometry_output_fold_float32_rot126_wg8",
+      "preset": "stress",
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 126 },
+      "tunables": { "WORKGROUP_SIZE": 8 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 8193, 128], "dist": "normal", "seed": 1611, "scale": 0.2 },
+        "cos": { "dtype": "float32", "shape": [2, 8193, 63], "dist": "uniform", "seed": 1612, "scale": 1 },
+        "sin": { "dtype": "float32", "shape": [2, 8193, 63], "dist": "uniform", "seed": 1613, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 8193, 128] } }
+    },
+    {
+      "name": "geometry_output_fold_float16_rot126_wg8",
+      "preset": "stress",
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 126 },
+      "tunables": { "WORKGROUP_SIZE": 8 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 8193, 128], "dist": "normal", "seed": 1611, "scale": 0.2 },
+        "cos": { "dtype": "float16", "shape": [2, 8193, 63], "dist": "uniform", "seed": 1612, "scale": 1 },
+        "sin": { "dtype": "float16", "shape": [2, 8193, 63], "dist": "uniform", "seed": 1613, "scale": 1 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 8193, 128] } }
+    }
+  ]
+}

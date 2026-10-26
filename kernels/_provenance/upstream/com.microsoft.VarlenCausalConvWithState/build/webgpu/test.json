@@ -1,0 +1,4511 @@
+{
+  "fixtureArrays": {
+    "vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT": [-1.125, -1.0625, -1, -0.9375, -0.875, -0.8125, -0.75, -0.6875, -0.625, -0.5625, -0.5, -0.4375, -0.375, -0.3125, -0.25, -0.1875, -0.125, -0.0625, 0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5, 0.5625, 0.625, 0.6875, 0.75, 0.8125, 0.875, 0.9375, 1, 1.0625, 1.125],
+    "vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT": [-0.28125, -0.25, -0.21875, -0.1875, -0.15625, -0.125, -0.09375, -0.0625, -0.03125, 0, 0.03125, 0.0625, 0.09375, 0.125, 0.15625, 0.1875, 0.21875, 0.25, 0.28125],
+    "vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT": [-1.375, -1.25, -1.125, -1, -0.875, -0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25, 1.375],
+    "vector-boundary-float32-c33-k2-b17-t17-cap8_input_cumulativeSequenceLengthT": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+    "vector-boundary-float32-c33-k2-b17-t17-cap8_input_captureCountT": [-3, 0, 99, 2, 1, -3, 0, 99, 2, 1, -3, 0, 99, 2, 1, -3, 0],
+    "unit-packed-all-taps-float32-c5-k2-cap1_input_weightT": [-0.5, -0.4375, -0.375, -0.3125, -0.25, -0.1875, -0.125, -0.0625, 0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5],
+    "unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT": [-1.125, -1, -0.875, -0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1.125]
+  },
+  "cases": [
+    {
+      "name": "k4_varlen_plain",
+      "provenance": {
+        "notes": "Three packed sequences of different lengths on the streaming kernel, without bias or state_update. The uneven lengths are the point: every sequence starts its window from its own initial_state, so a kernel that walked the packed axis would read its neighbour's tail."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.18000000000000002, "cosStep": 0.32 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.12, "cosStep": 0.24000000000000002 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.3, "cosStep": 0.14 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 8], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "k4_varlen_bias_silu",
+      "provenance": {
+        "notes": "Streaming kernel with a per-channel bias and the fused SiLU. Bias enters before the activation, so it is not a post-hoc add."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.19, "cosStep": 0.33 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.13, "cosStep": 0.25 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 7, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.43, "cosStep": 0.09000000000000001 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.31, "cosStep": 0.15 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 6], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu" }
+    },
+    {
+      "name": "k4_varlen_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [7, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.2, "cosStep": 0.33999999999999997 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.14, "cosStep": 0.26 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 4, 5, 7] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.31999999999999995, "cosStep": 0.16 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, 2, -1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [7, 6], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 3 }
+    },
+    {
+      "name": "k4_varlen_capture_without_output",
+      "provenance": {
+        "notes": "Pins the schema-independent optional output: positive state_update_capacity still requires capture_count, but omitting state_update must not change output or final_state."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [7, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.2, "cosStep": 0.33999999999999997 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.14, "cosStep": 0.26 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 4, 5, 7] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.31999999999999995, "cosStep": 0.16 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, 2, -1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [7, 6], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 3 }
+    },
+    {
+      "name": "k4_varlen_empty_state_update",
+      "provenance": {
+        "notes": "Requests the optional state_update at its default zero capacity. Its exact shape is (batch_size, 0, channels), capture_count remains absent, and convolution outputs are unchanged."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.18000000000000002, "cosStep": 0.32 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.12, "cosStep": 0.24000000000000002 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.3, "cosStep": 0.14 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 8], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 0, 8], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "k4_varlen_bias_state_update_swish",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.21000000000000002, "cosStep": 0.35 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.15, "cosStep": 0.27 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 6, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": {
+            "kind": "fillFloat32",
+            "scale": 0.3,
+            "sinStep": 0.44999999999999996,
+            "cosStep": 0.11000000000000001
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 4, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.32999999999999996, "cosStep": 0.17 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, -1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 4, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 4], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 2 }
+    },
+    {
+      "name": "k3_varlen_plain",
+      "provenance": {
+        "notes": "Kernel extent 3 falls off the streaming variant onto the portable one, which walks the window per output element for any extent."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [6, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.22000000000000003, "cosStep": 0.36 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.16, "cosStep": 0.28 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 2, 6] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 8, 2],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.33999999999999997, "cosStep": 0.18 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [6, 8], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 8, 2], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "k2_varlen_bias_silu",
+      "provenance": {
+        "notes": "Portable kernel at extent 2 with bias and SiLU: the shortest window that still carries state across a call."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 5],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.23, "cosStep": 0.37 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 2],
+          "data": {
+            "kind": "fillFloat32",
+            "scale": 0.5,
+            "sinStep": 0.16999999999999998,
+            "cosStep": 0.29000000000000004
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 5, 7, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.47, "cosStep": 0.13 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 1],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.35, "cosStep": 0.19 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 5], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 1], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu" }
+    },
+    {
+      "name": "k3_varlen_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.24000000000000002, "cosStep": 0.38 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.18, "cosStep": 0.30000000000000004 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 4, 2],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.36, "cosStep": 0.2 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, -1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 4, 2], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 4], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 2 }
+    },
+    {
+      "name": "k5_varlen_bias_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [10, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.25, "cosStep": 0.39 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 5],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.19, "cosStep": 0.31 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 4, 10] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.49, "cosStep": 0.15000000000000002 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.37, "cosStep": 0.21000000000000002 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [4, 3] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [10, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 4, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 4 }
+    },
+    {
+      "name": "k1_stateless_plain",
+      "provenance": {
+        "notes": "Kernel extent 1: state_length is 0, so initial_state and final_state are empty tensors and the convolution degenerates to a per-channel scale. The loops must survive a zero extent."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.26, "cosStep": 0.4 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 1],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.2, "cosStep": 0.32 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 2, 5] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 4, 0],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.38, "cosStep": 0.22 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [5, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 4, 0], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "k4_single_long_sequence",
+      "provenance": {
+        "notes": "One sequence of 64 tokens -- the prefill shape, where the streaming kernel has only channels-many threads and each walks the whole sequence."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [64, 16],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.27, "cosStep": 0.41000000000000003 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [16, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.21000000000000002, "cosStep": 0.33 }
+        },
+        "cumulativeSequenceLengthT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 64] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [16],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.51, "cosStep": 0.17 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [1, 16, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.39, "cosStep": 0.23 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [64, 16], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [1, 16, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu" }
+    },
+    {
+      "name": "k4_all_decode_steps",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [6, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.28, "cosStep": 0.42 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.22, "cosStep": 0.34 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.52, "cosStep": 0.18 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [6, 8, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.39999999999999997, "cosStep": 0.24 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [6], "data": { "kind": "values", "values": [1, 0, -1, 3, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [6, 8], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [6, 8, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [6, 1, 8], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 1 }
+    },
+    {
+      "name": "k4_rank3_weight",
+      "provenance": { "notes": "Pins the schema's required `(channels, 1, kernel_size)` weight layout." },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.29000000000000004, "cosStep": 0.43 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.22999999999999998, "cosStep": 0.35 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 3, 5] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 6, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.41, "cosStep": 0.25 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [5, 6], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 6, 3], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "k4_state_update_capacity_8",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [13, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.30000000000000004, "cosStep": 0.44 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.24, "cosStep": 0.36 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 10, 13] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.54, "cosStep": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 4, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.42, "cosStep": 0.26 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [8, 7] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [13, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 4, 3], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 8, 4], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "k12_large_kernel_bias_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [14, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.33, "cosStep": 0.47 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 12],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.27, "cosStep": 0.39 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 5, 14] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.57, "cosStep": 0.23 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 4, 11],
+          "data": {
+            "kind": "fillFloat32",
+            "scale": 0.6,
+            "sinStep": 0.44999999999999996,
+            "cosStep": 0.29000000000000004
+          }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [3, 2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [14, 4], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 4, 11], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 3 }
+    },
+    {
+      "name": "f16_k4_bias_silu",
+      "provenance": {
+        "notes": "float16 tensors on the streaming kernel. Taps and accumulation stay in f32 and only the store narrows, which is what the f32 path already did."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.31000000000000005, "cosStep": 0.45 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.25, "cosStep": 0.37 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 3, 5] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.55, "cosStep": 0.21000000000000002 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [2, 6, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.43, "cosStep": 0.27 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [5, 6], "tolerance": 0.005 },
+        "finalStateT": { "dtype": "float16", "shape": [2, 6, 3], "tolerance": 0.005 }
+      },
+      "attrs": { "activation": "silu" }
+    },
+    {
+      "name": "f16_k3_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.7, "sinStep": 0.32, "cosStep": 0.45999999999999996 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 3],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.26, "cosStep": 0.38 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 2, 5] }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [2, 4, 2],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.43999999999999995, "cosStep": 0.28 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [5, 4], "tolerance": 0.005 },
+        "finalStateT": { "dtype": "float16", "shape": [2, 4, 2], "tolerance": 0.005 },
+        "stateUpdateT": { "dtype": "float16", "shape": [2, 2, 4], "tolerance": 0.005 }
+      },
+      "attrs": { "state_update_capacity": 2 }
+    },
+    {
+      "name": "pinned_k4_boundary_bias_silu",
+      "provenance": {
+        "notes": "Hand-computed from the schema by an independent CPU model that materializes each sequence's sample stream by concatenation instead of computing addresses. Sequence 1's samples are an order of magnitude larger than sequence 0's, so a window that crossed the boundary could not cancel out to the right answer."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 2],
+          "data": { "kind": "values", "values": [0.5, -0.25, 1.0, 0.75, -0.5, 0.25, 8.0, -6.0, 4.0, 12.0] }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [2, 1, 4],
+          "data": { "kind": "values", "values": [0.5, 0.25, -0.125, 2.0, 1.0, -0.5, 0.25, 0.75] }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 3, 5] }
+        },
+        "biasT": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.125, -0.25] } },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [0.25, -0.5, 1.5, 2.0, 0.5, -1.0, -3.0, 7.0, 5.0, 9.0, -11.0, 13.0] }
+        }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [5, 2],
+          "data": {
+            "kind": "values",
+            "values": [0.6736822, 0.789616, 1.966828, 0.9716248, -0.0585988, -0.240616, 15.7499977, 12.9999706, 11.8749173, -0.0003624]
+          },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        },
+        "finalStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [0.5, 1.0, -0.5, -0.25, 0.75, 0.25, 5.0, 8.0, 4.0, 13.0, -6.0, 12.0] },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        }
+      },
+      "attrs": { "activation": "silu" }
+    },
+    {
+      "name": "pinned_k4_state_update_zero_fill",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [4, 2],
+          "data": { "kind": "values", "values": [1.5, -2.5, 0.25, 3.0, -1.25, 0.5, 2.0, -0.75] }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [2, 1, 4],
+          "data": { "kind": "values", "values": [0.5, -0.25, 1.0, 0.125, 2.0, 0.75, -1.5, 0.25] }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 3, 4] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [1.0, -2.0, 4.0, -8.0, 16.0, -32.0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [3, 2] } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [4, 2],
+          "data": { "kind": "values", "values": [5.1875, 43.375, -0.46875, 12.5, 1.71875, -70.25, 2.625, 1.9375] },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        },
+        "finalStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "values", "values": [1.5, 0.25, -1.25, -2.5, 3.0, 0.5, 1.5, 2.5, 2.0, 4.5, 5.5, -0.75] },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 3, 2], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 3 }
+    },
+    {
+      "name": "pinned_k3_portable_state_update",
+      "provenance": {
+        "notes": "Covers the schema-defined compact state_update. capture_count includes full, partial, negative, or over-capacity requests as the batch permits; each request is clamped to its sequence length and capacity, active slots copy raw input tokens, and all inactive slots are zero."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 2],
+          "data": { "kind": "values", "values": [2.0, 1.0, -4.0, 0.5, 0.25, -8.0, 16.0, 0.125, -0.5, 32.0] }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [2, 1, 3],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 0.25, 4.0, -1.0] }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 3, 5] }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [3.0, -6.0, 12.0, 0.75, -24.0, 48.0, 0.375, -96.0] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 1] } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [5, 2],
+          "data": {
+            "kind": "values",
+            "values": [16.0, 5.0, -12.0, 3.6875, 10.125, 10.25, -112.0, -384.03125, 15.75, -55.5]
+          },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        },
+        "finalStateT": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [-4.0, 0.25, 0.5, -8.0, 16.0, -0.5, 0.125, 32.0] },
+          "tolerance": 0.00001,
+          "relTolerance": 0.0001
+        },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 2, 2], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      },
+      "attrs": { "state_update_capacity": 2 }
+    },
+    {
+      "name": "dilation2_bias0_capture0_float32",
+      "attrs": { "dilation": 2, "state_update_capacity": 0, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias0_capture0_float16",
+      "attrs": { "dilation": 2, "state_update_capacity": 0, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias0_capture2_float32",
+      "attrs": { "dilation": 2, "state_update_capacity": 2, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias0_capture2_float16",
+      "attrs": { "dilation": 2, "state_update_capacity": 2, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias1_capture0_float32",
+      "attrs": { "dilation": 2, "state_update_capacity": 0, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias1_capture0_float16",
+      "attrs": { "dilation": 2, "state_update_capacity": 0, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias1_capture2_float32",
+      "attrs": { "dilation": 2, "state_update_capacity": 2, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation2_bias1_capture2_float16",
+      "attrs": { "dilation": 2, "state_update_capacity": 2, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias0_capture0_float32",
+      "attrs": { "dilation": 3, "state_update_capacity": 0, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 9], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias0_capture0_float16",
+      "attrs": { "dilation": 3, "state_update_capacity": 0, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 9], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias0_capture2_float32",
+      "attrs": { "dilation": 3, "state_update_capacity": 2, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 9], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias0_capture2_float16",
+      "attrs": { "dilation": 3, "state_update_capacity": 2, "activation": "none" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 9], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias1_capture0_float32",
+      "attrs": { "dilation": 3, "state_update_capacity": 0, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 9], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias1_capture0_float16",
+      "attrs": { "dilation": 3, "state_update_capacity": 0, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 9], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias1_capture2_float32",
+      "attrs": { "dilation": 3, "state_update_capacity": 2, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [8, 3], "tolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 3, 9], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "dilation3_bias1_capture2_float16",
+      "attrs": { "dilation": 3, "state_update_capacity": 2, "activation": "silu" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [8, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.071, "cosStep": 0.074, "scale": 0.2 }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [3, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.11099999999999999, "scale": 0.2 }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 3, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21299999999999997, "cosStep": 0.148, "scale": 0.2 }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 8] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.284, "cosStep": 0.185, "scale": 0.2 }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 1, 0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [8, 3], "tolerance": 0.002 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 3, 9], "tolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 2, 3], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "vector-boundary-float32-c4-k4-b5-t30-cap4",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [30, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [5, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0, 1, 8, 11, 28, 30] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [-3, 0, 99, 2, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [30, 4], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [5, 4, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [5, 4, 4], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 4 }
+    },
+    {
+      "name": "vector-boundary-float32-c6-k3-b3-t51-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [51, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 17, 18, 51] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [51, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float32-c8-k8-b3-t12-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [12, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 3, 12] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [12, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float32-c5-k4-b3-t11-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [11, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 8, 11] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [11, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 3 }
+    },
+    {
+      "name": "vector-boundary-float32-c4-k2-b4-t4-cap2",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [4, 4, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-3, 0, 99, 2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [4, 4], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [4, 4, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [4, 2, 4], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 2 }
+    },
+    {
+      "name": "vector-boundary-float32-c8-k1-b3-t12-cap2",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [12, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 0],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 12] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [12, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 0], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 2, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 2 }
+    },
+    {
+      "name": "vector-boundary-float32-c4-k9-b3-t11-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [11, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 9],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 4, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 8, 11] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [11, 4], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 4, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 0 }
+    },
+    {
+      "name": "vector-boundary-float32-c6-k4-b3-t3-cap4",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 4, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 4 }
+    },
+    {
+      "name": "vector-boundary-float32-c5-k3-b5-t5-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [5, 5, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5] }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [-3, 0, 99, 2, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [5, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [5, 5, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [5, 8, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float32-c8-k8-b2-t2-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [2, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 1, 2] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [-3, 2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [2, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [2, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float32-c4-k4-b1-t1-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [1, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 4], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [1, 4, 3], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 0 }
+    },
+    {
+      "name": "vector-boundary-float32-c33-k2-b17-t17-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [17, 33],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [33, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [17, 33, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [18],
+          "data": {
+            "kind": "values",
+            "values": {
+              "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_cumulativeSequenceLengthT"
+            }
+          }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [33],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": {
+          "dtype": "int32",
+          "shape": [17],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_captureCountT" }
+          }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [17, 33], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [17, 33, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [17, 8, 33], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float32-c4-k4-b17-t17-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [17, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [17, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [18],
+          "data": {
+            "kind": "values",
+            "values": {
+              "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_cumulativeSequenceLengthT"
+            }
+          }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [17, 4], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [17, 4, 3], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 0 }
+    },
+    {
+      "name": "vector-boundary-float16-c4-k4-b5-t30-cap4",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [30, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [5, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0, 1, 8, 11, 28, 30] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [4],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [-3, 0, 99, 2, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [30, 4], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [5, 4, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [5, 4, 4], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 4 }
+    },
+    {
+      "name": "vector-boundary-float16-c6-k3-b3-t51-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [51, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 17, 18, 51] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [51, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float16-c8-k8-b3-t12-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [12, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 3, 12] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [12, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float16-c5-k4-b3-t11-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [11, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 8, 11] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [11, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 3 }
+    },
+    {
+      "name": "vector-boundary-float16-c4-k2-b4-t4-cap2",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [4, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [4, 4, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-3, 0, 99, 2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [4, 4], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [4, 4, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [4, 2, 4], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 2 }
+    },
+    {
+      "name": "vector-boundary-float16-c8-k1-b3-t12-cap2",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [12, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 0],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 3, 4, 12] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [12, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 0], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 2, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 2 }
+    },
+    {
+      "name": "vector-boundary-float16-c4-k9-b3-t11-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [11, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 9],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 4, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 8, 11] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [11, 4], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 4, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 0 }
+    },
+    {
+      "name": "vector-boundary-float16-c6-k4-b3-t3-cap4",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-3, 0, 99] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 4, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 4 }
+    },
+    {
+      "name": "vector-boundary-float16-c5-k3-b5-t5-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [5, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [5, 5, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5] }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [-3, 0, 99, 2, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [5, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [5, 5, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [5, 8, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float16-c8-k8-b2-t2-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [2, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0, 1, 2] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [-3, 2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [2, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [2, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float16-c4-k4-b1-t1-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [1, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 1] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 4], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [1, 4, 3], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 0 }
+    },
+    {
+      "name": "vector-boundary-float16-c33-k2-b17-t17-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [17, 33],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [33, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [17, 33, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [18],
+          "data": {
+            "kind": "values",
+            "values": {
+              "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_cumulativeSequenceLengthT"
+            }
+          }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [33],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        },
+        "captureCountT": {
+          "dtype": "int32",
+          "shape": [17],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_captureCountT" }
+          }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [17, 33], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [17, 33, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [17, 8, 33], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 8 }
+    },
+    {
+      "name": "vector-boundary-float16-c4-k4-b17-t17-cap0",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [17, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_inputT" }
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [4, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [17, 4, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/vector-boundary-float32-c4-k4-b5-t30-cap4_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [18],
+          "data": {
+            "kind": "values",
+            "values": {
+              "$ref": "#/fixtureArrays/vector-boundary-float32-c33-k2-b17-t17-cap8_input_cumulativeSequenceLengthT"
+            }
+          }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [4],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [17, 4], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [17, 4, 3], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "silu", "state_update_capacity": 0 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k2-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k2-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k2-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k3-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k3-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k3-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k4-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k4-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k4-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k5-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k5-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k5-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k6-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k6-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k6-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k7-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k7-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k7-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c5-k8-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c6-k8-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float32-c8-k8-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k2-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k2-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k2-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 1],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 1], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k3-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k3-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k3-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 2],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 2], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k4-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k4-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k4-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 3], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k5-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k5-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k5-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 4], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k6-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k6-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k6-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 5],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 5], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k7-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k7-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k7-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c5-k8-cap1",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [5, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 5, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 5], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 5, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c6-k8-cap3",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [6, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 6, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 6, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3 }
+    },
+    {
+      "name": "unit-packed-all-taps-float16-c8-k8-cap8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float16",
+          "shape": [8, 1, 8],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float16",
+          "shape": [3, 8, 7],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [3, 8], "tolerance": 0.00001, "relTolerance": 0.00048828125 },
+        "finalStateT": { "dtype": "float16", "shape": [3, 8, 7], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float16", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8 }
+    },
+    {
+      "name": "capture-vector-dilated-multitoken-c5",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [6, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [5, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 5, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 4, 6] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [6, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 5, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 1, 5], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "none", "state_update_capacity": 1, "dilation": 2 }
+    },
+    {
+      "name": "capture-vector-dilated-multitoken-c6",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [6, 6],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [6, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 6, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 4, 6] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [6, 6], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 6, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 3, 6], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 3, "dilation": 2 }
+    },
+    {
+      "name": "capture-vector-dilated-multitoken-c8",
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [6, 8],
+          "data": {
+            "kind": "cycle",
+            "values": [-0.75, -0.625, -0.5, -0.375, -0.25, -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75]
+          }
+        },
+        "weightT": {
+          "dtype": "float32",
+          "shape": [8, 1, 4],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_weightT" }
+          }
+        },
+        "initialStateT": {
+          "dtype": "float32",
+          "shape": [3, 8, 6],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/unit-packed-all-taps-float32-c5-k2-cap1_input_initialStateT" }
+          }
+        },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 2, 4, 6] }
+        },
+        "captureCountT": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 19] } },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": [-0.1875, -0.125, -0.0625, 0.0, 0.0625, 0.125, 0.1875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [6, 8], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "finalStateT": { "dtype": "float32", "shape": [3, 8, 6], "tolerance": 0, "relTolerance": 0 },
+        "stateUpdateT": { "dtype": "float32", "shape": [3, 8, 8], "tolerance": 0, "relTolerance": 0 }
+      },
+      "attrs": { "activation": "swish", "state_update_capacity": 8, "dilation": 2 }
+    }
+  ]
+}

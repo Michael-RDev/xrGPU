@@ -1,0 +1,2268 @@
+{
+  "domain": "com.microsoft",
+  "name": "PackedAttention",
+  "sinceVersion": 1,
+  "inputs": {
+    "inputT": { "onnx": "input", "dtype": "T", "rank": 2 },
+    "weightsT": { "onnx": "weights", "dtype": "T", "rank": 2 },
+    "biasT": { "onnx": "bias", "dtype": "T", "rank": 1 },
+    "tokenOffsetT": { "onnx": "token_offset", "dtype": "M", "rank": 2, "storage": "int32" },
+    "cumulativeSequenceLengthT": { "onnx": "cumulative_sequence_length", "dtype": "M", "rank": 1, "storage": "int32" },
+    "attentionBiasT": { "onnx": "attention_bias", "dtype": "T", "rank": 4, "optional": true }
+  },
+  "outputs": { "outputT": { "onnx": "output", "dtype": "T", "rank": 2, "shape": "[tokenCount, vHidden]" } },
+  "attributes": { "num_heads": {}, "qkv_hidden_sizes": {}, "scale": {} },
+  "attributeConstraints": { "num_heads": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["int32"] },
+  "tunables": {
+    "CLUSTER_TILE_K": { "default": 16 },
+    "SCALAR_WORKGROUP_SIZE": { "default": 64 },
+    "MATRIX_DIRECT_MIN_GROUPS": { "default": 128 }
+  },
+  "derive": {
+    "numHeads": "attrs.num_heads",
+    "qNumHeads": "numHeads",
+    "tokenCount": "dim(shapes.inputT, 0) if ranks.inputT == 2 else 0",
+    "inputHidden": "dim(shapes.inputT, 1) if ranks.inputT == 2 else 0",
+    "projection": "dim(shapes.weightsT, 1) if ranks.weightsT == 2 else 0",
+    "qkvSizesGiven": "has(attrs, \"qkv_hidden_sizes\")",
+    "qHidden": "attrs.qkv_hidden_sizes[0] if qkvSizesGiven else projection / 3",
+    "kHidden": "attrs.qkv_hidden_sizes[1] if qkvSizesGiven else qHidden",
+    "vHidden": "attrs.qkv_hidden_sizes[2] if qkvSizesGiven else qHidden",
+    "headDim": "qHidden / numHeads if numHeads > 0 and qHidden % numHeads == 0 else 0",
+    "vHeadDim": "vHidden / numHeads if numHeads > 0 and vHidden % numHeads == 0 else 0",
+    "batchSize": "dim(shapes.tokenOffsetT, 0) if ranks.tokenOffsetT == 2 else 0",
+    "seqPad": "dim(shapes.tokenOffsetT, 1) if ranks.tokenOffsetT == 2 else 0",
+    "attentionScale": "attrs.scale if has(attrs, \"scale\") else 0",
+    "qRowStride": "projection",
+    "qHeadStride": "headDim",
+    "kRowStride": "projection",
+    "kHeadStride": "headDim",
+    "kOffset": "qHidden",
+    "vRowStride": "projection",
+    "vHeadStride": "vHeadDim",
+    "vOffset": "qHidden + kHidden",
+    "oRowStride": "vHidden",
+    "oHeadStride": "vHeadDim",
+    "attnBiasHeads": "dim(shapes.attentionBiasT, 1) if present.attentionBiasT and ranks.attentionBiasT == 4 else 0",
+    "maskSeqStride": "seqPad",
+    "maskHeadStride": "0 if attnBiasHeads == 1 else seqPad * seqPad",
+    "maskBatchStride": "0 if (not present.attentionBiasT) or ranks.attentionBiasT != 4 or dim(shapes.attentionBiasT, 0) == 1 else attnBiasHeads * seqPad * seqPad",
+    "dtypeOk": "tensorDtypes.weightsT == tensorDtypes.inputT and tensorDtypes.biasT == tensorDtypes.inputT and tensorDtypes.outputT == tensorDtypes.inputT and f16Ok(dtypes.T)",
+    "sizesOk": "qHidden == kHidden and qHidden + kHidden + vHidden == projection and headDim > 0 and vHeadDim > 0",
+    "weightsOk": "ranks.weightsT == 2 and dim(shapes.weightsT, 0) == inputHidden and ranks.biasT == 1 and dim(shapes.biasT, 0) == projection",
+    "scheduleOk": "ranks.tokenOffsetT == 2 and ranks.cumulativeSequenceLengthT == 1 and dim(shapes.cumulativeSequenceLengthT, 0) == batchSize + 1 and batchSize > 0 and seqPad > 0 and numel(shapes.tokenOffsetT) >= tokenCount",
+    "outputShapeOk": "ranks.outputT == 2 and dim(shapes.outputT, 0) == tokenCount and dim(shapes.outputT, 1) == vHidden",
+    "attnBiasOk": "present.attentionBiasT and ranks.attentionBiasT == 4 and (dim(shapes.attentionBiasT, 0) == 1 or dim(shapes.attentionBiasT, 0) == batchSize) and (attnBiasHeads == 1 or attnBiasHeads == numHeads) and dim(shapes.attentionBiasT, 2) == seqPad and dim(shapes.attentionBiasT, 3) == seqPad and tensorDtypes.attentionBiasT == tensorDtypes.inputT",
+    "hasAttnBias": "present.attentionBiasT",
+    "baseContract": "dtypeOk and weightsOk and sizesOk and scheduleOk and outputShapeOk and numHeads > 0 and tokenCount > 0 and inputHidden > 0",
+    "usesF16": "tensorDtypes.inputT == \"float16\"",
+    "scalar": "\"f16\" if usesF16 else \"f32\"",
+    "outputScalar": "scalar",
+    "inputVec4": "\"vec4<f16>\" if usesF16 else \"vec4<f32>\"",
+    "qkvBytes": "2 if usesF16 else 4",
+    "packedStageBytes": "qkvBytes",
+    "projectionBytes": "2 * 64 * 16 * qkvBytes",
+    "projectionOk": "projectionBytes <= device.limits.maxComputeWorkgroupStorageSize and 256 <= device.limits.maxComputeInvocationsPerWorkgroup and 16 <= device.limits.maxComputeWorkgroupSizeX and 16 <= device.limits.maxComputeWorkgroupSizeY",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "directProjectionRows": 64,
+    "directProjectionCols": 32,
+    "directProjectionSharedBytes": "2048 * qkvBytes + 8192",
+    "directProjectionOk": "wave32Effective and inputHidden % 32 == 0 and projection % directProjectionCols == 0 and 128 <= deviceWorkgroupCap and directProjectionSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(projection, directProjectionCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(tokenCount, directProjectionRows), DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "stagedProjectionRows": 32,
+    "stagedProjectionCols": 32,
+    "stagedProjectionSharedBytes": "2048 * qkvBytes + 4096",
+    "stagedProjectionOk": "wave32Effective and inputHidden % 32 == 0 and projection % stagedProjectionCols == 0 and 128 <= deviceWorkgroupCap and stagedProjectionSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(projection, stagedProjectionCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "directProjectionFullGroups": "floor(tokenCount / directProjectionRows) * ceilDiv(projection, directProjectionCols)",
+    "directProjectionEffectiveGroups": "directProjectionFullGroups * inputHidden / (inputHidden + 32)",
+    "clusterWidthAligned": "headDim % 16 == 0 and vHeadDim % 4 == 0 and projection % 4 == 0",
+    "headDimV4": "headDim / 4",
+    "qRowStrideV4": "qRowStride / 4",
+    "qHeadStrideV4": "qHeadStride / 4",
+    "kRowStrideV4": "kRowStride / 4",
+    "kHeadStrideV4": "kHeadStride / 4",
+    "kOffsetV4": "kOffset / 4",
+    "vRowStrideV4": "vRowStride / 4",
+    "vHeadStrideV4": "vHeadStride / 4",
+    "vOffsetV4": "vOffset / 4",
+    "oRowStrideV4": "oRowStride / 4",
+    "oHeadStrideV4": "oHeadStride / 4",
+    "scalarWg": "tunables.SCALAR_WORKGROUP_SIZE",
+    "scalarBytes": "4 * scalarWg + 4 * vHeadDim + 12",
+    "scalarOk": "scalarWg <= device.limits.maxComputeInvocationsPerWorkgroup and scalarWg <= device.limits.maxComputeWorkgroupSizeX and scalarBytes <= device.limits.maxComputeWorkgroupStorageSize and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "clusterTileQ": "min(16, pow2ceil(tokenCount)) if vHeadDim != headDim else 16",
+    "clusterBaseLpq": "8 if headDim % 32 == 0 else 4",
+    "clusterTileK": "min(tunables.CLUSTER_TILE_K, pow2ceil(tokenCount)) if vHeadDim != headDim else tunables.CLUSTER_TILE_K",
+    "clusterTileBytes": "clusterTileK * (headDim + vHeadDim) * packedStageBytes",
+    "clusterLaneTarget": "min(32, max(clusterBaseLpq, pow2ceil(headDim / 16)), device.adapterInfo.subgroupMinSize, pow2ceil(floor(min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX) / clusterTileQ) + 1) / 2) if vHeadDim == headDim and clusterWidthAligned and clusterTileBytes <= device.limits.maxComputeWorkgroupStorageSize and device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize >= clusterBaseLpq else clusterBaseLpq",
+    "clusterLpq": "clusterLaneTarget if ceilDiv(headDim, 4 * clusterBaseLpq) >= 2 * ceilDiv(headDim, 4 * clusterLaneTarget) else clusterBaseLpq",
+    "clusterWg": "clusterTileQ * clusterLpq",
+    "clusterNosgBytes": "clusterTileBytes + 4 * clusterWg",
+    "clusterTiles": "ceilDiv(tokenCount, clusterTileQ)",
+    "clusterShapeOk": "clusterWidthAligned and clusterWg <= device.limits.maxComputeInvocationsPerWorkgroup and clusterWg <= device.limits.maxComputeWorkgroupSizeX and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "clusterOk": "clusterShapeOk and clusterTileBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterNosgOk": "clusterShapeOk and clusterNosgBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterSubgroupsOk": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize >= clusterLpq and device.adapterInfo.subgroupMinSize % clusterLpq == 0 and device.adapterInfo.subgroupMaxSize >= device.adapterInfo.subgroupMinSize and device.adapterInfo.subgroupMaxSize % clusterLpq == 0",
+    "portableLaneTarget": "min(64, pow2ceil(max(headDimV4, vHeadDim / 4) / 4), device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "portableLpq": "max(clusterLpq, pow2ceil(portableLaneTarget + 1) / 2) if vHeadDim != headDim else (64 if portableLaneTarget >= 64 and headDimV4 % 64 == 0 else (32 if portableLaneTarget >= 32 and headDimV4 % 32 == 0 else (16 if portableLaneTarget >= 16 and headDimV4 % 16 == 0 else clusterLpq)))",
+    "portableTileQ": "min(clusterTileQ, pow2ceil(tokenCount), max(1, floor(min(clusterWg, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX) / portableLpq)))",
+    "portableWg": "portableTileQ * portableLpq",
+    "portableKeyCapacity": "max(1, floor(device.limits.maxComputeWorkgroupStorageSize / ((headDim + vHeadDim) * packedStageBytes + 4 * portableWg)))",
+    "portableTileK": "min(clusterTileK, pow2ceil(tokenCount), pow2ceil(portableKeyCapacity + 1) / 2)",
+    "clusterDistributedBytes": "portableTileK * (headDim + vHeadDim) * packedStageBytes + 4 * max(portableWg * portableTileK, 2 * portableWg + portableTileQ * portableTileK)",
+    "clusterDistributedOk": "clusterDistributedBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterUseDistributed": "clusterDistributedOk and (clusterLpq > 4 or vHeadDim != headDim)",
+    "portableTiles": "ceilDiv(tokenCount, portableTileQ if clusterUseDistributed else clusterTileQ)",
+    "clusterPortableOk": "clusterShapeOk and (clusterUseDistributed or clusterNosgOk) and portableWg <= device.limits.maxComputeInvocationsPerWorkgroup and portableWg <= device.limits.maxComputeWorkgroupSizeX and ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "clusterPreferPortable": "vHeadDim != headDim and clusterPortableOk and clusterUseDistributed and portableLpq > clusterLpq",
+    "clusterReusePoor": "vHeadDim != headDim and tokenCount < clusterLpq",
+    "portableProjectionRows": "32 if not usesF16 and not device.features.has(\"subgroups\") and ceilDiv(tokenCount, 32) * ceilDiv(projection, 32) >= 2 * deviceWorkgroupCap else 64"
+  },
+  "bindings": {
+    "projInput": { "arg": "inputT", "name": "a" },
+    "projWeights": { "arg": "weightsT", "name": "b" },
+    "projBias": { "arg": "biasT", "name": "bias" },
+    "projOut": { "scratch": "qkvProj", "name": "y", "elementType": "$T" },
+    "gemmParams": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "tokenCount" },
+        { "name": "N", "type": "u32", "value": "projection" },
+        { "name": "K", "type": "u32", "value": "inputHidden" },
+        { "name": "alpha", "type": "f32", "value": 1 },
+        { "name": "beta", "type": "f32", "value": 1 }
+      ]
+    },
+    "qkv": { "scratch": "qkvProj", "name": "query", "buffer": "read-only-storage", "elementType": "$T" },
+    "qkv4": { "scratch": "qkvProj", "name": "query", "buffer": "read-only-storage", "elementType": "$inputVec4" },
+    "tokenOffset": { "arg": "tokenOffsetT", "name": "token_offset" },
+    "cumSeqLen": { "arg": "cumulativeSequenceLengthT", "name": "cumulative_sequence_length" },
+    "attnBias": { "arg": "attentionBiasT", "name": "attn_bias" },
+    "output": { "arg": "outputT", "name": "output" },
+    "output4": { "arg": "outputT", "name": "output", "elementType": "$inputVec4" },
+    "params": {
+      "name": "params",
+      "struct": [
+        { "name": "tokenCount", "type": "u32", "value": "tokenCount" },
+        { "name": "seqPad", "type": "u32", "value": "seqPad" },
+        { "name": "scale", "type": "f32", "value": "attentionScale" }
+      ]
+    },
+    "paramsMask": {
+      "name": "params",
+      "struct": [
+        { "name": "tokenCount", "type": "u32", "value": "tokenCount" },
+        { "name": "seqPad", "type": "u32", "value": "seqPad" },
+        { "name": "scale", "type": "f32", "value": "attentionScale" },
+        { "name": "maskBatchStride", "type": "u32", "value": "maskBatchStride" },
+        { "name": "maskHeadStride", "type": "u32", "value": "maskHeadStride" },
+        { "name": "maskSeqStride", "type": "u32", "value": "maskSeqStride" }
+      ]
+    },
+    "matrixInput": { "arg": "inputT", "name": "x" },
+    "matrixWeights": { "arg": "weightsT", "name": "w" },
+    "matrixParams": { "name": "params", "struct": [{ "name": "M", "type": "u32", "value": "tokenCount" }] }
+  },
+  "variants": [
+    {
+      "id": "matrix_direct_f32_flash",
+      "priority": 140,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "directProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_staged_f32_flash",
+      "priority": 120,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "stagedProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "f32_flash",
+      "priority": 40,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "projectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_direct_f32_flash_nosg",
+      "priority": 139,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "directProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "matrix_staged_f32_flash_nosg",
+      "priority": 119,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "stagedProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "f32_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "projectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["clusterReusePoor"]
+    },
+    {
+      "id": "matrix_direct_f32_serial",
+      "priority": 100,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "directProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)"]
+    },
+    {
+      "id": "matrix_staged_f32_serial",
+      "priority": 80,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "stagedProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      }
+    },
+    {
+      "id": "f32_serial",
+      "priority": 0,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "not present.attentionBiasT", "projectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "matrix_direct_f32_attn_bias_flash",
+      "priority": 140,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "directProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_staged_f32_attn_bias_flash",
+      "priority": 120,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "stagedProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "f32_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "projectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_direct_f32_attn_bias_flash_nosg",
+      "priority": 139,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "directProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "matrix_staged_f32_attn_bias_flash_nosg",
+      "priority": 119,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "stagedProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "f32_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "projectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["clusterReusePoor"]
+    },
+    {
+      "id": "matrix_direct_f32_attn_bias_serial",
+      "priority": 100,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "directProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)"]
+    },
+    {
+      "id": "matrix_staged_f32_attn_bias_serial",
+      "priority": 80,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "stagedProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      }
+    },
+    {
+      "id": "f32_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float32\"", "attnBiasOk", "projectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float32", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "matrix_direct_f16_flash",
+      "priority": 140,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "directProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_staged_f16_flash",
+      "priority": 120,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "stagedProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "f16_flash",
+      "priority": 40,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "projectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_direct_f16_flash_nosg",
+      "priority": 139,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "directProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "matrix_staged_f16_flash_nosg",
+      "priority": 119,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "stagedProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "f16_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "projectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["clusterReusePoor"]
+    },
+    {
+      "id": "matrix_direct_f16_serial",
+      "priority": 100,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "directProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)"]
+    },
+    {
+      "id": "matrix_staged_f16_serial",
+      "priority": 80,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "stagedProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      }
+    },
+    {
+      "id": "f16_serial",
+      "priority": 0,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "not present.attentionBiasT", "projectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "matrix_direct_f16_attn_bias_flash",
+      "priority": 140,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "directProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_staged_f16_attn_bias_flash",
+      "priority": 120,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "stagedProjectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": true,
+            "LPQ": "clusterLpq",
+            "TILE_Q": "clusterTileQ",
+            "TILE_K": "clusterTileK",
+            "distributedSoftmax": false
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "f16_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "projectionOk", "clusterOk", "clusterSubgroupsOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["clusterReusePoor or clusterPreferPortable"]
+    },
+    {
+      "id": "matrix_direct_f16_attn_bias_flash_nosg",
+      "priority": 139,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "directProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)", "clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "matrix_staged_f16_attn_bias_flash_nosg",
+      "priority": 119,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "stagedProjectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["clusterReusePoor or (clusterOk and clusterSubgroupsOk and not clusterPreferPortable)"]
+    },
+    {
+      "id": "f16_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "projectionOk", "clusterPortableOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "derive": {
+            "useSubgroups": false,
+            "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+            "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+            "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+            "distributedSoftmax": "clusterUseDistributed"
+          },
+          "bindings": ["qkv4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["clusterReusePoor"]
+    },
+    {
+      "id": "matrix_direct_f16_attn_bias_serial",
+      "priority": 100,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "directProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "full_projection",
+          "repeat": { "index": "fullProjectionIndex", "count": "1 if tokenCount >= directProjectionRows else 0" },
+          "passes": [
+            {
+              "id": "project",
+              "name": "PackedAttention.Projection",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "min(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)",
+                "z": "ceilDiv(floor(tokenCount / directProjectionRows), DISPATCH_FOLD_WIDTH)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": "directProjectionRows",
+                "tileN": "directProjectionCols",
+                "directAStorage": true,
+                "doubleBufferedB": true,
+                "balancedMatrixAccumulation": "not usesF16"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tail_projection",
+          "repeat": { "index": "tailProjectionIndex", "count": "1 if tokenCount % directProjectionRows != 0 else 0" },
+          "passes": [
+            {
+              "id": "project_tail",
+              "name": "PackedAttention.ProjectionTail",
+              "shader": "gemm-subgroup-matrix.wgsl.jinja",
+              "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+              "dispatch": {
+                "x": "ceilDiv(projection, directProjectionCols)",
+                "y": "ceilDiv(tokenCount % directProjectionRows, 32)"
+              },
+              "derive": {
+                "yScalar": "scalar",
+                "mmaScalar": "scalar",
+                "inFeatures": "inputHidden",
+                "outFeatures": "projection",
+                "tileM": 32,
+                "tileN": "directProjectionCols",
+                "directAStorage": false,
+                "doubleBufferedB": false,
+                "balancedMatrixAccumulation": false,
+                "rowTileBase": "floor(tokenCount / directProjectionRows) * directProjectionRows / 32"
+              }
+            }
+          ]
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["directProjectionEffectiveGroups < tunables.MATRIX_DIRECT_MIN_GROUPS * (2 if tokenCount % directProjectionRows != 0 else 1)"]
+    },
+    {
+      "id": "matrix_staged_f16_attn_bias_serial",
+      "priority": 80,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "stagedProjectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["matrixInput", "matrixWeights", "projBias", "projOut", "matrixParams"],
+          "dispatch": {
+            "x": "ceilDiv(projection, stagedProjectionCols)",
+            "y": "min(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv(tokenCount, stagedProjectionRows), DISPATCH_FOLD_WIDTH)"
+          },
+          "derive": {
+            "yScalar": "scalar",
+            "mmaScalar": "scalar",
+            "inFeatures": "inputHidden",
+            "outFeatures": "projection",
+            "tileM": "stagedProjectionRows",
+            "tileN": "stagedProjectionCols",
+            "directAStorage": false,
+            "doubleBufferedB": false,
+            "balancedMatrixAccumulation": false
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      }
+    },
+    {
+      "id": "f16_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "tensorDtypes.inputT == \"float16\"", "attnBiasOk", "projectionOk", "scalarOk"],
+      "intermediates": [{ "id": "qkvProj", "dtype": "float16", "shape": "[tokenCount * projection]" }],
+      "passes": [
+        {
+          "id": "project",
+          "name": "PackedAttention.Projection",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "derive": {
+            "gemmTileRows": "portableProjectionRows",
+            "gemmTileCols": "portableProjectionRows",
+            "gemmMicroRows": "portableProjectionRows / 16",
+            "gemmMicroCols": "portableProjectionRows / 16"
+          },
+          "bindings": ["projInput", "projWeights", "projBias", "projOut", "gemmParams"],
+          "dispatch": {
+            "x": "min(ceilDiv(projection, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(tokenCount, portableProjectionRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "attend",
+          "name": "PackedAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "derive": { "workgroupSize": "scalarWg" },
+          "bindings": ["qkv", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    }
+  ]
+}

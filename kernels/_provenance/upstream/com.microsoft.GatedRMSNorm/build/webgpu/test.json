@@ -1,0 +1,881 @@
+{
+  "cases": [
+    {
+      "name": "ort_float_per_head",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float_PerHead",
+        "notes": "Upstream draws its tensors from a seeded mt19937 and recomputes the expectation in the test body, so the geometry and epsilon transfer but the values do not. Batch 1, sequence 4, 32 heads of 128."
+      },
+      "attrs": { "epsilon": 0.000001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [1, 4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [1, 4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [1, 4, 4096], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "ort_float_single_group",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float_SingleGroup",
+        "notes": "One normalization group per row (H = 1), the case where a per-channel and a shared-group weight index agree, so it cannot distinguish them on its own."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [2, 3, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [2, 3, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.43, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [2, 3, 512], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "ort_float16_per_head",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float16_PerHead"
+      },
+      "attrs": { "epsilon": 0.000001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [1, 4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [1, 4, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [1, 4, 4096], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "ort_float16_prefill",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float16_Prefill",
+        "notes": "Batch 2, sequence 17: an odd token count so the row count is not a multiple of the rows a workgroup carries."
+      },
+      "attrs": { "epsilon": 0.000001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [2, 17, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.061, "cosStep": 0.257 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [2, 17, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.23, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [2, 17, 4096], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "ort_float16_small_norm_size",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float16_SmallNormSize",
+        "notes": "A 48-element span: a multiple of four but not of the lane group a wide row would use, so the trailing lanes of the group fold nothing."
+      },
+      "attrs": { "epsilon": 0.000001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [1, 4, 384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.33 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.07, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [1, 4, 384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.27, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [1, 4, 384], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "ort_float16_large_norm_size",
+      "provenance": {
+        "source": "ORT: onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+        "test": "ContribOpGatedRMSNormTest.Float16_LargeNormSize"
+      },
+      "attrs": { "epsilon": 0.000001 },
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [1, 2, 3072],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.053 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [1536],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.013, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [1, 2, 3072],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.071, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [1, 2, 3072], "tolerance": 0.0008, "relTolerance": 0.003 } }
+    },
+    {
+      "name": "rank1_decode_row",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.39 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.47, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [128], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "rank2_many_rows",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.043, "cosStep": 0.121 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.083, "cosStep": 0.151, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [512, 256], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "rank4_batched_multi_group",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [2, 3, 4, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.067, "cosStep": 0.139 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.17, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [2, 3, 4, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.101, "cosStep": 0.211, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [2, 3, 4, 256], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "scale_spelled_leading_one",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [8, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.09 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [1, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [8, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.53, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [8, 128], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "scale_spelled_trailing_one",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [8, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.09 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [128, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [8, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.53, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [8, 128], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "span_six_scalar_route",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.61 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.44, "cosStep": 0.22, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.35, "cosStep": 0.14, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [5, 12], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "span_one_single_lane_fold",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.51, "cosStep": 0.13 }
+        },
+        "scaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.75] } },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.63, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "span_four_single_word",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [16, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.23 }
+        },
+        "scaleT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.5, 1.25, -0.75, 2.0] } },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [16, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.71, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [16, 4], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "span_four_single_word_f16",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [16, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.23 }
+        },
+        "scaleT": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [0.5, 1.25, -0.75, 2.0] } },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [16, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.71, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [16, 4], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "epsilon_dominates_statistic",
+      "attrs": { "epsilon": 100 },
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [4, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.77 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.49, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [4, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.57, "cosStep": 0.17, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [4, 16], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "gate_saturating_tails",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [4, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.25, "cosStep": 0.55 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.35, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [4, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.45, "cosStep": 0.85, "scale": 12.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [4, 64], "tolerance": 0.000002, "relTolerance": 0.00002 } }
+    },
+    {
+      "name": "span_2048_two_words_per_lane",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.047 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.007, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.059, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [4, 2048], "tolerance": 0.000004, "relTolerance": 0.00004 } }
+    },
+    {
+      "name": "span_16384_streaming_route",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [2, 16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0031, "cosStep": 0.0079 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0011, "cosStep": 0.0023, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [2, 16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0043, "cosStep": 0.0017, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [2, 16384], "tolerance": 0.00001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "span_16384_streaming_route_f16",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [2, 16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0031, "cosStep": 0.0079 }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0011, "cosStep": 0.0023, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [2, 16384],
+          "data": { "kind": "fillFloat32", "sinStep": 0.0043, "cosStep": 0.0017, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [2, 16384], "tolerance": 0.0008, "relTolerance": 0.003 } }
+    },
+    {
+      "name": "wide_subgroup_span_1026_rows_3_wg_256",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [3, 1026],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.047 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [1026],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.007, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [3, 1026],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.059, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [3, 1026], "tolerance": 0.000004, "relTolerance": 0.00004 } },
+      "tunables": { "WORKGROUP_SIZE": 256 }
+    },
+    {
+      "name": "wide_subgroup_span_1028_rows_3_wg_256",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [3, 1028],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.047 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [1028],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.007, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [3, 1028],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.059, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [3, 1028], "tolerance": 0.000004, "relTolerance": 0.00004 } },
+      "tunables": { "WORKGROUP_SIZE": 256 }
+    },
+    {
+      "name": "wide_subgroup_span_2050_rows_3_wg_64",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [3, 2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.047 }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.007, "scale": 0.5, "offset": 1.0 }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [3, 2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.059, "scale": 2.0 }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [3, 2050], "tolerance": 0.000004, "relTolerance": 0.00004 } },
+      "tunables": { "WORKGROUP_SIZE": 64 }
+    },
+    {
+      "name": "short_scalar_float32_c1_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 1],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [1],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 1],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 1], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c2_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 2],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [2],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 2],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 2], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c3_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 3], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c5_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 5], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c6_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 6], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c7_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 7], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c8_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 8],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 8],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 8], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c9_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [257, 9],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [9],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [257, 9],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [257, 9], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float16_c3_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [257, 3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [257, 3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [257, 3], "tolerance": 0.0005, "relTolerance": 0.002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float16_c5_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [257, 5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [257, 5],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [257, 5], "tolerance": 0.0005, "relTolerance": 0.002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float16_c6_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [257, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [257, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [257, 6], "tolerance": 0.0005, "relTolerance": 0.002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float16_c7_r257",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [257, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [257, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [257, 7], "tolerance": 0.0005, "relTolerance": 0.002 } },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c7_r65_wg64_words4",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [65, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [65, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [65, 7], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "tunables": { "WORKGROUP_SIZE": 64, "LANE_WORDS": 4 },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float16_c7_r65_wg64_words4",
+      "inputs": {
+        "xT": {
+          "dtype": "float16",
+          "shape": [65, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float16",
+          "shape": [65, 7],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float16", "shape": [65, 7], "tolerance": 0.0005, "relTolerance": 0.002 } },
+      "tunables": { "WORKGROUP_SIZE": 64, "LANE_WORDS": 4 },
+      "provenance": {
+        "notes": "Short scalar row schedule: mixed magnitudes, signed and zero scale, SiLU tails, and rows on either side of a workgroup boundary, with float32 intermediates at the default dtype tolerances; spans eight/nine cover the staging boundary."
+      }
+    },
+    {
+      "name": "short_scalar_float32_c6_r3_wg1_words1",
+      "inputs": {
+        "xT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_x" } }
+        },
+        "scaleT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_scale" } }
+        },
+        "gateT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/short_scalar_gate" } }
+        }
+      },
+      "outputs": { "yT": { "dtype": "float32", "shape": [3, 6], "tolerance": 0.000002, "relTolerance": 0.00002 } },
+      "tunables": { "WORKGROUP_SIZE": 1, "LANE_WORDS": 1 },
+      "provenance": {
+        "notes": "Three rows of 6 float32 channels each, processed one lane per row; checks correctness at the smallest possible per-row lane allocation, below the width where multiple lanes would cooperate on one row."
+      }
+    }
+  ],
+  "fixtureArrays": {
+    "short_scalar_x": [-0.0009765625, 0.5, -1, 2, 8, -16, 64],
+    "short_scalar_scale": [-1, 0, 0.125, 1.5, -2],
+    "short_scalar_gate": [-80, -4, -1, 0, 1, 4, 80]
+  }
+}

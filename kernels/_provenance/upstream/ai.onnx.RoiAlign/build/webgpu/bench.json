@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "name": "avg_64_rois",
+      "attrs": { "spatial_scale": 1, "sampling_ratio": 2, "mode": "avg", "output_height": 7, "output_width": 7 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.01, "cosStep": 0.02 }
+        },
+        "rois": { "dtype": "float32", "shape": [64, 4], "data": { "kind": "constant", "value": 4.0 } },
+        "batch_indices": { "dtype": "uint32", "shape": [64], "data": { "kind": "constant", "value": 0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 16, 7, 7] } },
+      "preset": "smoke"
+    },
+    {
+      "name": "adaptive_huge_roi_1x1_output_deep_sample_loop_pathology",
+      "preset": "stress",
+      "attrs": {
+        "spatial_scale": 1,
+        "sampling_ratio": 0,
+        "mode": "avg",
+        "coordinate_transformation_mode": "half_pixel",
+        "output_height": 1,
+        "output_width": 1
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 8, 1024, 1024], "dist": "normal", "seed": 9101, "scale": 1 },
+        "rois": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [0.0, 0.0, 1023.0, 1023.0] }
+        },
+        "batch_indices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 1, 1], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "gflops", "value": "8 * 1023 * 1023 * 10", "name": "bilinear-sample work" }]
+      }
+    },
+    {
+      "name": "spatial_scale_amplified_adaptive_bin_deep_loop_pathology",
+      "preset": "stress",
+      "attrs": {
+        "spatial_scale": 8,
+        "sampling_ratio": 0,
+        "mode": "avg",
+        "coordinate_transformation_mode": "output_half_pixel",
+        "output_height": 2,
+        "output_width": 2
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 8, 2048, 2048], "dist": "normal", "seed": 9137, "scale": 1 },
+        "rois": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [0.0, 0.0, 255.0, 255.0] }
+        },
+        "batch_indices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 2, 2], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "32 * 1020 * 1020 * 10", "name": "bilinear-sample work" }] }
+    },
+    {
+      "name": "adaptive-detection-small-rois-c32-r32-p7",
+      "preset": "stress",
+      "attrs": {
+        "spatial_scale": 1,
+        "sampling_ratio": 0,
+        "mode": "avg",
+        "coordinate_transformation_mode": "half_pixel",
+        "output_height": 7,
+        "output_width": 7
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 32, 128, 128], "dist": "normal", "seed": 9151, "scale": 1 },
+        "rois": {
+          "dtype": "float32",
+          "shape": [32, 4],
+          "data": { "kind": "cycle", "values": [16.0, 16.0, 48.0, 48.0] }
+        },
+        "batch_indices": { "dtype": "uint32", "shape": [32], "data": { "kind": "constant", "value": 0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 32, 7, 7], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "gflops", "value": "32 * 32 * 7 * 7 * 25 * 10", "name": "bilinear-sample work" }]
+      }
+    }
+  ]
+}

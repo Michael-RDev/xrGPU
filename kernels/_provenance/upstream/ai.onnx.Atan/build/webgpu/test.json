@@ -1,0 +1,753 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-4.0, -1.0, 0.0, 0.5, 1.0, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Atan",
+        "notes": "For tiny finite inputs atan(x) rounds back to x in float32; zero-flushing erases the signed tail."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Atan",
+        "notes": "Unaligned scalar-path subnormal inputs have valid finite Atan outputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-4.0, -1.0, 0.0, 0.5, 1.0, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.002
+    },
+    {
+      "name": "special_values_infinity_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 0.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "ort_float_wide_range",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Atan"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-10.0, -5.0, 0.0, 5.0, 10.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [5],
+          "tolerance": 0.00001,
+          "data": {
+            "kind": "values",
+            "values": [-1.4711276292800903, -1.3734008073806763, 0.0, 1.3734008073806763, 1.4711276292800903]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_atan_example",
+        "test": "test_atan_example"
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_atan",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_atan" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_atan_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_atan_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "vec4_f16_lanes",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [16],
+          "data": {
+            "kind": "values",
+            "values": [-8.0, -4.0, -2.0, -1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 50.0, 100.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_vec4_realistic_finite",
+      "provenance": {
+        "notes": "A 64-element float16 vector exercises packed vec4 evaluation because its element count is divisible by four. The ordinary finite values cover both signs and a range of magnitudes."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": {
+            "kind": "values",
+            "values": [-6.0, -5.0, -4.0, -3.5, -3.0, -2.5, -2.0, -1.75, -1.5, -1.25, -1.0, -0.875, -0.75, -0.625, -0.5, -0.375, -0.25, -0.125, -0.0625, -0.03125, 0.0, 0.03125, 0.0625, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0, 16.0, 20.0, 24.0, 32.0, -7.0, -8.0, -9.0, -10.0, -12.0, -16.0, -20.0, -24.0, -32.0, 0.1875, -0.1875, 0.4375, -0.4375, 1.125]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_scalar_path_non_multiple_of_4",
+      "provenance": {
+        "notes": "A 15-element float16 vector is not divisible by four and therefore exercises scalar elementwise evaluation over ordinary finite values."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [15],
+          "data": {
+            "kind": "values",
+            "values": [-3.0, -2.0, -1.5, -1.0, -0.5, -0.25, -0.125, 0.0, 0.125, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [15], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f32_scalar_path_non_multiple_of_4",
+      "provenance": {
+        "notes": "A seven-element float32 vector is not divisible by four and therefore exercises scalar elementwise evaluation over ordinary finite values."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-2.5, -1.0, -0.25, 0.0, 0.25, 1.0, 2.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f16_2d_featuremap_vec4",
+      "provenance": {
+        "notes": "A rank-2 [4, 8] float16 tensor has a flat element count divisible by four, exercising vec4 packing across a nontrivial leading dimension."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4, 8],
+          "data": {
+            "kind": "values",
+            "values": [-4.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, -5.0, -1.5, 1.5, -2.5, 2.5, -0.75, 0.75, -0.125, 0.125, -8.0, 8.0, -10.0, 10.0, -0.0625, 0.0625, 6.0, -6.0, 7.0, -7.0, 0.25]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 8], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048571",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048571],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048571], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048572",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048572],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048572], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048573",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048573],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048573], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048574",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048574],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048574], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048575",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 5, 69905],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 5, 69905], "tolerance": 0.000001, "relTolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "vector_tail_float32_n1048576",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048576],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048576], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048577",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048577],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048577], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048578",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048578],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048578], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n1048579",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1048579],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1048579], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n4194303",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4194303],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4194303], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n4194305",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4194305],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4194305], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n8388607",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8388607],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8388607], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n8388609",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8388609],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8388609], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "vector_tail_float32_n16777215",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 5, 1118481],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 5, 1118481], "tolerance": 0.000001, "relTolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "vector_tail_float32_n16777217",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16777217],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16777217], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "forced_vector_tail_special_float32_n17",
+      "provenance": { "notes": "Compact float32 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [17],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 16.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [17], "tolerance": 0.000001, "relTolerance": 0.000001, "allowNaN": true }
+      }
+    },
+    {
+      "name": "forced_vector_tail_special_float32_n18",
+      "provenance": { "notes": "Compact float32 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [18],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 17.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [18], "tolerance": 0.000001, "relTolerance": 0.000001, "allowNaN": true }
+      }
+    },
+    {
+      "name": "forced_vector_tail_special_float32_n19",
+      "provenance": { "notes": "Compact float32 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [19],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 18.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [19], "tolerance": 0.000001, "relTolerance": 0.000001, "allowNaN": true }
+      }
+    },
+    {
+      "name": "vector_tail_float16_n1048571",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048571],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048571], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048572",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048572],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048572], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048573",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048573],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048573], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048574",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048574],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048574], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048575",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [3, 5, 69905],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 5, 69905], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048576",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048576],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048576], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048577",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048577],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048577], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048578",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048578],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048578], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n1048579",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1048579],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1048579], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n4194303",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4194303],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4194303], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n4194305",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4194305],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4194305], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n8388607",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8388607],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8388607], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n8388609",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8388609],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8388609], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n16777215",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [3, 5, 1118481],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 5, 1118481], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vector_tail_float16_n16777217",
+      "provenance": {
+        "notes": "Adjacent element counts cover all final four-element tail lengths and larger inputs. Rank changes preserve the same flattened elementwise result."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [16777217],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 4.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16777217], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "forced_vector_tail_special_float16_n17",
+      "provenance": { "notes": "Compact float16 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [17],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 16.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float16", "shape": [17], "tolerance": 0.001, "relTolerance": 0.002, "allowNaN": true }
+      }
+    },
+    {
+      "name": "forced_vector_tail_special_float16_n18",
+      "provenance": { "notes": "Compact float16 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [18],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 17.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float16", "shape": [18], "tolerance": 0.001, "relTolerance": 0.002, "allowNaN": true }
+      }
+    },
+    {
+      "name": "forced_vector_tail_special_float16_n19",
+      "provenance": { "notes": "Compact float16 inputs with both infinities, finite values, and a final NaN element." },
+      "tunables": { "MIN_TAIL_ELEMENTS": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [19],
+          "data": {
+            "kind": "cycle",
+            "values": ["-Infinity", -4.0, -1.0, 0.0, 1.0, 4.0, "Infinity"],
+            "nanStart": 18.0,
+            "nanCount": 1.0
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float16", "shape": [19], "tolerance": 0.001, "relTolerance": 0.002, "allowNaN": true }
+      }
+    }
+  ]
+}

@@ -1,0 +1,578 @@
+{
+  "domain": "ai.onnx",
+  "name": "ScatterND",
+  "sinceVersion": 18,
+  "inputs": {
+    "data": { "dtype": "T" },
+    "indices": { "dtype": "I", "storage": "int32", "narrowing": "checked" },
+    "updates": { "dtype": "T" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.data", "shape": "shapes.data" } },
+  "attributes": { "reduction": { "default": "none" } },
+  "attributeConstraints": { "reduction": { "values": ["none", "add", "mul", "max", "min"] } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "uint32", "int8", "uint8", "int16", "bool", "int64"],
+    "I": ["int64"]
+  },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "F16_ATOMIC_MIN_UPDATES": { "default": 4096 },
+    "SCALAR_ADD_MIN_UPDATES": { "default": 256 },
+    "PREAGG_ITEMS_PER_THREAD": { "default": 8 },
+    "PREAGG_MIN_DUPLICATION": { "default": 8 },
+    "PREAGG_SUBGROUP_ROUNDS": { "default": 2 },
+    "SCALAR_ADD_ITEMS_PER_THREAD": { "default": 16 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "narrowIntData": "tensorDtypes.data == \"int8\" or tensorDtypes.data == \"uint8\" or tensorDtypes.data == \"int16\"",
+    "indexScalar": "dtypes.I",
+    "copyElementType": "(\"vec4<\" ~ dtypes.T ~ \">\") if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else dtypes.T",
+    "reductionOp": "attrs.reduction",
+    "narrowBits": "8 if tensorDtypes.data == \"int8\" or tensorDtypes.data == \"uint8\" else (16 if tensorDtypes.data == \"int16\" else 0)",
+    "narrowSigned": "tensorDtypes.data == \"int8\" or tensorDtypes.data == \"int16\"",
+    "boolData": "tensorDtypes.data == \"bool\"",
+    "dataShape": "shapes.data",
+    "updatesShape": "shapes.updates",
+    "indexDepth": "dim(shapes.indices, ranks.indices - 1)",
+    "validLayout": "(dtypes.I == \"u32\" or dtypes.I == \"i32\") and ranks.data == ranks.output and ranks.data >= 1 and ranks.indices >= 1 and indexDepth <= ranks.data and ranks.updates == ranks.indices - 1 + ranks.data - indexDepth and numel(shapes.data) == numel(shapes.output)",
+    "workgroupLimit": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "workgroupSize": "max(1, pow2ceil(workgroupLimit + 1) / 2)",
+    "foldedThreadCapacity": "foldedDispatchCapacity * workgroupSize",
+    "updateDispatchFits": "numel(shapes.updates) <= foldedThreadCapacity",
+    "outputDispatchFits": "numel(shapes.output) <= foldedThreadCapacity",
+    "f16AccumBytes": "numel(shapes.output) * dtypeBytes(\"uint32\")",
+    "f16AccumFits": "f16AccumBytes <= device.limits.maxStorageBufferBindingSize and f16AccumBytes <= device.limits.maxBufferSize",
+    "preaggStorageFits": "workgroupSize * dtypeBytes(\"float32\") + 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "scalarAddStorageFits": "workgroupSize * dtypeBytes(\"float32\") <= device.limits.maxComputeWorkgroupStorageSize",
+    "preaggRounds": "tunables.PREAGG_SUBGROUP_ROUNDS",
+    "preaggItemsPerThread": "tunables.PREAGG_ITEMS_PER_THREAD",
+    "indicesShape": "shapes.indices",
+    "dataRank": "ranks.data",
+    "indicesRank": "ranks.indices",
+    "updatesRank": "ranks.updates"
+  },
+  "when": ["validLayout", "dtypes.T != \"vec2<u32>\" or attrs.reduction == \"none\""],
+  "bindings": {
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] },
+    "indices": { "elementType": "$indexScalar" },
+    "output": { "scratch": "accum", "elementType": "atomic<u32>" },
+    "params_count": {
+      "name": "params",
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.updates)" }]
+    },
+    "src": { "arg": "data", "elementType": "$copyElementType" },
+    "dst": { "arg": "output", "elementType": "$copyElementType" },
+    "updates_reduce": { "name": "updates", "elementType": "$updateElement" },
+    "output_reduce": { "name": "output", "elementType": "$outputElement" },
+    "updates_scatter": { "name": "updates", "elementType": "$vectorScalar" },
+    "output_scatter": { "name": "output", "elementType": "$vectorScalar" }
+  },
+  "variants": [
+    {
+      "id": "reduction_f16_atomic_f32",
+      "priority": 35,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"min\" or attrs.reduction == \"max\")", "dtypes.T == \"f16\"", "indexDepth == ranks.data", "numel(shapes.updates) >= tunables.F16_ATOMIC_MIN_UPDATES", "f16Ok(dtypes.T)", "f16AccumFits", "outputDispatchFits", "updateDispatchFits"],
+      "derive": {
+        "scalar": "\"f32\"",
+        "useSubgroups": "device.features.has(\"subgroups\") and attrs.reduction == \"add\"",
+        "useWorkgroupPreagg": false
+      },
+      "intermediates": [{ "id": "accum", "dtype": "uint32", "shape": "[numel(shapes.output)]" }],
+      "passes": [
+        {
+          "id": "init",
+          "name": "ScatterND.F16InitF32",
+          "shader": "scatter-f16-f32-convert.wgsl.jinja",
+          "derive": { "toWide": true },
+          "bindings": [
+            { "arg": "data", "name": "narrow", "elementType": "f16" },
+            { "scratch": "accum", "name": "wide", "elementType": "u32" },
+            "params"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.F16AtomicF32",
+          "shader": "scatter-nd-reduction-atomic.wgsl.jinja",
+          "bindings": ["indices", { "arg": "updates", "elementType": "f16" }, "output", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "finalize",
+          "name": "ScatterND.F16FinalizeF32",
+          "shader": "scatter-f16-f32-convert.wgsl.jinja",
+          "derive": { "toWide": false },
+          "bindings": [
+            { "scratch": "accum", "name": "wide", "buffer": "read-only-storage", "elementType": "u32" },
+            { "arg": "output", "name": "narrow", "elementType": "f16" },
+            "params"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_output_add_parallel_reduce",
+      "priority": 30,
+      "when": ["attrs.reduction == \"add\"", "dtypes.T == \"f32\"", "ranks.data == 1", "ranks.output == 1", "numel(shapes.data) == 1", "numel(shapes.output) == 1", "ranks.indices == 2", "dim(shapes.indices, 1) == 1", "ranks.updates == 1", "dim(shapes.updates, 0) == dim(shapes.indices, 0)", "numel(shapes.updates) >= tunables.SCALAR_ADD_MIN_UPDATES", "scalarAddStorageFits"],
+      "derive": { "updateElement": "dtypes.T", "outputElement": "\"atomic<u32>\"" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output)" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "reduce",
+          "name": "ScatterND.ScalarAddParallelReduce",
+          "shader": "scatter-scalar-add.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv(numel(shapes.updates), workgroupSize * tunables.SCALAR_ADD_ITEMS_PER_THREAD), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_narrow_wrap_atomic",
+      "priority": 26,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\")", "narrowIntData", "updateDispatchFits", "outputDispatchFits", "indexDepth > 0"],
+      "derive": {
+        "scalar": "\"u32\"",
+        "useSubgroups": "device.features.has(\"subgroups\")",
+        "useWorkgroupPreagg": false,
+        "updateElement": "\"u32\"",
+        "outputElement": "\"atomic<u32>\""
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.NarrowWrapAtomic",
+          "shader": "scatter-nd-reduction-atomic.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "narrow",
+          "name": "ScatterND.NarrowWrapFinalize",
+          "shader": "scatter-narrow-wrap.wgsl.jinja",
+          "bindings": [{ "arg": "output", "name": "values", "elementType": "u32" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_narrow_wrap_atomic_zero_index_depth",
+      "priority": 26,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\")", "narrowIntData", "updateDispatchFits", "outputDispatchFits", "indexDepth == 0"],
+      "derive": {
+        "scalar": "\"u32\"",
+        "useSubgroups": "device.features.has(\"subgroups\")",
+        "useWorkgroupPreagg": false,
+        "updateElement": "\"u32\"",
+        "outputElement": "\"atomic<u32>\""
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.NarrowWrapAtomic",
+          "shader": "scatter-nd-reduction-atomic.wgsl.jinja",
+          "bindings": ["updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "narrow",
+          "name": "ScatterND.NarrowWrapFinalize",
+          "shader": "scatter-narrow-wrap.wgsl.jinja",
+          "bindings": [{ "arg": "output", "name": "values", "elementType": "u32" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_f16_packed_atomic_add",
+      "priority": 36,
+      "when": ["attrs.reduction == \"add\"", "dtypes.T == \"f16\"", "indexDepth < ranks.data", "numel(shapes.output) % 2 == 0", "numel(shapes.updates) >= tunables.F16_ATOMIC_MIN_UPDATES", "f16Ok(dtypes.T)", "outputDispatchFits", "updateDispatchFits", "indexDepth > 0"],
+      "derive": { "updateElement": "\"f16\"", "outputElement": "\"atomic<u32>\"" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.F16PackedAtomicAdd",
+          "shader": "scatter-nd-reduction-f16-packed-atomic.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_f16_packed_atomic_add_zero_index_depth",
+      "priority": 36,
+      "when": ["attrs.reduction == \"add\"", "dtypes.T == \"f16\"", "indexDepth < ranks.data", "numel(shapes.output) % 2 == 0", "numel(shapes.updates) >= tunables.F16_ATOMIC_MIN_UPDATES", "f16Ok(dtypes.T)", "outputDispatchFits", "updateDispatchFits", "indexDepth == 0"],
+      "derive": { "updateElement": "\"f16\"", "outputElement": "\"atomic<u32>\"" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.F16PackedAtomicAdd",
+          "shader": "scatter-nd-reduction-f16-packed-atomic.wgsl.jinja",
+          "bindings": ["updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_atomic",
+      "priority": 25,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\" or attrs.reduction == \"min\" or attrs.reduction == \"max\")", "(tensorDtypes.data == \"float32\" or tensorDtypes.data == \"int32\" or tensorDtypes.data == \"uint32\" or (narrowIntData and (attrs.reduction == \"min\" or attrs.reduction == \"max\")))", "updateDispatchFits", "indexDepth > 0"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "useSubgroups": "device.features.has(\"subgroups\") and (attrs.reduction == \"add\" or attrs.reduction == \"mul\")",
+        "useWorkgroupPreagg": "attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits",
+        "updateElement": "dtypes.T",
+        "outputElement": "\"atomic<i32>\" if dtypes.T == \"i32\" else \"atomic<u32>\""
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.ReductionAtomic",
+          "shader": "scatter-nd-reduction-atomic.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.updates), tunables.PREAGG_ITEMS_PER_THREAD) if attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits else numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.updates), tunables.PREAGG_ITEMS_PER_THREAD) if attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits else numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_atomic_zero_index_depth",
+      "priority": 25,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\" or attrs.reduction == \"min\" or attrs.reduction == \"max\")", "(tensorDtypes.data == \"float32\" or tensorDtypes.data == \"int32\" or tensorDtypes.data == \"uint32\" or (narrowIntData and (attrs.reduction == \"min\" or attrs.reduction == \"max\")))", "updateDispatchFits", "indexDepth == 0"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "useSubgroups": "device.features.has(\"subgroups\") and (attrs.reduction == \"add\" or attrs.reduction == \"mul\")",
+        "useWorkgroupPreagg": "attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits",
+        "updateElement": "dtypes.T",
+        "outputElement": "\"atomic<i32>\" if dtypes.T == \"i32\" else \"atomic<u32>\""
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.ReductionAtomic",
+          "shader": "scatter-nd-reduction-atomic.wgsl.jinja",
+          "bindings": ["updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.updates), tunables.PREAGG_ITEMS_PER_THREAD) if attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits else numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.updates), tunables.PREAGG_ITEMS_PER_THREAD) if attrs.reduction == \"add\" and dtypes.T == \"f32\" and indexDepth == ranks.data and numel(shapes.updates) >= numel(shapes.output) * tunables.PREAGG_MIN_DUPLICATION and preaggStorageFits else numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_slice",
+      "priority": 21,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\" or attrs.reduction == \"min\" or attrs.reduction == \"max\")", "f16Ok(dtypes.T)", "indexDepth > 0"],
+      "supersededBy": ["scalar_output_add_parallel_reduce"],
+      "derive": { "scalar": "dtypes.T", "updateElement": "dtypes.T", "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.ReductionSlice",
+          "shader": "scatter-nd-reduction-slice.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates) * indexDepth / numel(shapes.indices)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reduction_slice_zero_index_depth",
+      "priority": 21,
+      "when": ["(attrs.reduction == \"add\" or attrs.reduction == \"mul\" or attrs.reduction == \"min\" or attrs.reduction == \"max\")", "f16Ok(dtypes.T)", "indexDepth == 0"],
+      "supersededBy": ["scalar_output_add_parallel_reduce"],
+      "derive": { "scalar": "dtypes.T", "updateElement": "dtypes.T", "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.ReductionSlice",
+          "shader": "scatter-nd-reduction-slice.wgsl.jinja",
+          "bindings": ["updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv(numel(shapes.data), workgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "row_fast_vec4",
+      "priority": 10,
+      "when": ["dtypes.T != \"vec2<u32>\"", "attrs.reduction == \"none\"", "f16Ok(dtypes.T)", "indexDepth == 1", "inner(shapes.data, 0) % 4 == 0", "numel(shapes.indices) > 0", "indexDepth > 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.Scatter",
+          "shader": "datamove-scatter-row.wgsl.jinja",
+          "derive": {
+            "numIndices": "numel(shapes.indices)",
+            "axisDimSpec": "dim(shapes.data, 0)",
+            "rowVecs": "inner(shapes.data, 0) / 4"
+          },
+          "bindings": ["indices", "updates_scatter", "output_scatter"],
+          "dispatch": {
+            "x": "min(numel(shapes.indices), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "batch0",
+      "priority": 0,
+      "when": ["attrs.reduction == \"none\"", "f16Ok(dtypes.T)", "updateDispatchFits", "indexDepth > 0"],
+      "derive": { "updateElement": "dtypes.T", "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.Scatter",
+          "shader": "scatter-nd.wgsl.jinja",
+          "bindings": ["indices", "updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "batch0_zero_index_depth",
+      "priority": 0,
+      "when": ["attrs.reduction == \"none\"", "f16Ok(dtypes.T)", "updateDispatchFits", "indexDepth == 0"],
+      "derive": { "updateElement": "dtypes.T", "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "ScatterND.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4 if dtypes.T != \"vec2<u32>\" and numel(shapes.output) % 4 == 0 else numel(shapes.output)), (workgroupSize)), 65535)",
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "scatter",
+          "name": "ScatterND.Scatter",
+          "shader": "scatter-nd.wgsl.jinja",
+          "bindings": ["updates_reduce", "output_reduce", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.updates)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

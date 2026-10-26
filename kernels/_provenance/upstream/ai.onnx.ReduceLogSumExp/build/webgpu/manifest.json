@@ -1,0 +1,799 @@
+{
+  "domain": "ai.onnx",
+  "name": "ReduceLogSumExp",
+  "sinceVersion": 18,
+  "inputs": { "x": { "onnx": "data", "dtype": "T" } },
+  "outputs": {
+    "y": {
+      "onnx": "reduced",
+      "dtype": "T",
+      "rank": "ranks.x if attrs.keepdims == 1 or ((attrs.axes | length) == 0 and attrs.noop_with_empty_axes == 1) else (ranks.x - (attrs.axes | length) if (attrs.axes | length) > 0 else 0)"
+    }
+  },
+  "attributes": { "keepdims": { "default": 1 }, "noop_with_empty_axes": { "default": 0 }, "axes": { "default": [] } },
+  "attributeConstraints": { "keepdims": { "values": [0, 1] }, "noop_with_empty_axes": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "VECTOR_WIDTH": { "default": 4 },
+    "ROW_PARALLEL_MIN_COLS": { "default": 64 },
+    "SUBGROUP_MIN_COLS": { "default": 256 },
+    "SUBGROUP_SMALL_ROW_LIMIT": { "default": 32768 },
+    "AXIS0_SPLIT_MIN_ROWS": { "default": 8192 },
+    "AXIS0_SPLIT_TARGET_ROWS": { "default": 256 },
+    "AXIS0_MAX_SPLITS": { "default": 128 },
+    "AXIS0_TILE_MIN_ROWS": { "default": 64 },
+    "AXIS0_TILE_MIN_COLS": { "default": 16 },
+    "AXIS0_TILE_COLS": { "default": 16 },
+    "AXIS_SPLIT_TILE_COLS": { "default": 8 },
+    "FULL_REDUCE_MIN_ELEMENTS": { "default": 8192 },
+    "FULL_REDUCE_MAX_SPLITS": { "default": 256 },
+    "CONTIGUOUS_SUFFIX_MIN_COLS": { "default": 256 },
+    "AXES02_WORKGROUP_SIZE": { "default": 256 },
+    "ROW_SERIAL_MIN_ROWS": { "default": 8192 },
+    "ROW_SERIAL_MAX_COLS": { "default": 1024 }
+  },
+  "derive": {
+    "reduceOp": "\"logsumexp\"",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "op": "reduceOp",
+    "castF32": "dtypes.T == \"f16\"",
+    "reduceWorkgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "treeWorkgroupOk": "reduceWorkgroupSize > 0 and pow2ceil(reduceWorkgroupSize) == reduceWorkgroupSize and reduceWorkgroupSize * dtypeBytes(\"float32\") <= device.limits.maxComputeWorkgroupStorageSize",
+    "subgroupWorkgroupFloor": "min(reduceWorkgroupSize, max(1, device.adapterInfo.subgroupMaxSize))",
+    "lastAxisRows": "rows(shapes.x, ranks.x - 1) if ranks.x > 0 else 1",
+    "lastAxisCols": "dim(shapes.x, ranks.x - 1) if ranks.x > 0 else 1",
+    "rowSerialPreferred": "lastAxisRows >= tunables.ROW_SERIAL_MIN_ROWS and lastAxisCols <= tunables.ROW_SERIAL_MAX_COLS",
+    "axis0Rows": "dim(shapes.x, 0) if ranks.x >= 2 else 0",
+    "axis0Cols": "dim(shapes.x, 1) if ranks.x >= 2 else 0",
+    "axis0SplitCount": "min(tunables.AXIS0_MAX_SPLITS, pow2ceil(ceilDiv(axis0Rows, tunables.AXIS0_SPLIT_TARGET_ROWS)))",
+    "axis0SplitScratchBytes": "3 * axis0SplitCount * axis0Cols * dtypeBytes(\"float32\")",
+    "axis0SplitPathFits": "axis0SplitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(axis0Cols, reduceWorkgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and axis0SplitScratchBytes <= device.limits.maxStorageBufferBindingSize and axis0SplitScratchBytes <= device.limits.maxBufferSize",
+    "reduceAxis": "(attrs.axes[0] + ranks.x if attrs.axes[0] < 0 else attrs.axes[0]) if ((attrs.axes | length) == 1 and isUniqueIntList(attrs.axes, 0 - ranks.x, ranks.x, 1)) else ranks.x",
+    "axisSplitDim": "dim(shapes.x, reduceAxis) if ranks.x >= 2 and reduceAxis < ranks.x else 0",
+    "axisSplitInner": "inner(shapes.x, reduceAxis) if ranks.x >= 2 and reduceAxis < ranks.x else 1",
+    "axisSplitOutputs": "numel(shapes.y)",
+    "axisSplitCount": "min(tunables.AXIS0_MAX_SPLITS, pow2ceil(ceilDiv(axisSplitDim, tunables.AXIS0_SPLIT_TARGET_ROWS)))",
+    "axisSplitScratchBytes": "3 * axisSplitCount * axisSplitOutputs * 4",
+    "axisSplitPathFits": "axisSplitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(axisSplitOutputs, reduceWorkgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and axisSplitScratchBytes <= device.limits.maxStorageBufferBindingSize and axisSplitScratchBytes <= device.limits.maxBufferSize",
+    "axis0TilePathFits": "treeWorkgroupOk and tunables.AXIS0_TILE_COLS > 0 and tunables.AXIS0_TILE_COLS <= reduceWorkgroupSize and reduceWorkgroupSize % tunables.AXIS0_TILE_COLS == 0",
+    "flatItems": "numel(shapes.x) / tunables.VECTOR_WIDTH if numel(shapes.x) % tunables.VECTOR_WIDTH == 0 else numel(shapes.x)",
+    "flatSplitCount": "max(1, min(tunables.FULL_REDUCE_MAX_SPLITS, ceilDiv(flatItems, reduceWorkgroupSize)))",
+    "flatScratchBytes": "3 * flatSplitCount * dtypeBytes(\"float32\")",
+    "flatPathFits": "treeWorkgroupOk and flatSplitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and flatScratchBytes <= device.limits.maxStorageBufferBindingSize and flatScratchBytes <= device.limits.maxBufferSize",
+    "flatParallelCovered": "(dtypes.T == \"f32\" or dtypes.T == \"f16\") and f16Ok(dtypes.T) and numel(shapes.y) == 1 and numel(shapes.x) >= tunables.FULL_REDUCE_MIN_ELEMENTS and flatPathFits",
+    "contiguousSuffixParallelCovered": "(dtypes.T == \"f32\" or dtypes.T == \"f16\") and f16Ok(dtypes.T) and numel(shapes.y) > 0 and numel(shapes.x) % numel(shapes.y) == 0 and numel(shapes.x) / numel(shapes.y) >= tunables.CONTIGUOUS_SUFFIX_MIN_COLS and ((ranks.x == 3 and hasAxis(attrs.axes, 0, 3) == false and hasAxis(attrs.axes, 1, 3) and hasAxis(attrs.axes, 2, 3) and numel(shapes.y) == dim(shapes.x, 0)) or (ranks.x == 4 and hasAxis(attrs.axes, 0, 4) == false and hasAxis(attrs.axes, 1, 4) == false and hasAxis(attrs.axes, 2, 4) and hasAxis(attrs.axes, 3, 4) and numel(shapes.y) == dim(shapes.x, 0) * dim(shapes.x, 1)) or (ranks.x == 4 and hasAxis(attrs.axes, 0, 4) == false and hasAxis(attrs.axes, 1, 4) and hasAxis(attrs.axes, 2, 4) and hasAxis(attrs.axes, 3, 4) and numel(shapes.y) == dim(shapes.x, 0)))"
+  },
+  "bindings": {
+    "params_suffix_vec4": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "chunkCount", "type": "u32", "value": "numel(shapes.x) / numel(shapes.y) / tunables.VECTOR_WIDTH" }
+      ]
+    },
+    "params_reduce_row_tree": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, ranks.x - 1)" },
+        { "name": "chunkCount", "type": "u32", "value": "dim(shapes.x, ranks.x - 1) / tunables.VECTOR_WIDTH" }
+      ]
+    },
+    "params_axis_split_combine": {
+      "name": "params",
+      "struct": [{ "name": "cols", "type": "u32", "value": "axisSplitOutputs" }]
+    },
+    "params_axis0_combine": {
+      "name": "params",
+      "struct": [{ "name": "cols", "type": "u32", "value": "dim(shapes.x, 1)" }]
+    },
+    "params_rows_chunk_count": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, ranks.x - 1)" },
+        { "name": "chunkCount", "type": "u32", "value": "dim(shapes.x, ranks.x - 1)" }
+      ]
+    },
+    "x": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$T" },
+    "x_t": { "name": "x", "elementType": "$T" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "cols", "type": "u32", "value": "numel(shapes.x) / numel(shapes.y)" }
+      ]
+    },
+    "params_out_count": {
+      "name": "params",
+      "struct": [{ "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }]
+    },
+    "params_count": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] },
+    "params_rank0_scalar": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "1" },
+        { "name": "cols", "type": "u32", "value": "1" },
+        { "name": "outCount", "type": "u32", "value": "1" }
+      ]
+    },
+    "params_rank1_axis0": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.x, 0)" },
+        { "name": "cols", "type": "u32", "value": "1" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_rows_cols": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, ranks.x - 1)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.x, ranks.x - 1)" }
+      ]
+    },
+    "partials": { "buffer": "storage", "elementType": "$partialElement" },
+    "params_axis_split": {
+      "name": "params",
+      "struct": [
+        { "name": "axisDim", "type": "u32", "value": "axisSplitDim" },
+        { "name": "inner", "type": "u32", "value": "axisSplitInner" },
+        { "name": "outputs", "type": "u32", "value": "axisSplitOutputs" }
+      ]
+    },
+    "partials_combine": { "name": "partials", "buffer": "read-only-storage", "elementType": "$partialElement" },
+    "params_split_reduce": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.x, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.x, 1)" }
+      ]
+    },
+    "params_axis_dim_out_count": {
+      "name": "params",
+      "struct": [
+        { "name": "axisDim", "type": "u32", "value": "axisSplitDim" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_axis0": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "dim(shapes.x, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_axis1": {
+      "name": "params",
+      "struct": [
+        { "name": "cols", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_all_axes": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "numel(shapes.x)" },
+        { "name": "cols", "type": "u32", "value": "1" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "contiguous_suffix_subgroup_vec4",
+      "priority": 30,
+      "when": ["device.wgslLanguageFeatures.has(\"subgroup_id\")", "not flatParallelCovered", "contiguousSuffixParallelCovered", "(numel(shapes.x) / numel(shapes.y)) % tunables.VECTOR_WIDTH == 0"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "min(reduceWorkgroupSize, max(subgroupWorkgroupFloor, pow2ceil(ceilDiv(numel(shapes.x) / numel(shapes.y), tunables.VECTOR_WIDTH))))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.ContiguousSuffixSubgroupVec4",
+          "shader": "reduce-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y", "params_suffix_vec4"],
+          "dispatch": { "x": "min(numel(shapes.y), 65535)", "y": "ceilDiv(numel(shapes.y), 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "contiguous_suffix_tree_vec4",
+      "priority": 22,
+      "when": ["not flatParallelCovered", "contiguousSuffixParallelCovered", "(numel(shapes.x) / numel(shapes.y)) % tunables.VECTOR_WIDTH == 0", "treeWorkgroupOk"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "min(reduceWorkgroupSize, pow2ceil(ceilDiv(numel(shapes.x) / numel(shapes.y), tunables.VECTOR_WIDTH)))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.ContiguousSuffixTreeVec4",
+          "shader": "reduce-row-tree.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y", "params_suffix_vec4"],
+          "dispatch": { "x": "min(numel(shapes.y), 65535)", "y": "ceilDiv(numel(shapes.y), 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "contiguous_suffix_tree",
+      "priority": 21,
+      "when": ["not flatParallelCovered", "contiguousSuffixParallelCovered", "treeWorkgroupOk"],
+      "derive": {
+        "workgroupSize": "min(reduceWorkgroupSize, pow2ceil(numel(shapes.x) / numel(shapes.y)))",
+        "scalar": "dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.ContiguousSuffixTree",
+          "shader": "reduce-row-tree.wgsl.jinja",
+          "bindings": ["x_t", "y", "params_main"],
+          "dispatch": { "x": "min(numel(shapes.y), 65535)", "y": "ceilDiv(numel(shapes.y), 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "multi_axis_rank3",
+      "priority": 8,
+      "when": ["not flatParallelCovered", "not contiguousSuffixParallelCovered", "f16Ok(dtypes.T)", "ranks.x == 3", "(attrs.keepdims == 1 and ranks.y == 3 and (dim(shapes.y, 0) == 1 if hasAxis(attrs.axes, 0, 3) else dim(shapes.y, 0) == dim(shapes.x, 0)) and (dim(shapes.y, 1) == 1 if hasAxis(attrs.axes, 1, 3) else dim(shapes.y, 1) == dim(shapes.x, 1)) and (dim(shapes.y, 2) == 1 if hasAxis(attrs.axes, 2, 3) else dim(shapes.y, 2) == dim(shapes.x, 2))) or (attrs.keepdims == 0 and ranks.y == 1)"],
+      "derive": { "scalar": "dtypes.T", "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.MultiAxisRank3",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": {
+            "indexing": "\"multiaxis\"",
+            "rank": 3,
+            "reduce": ["hasAxis(attrs.axes, 0, 3)", "hasAxis(attrs.axes, 1, 3)", "hasAxis(attrs.axes, 2, 3)"],
+            "dataShape": "shapes.x",
+            "outputShape": "shapes.y",
+            "outputRank": "ranks.y",
+            "keepDims": "attrs.keepdims != 0",
+            "intMode": "dtypes.T == \"i32\""
+          },
+          "bindings": ["x_t", "y", "params_out_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_axis_rank4",
+      "priority": 8,
+      "when": ["not flatParallelCovered", "not contiguousSuffixParallelCovered", "f16Ok(dtypes.T)", "ranks.x == 4", "attrs.noop_with_empty_axes == 0", "numel(shapes.y) == (1 if hasAxis(attrs.axes, 0, 4) else dim(shapes.x, 0)) * (1 if hasAxis(attrs.axes, 1, 4) else dim(shapes.x, 1)) * (1 if hasAxis(attrs.axes, 2, 4) else dim(shapes.x, 2)) * (1 if hasAxis(attrs.axes, 3, 4) else dim(shapes.x, 3))", "((attrs.keepdims == 1 and ranks.y == 4) or (attrs.keepdims == 0 and ranks.y < 4))"],
+      "derive": { "scalar": "dtypes.T", "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.MultiAxisRank4",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": {
+            "indexing": "\"multiaxis\"",
+            "rank": 4,
+            "reduce": ["hasAxis(attrs.axes, 0, 4)", "hasAxis(attrs.axes, 1, 4)", "hasAxis(attrs.axes, 2, 4)", "hasAxis(attrs.axes, 3, 4)"],
+            "dataShape": "shapes.x",
+            "outputShape": "shapes.y",
+            "outputRank": "ranks.y",
+            "keepDims": "attrs.keepdims != 0",
+            "intMode": "dtypes.T == \"i32\""
+          },
+          "bindings": ["x_t", "y", "params_out_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "int32_rank3_axes02_keepdims",
+      "priority": 30,
+      "when": ["dtypes.T == \"i32\"", "ranks.x == 3", "attrs.keepdims == 1", "hasAxis(attrs.axes, 0, 3)", "hasAxis(attrs.axes, 2, 3)", "hasAxis(attrs.axes, 1, 3) == false", "dim(shapes.x, 0) > 0", "dim(shapes.x, 2) > 0", "ranks.y == 3", "dim(shapes.y, 0) == 1", "dim(shapes.y, 1) == dim(shapes.x, 1)", "dim(shapes.y, 2) == 1"],
+      "derive": {
+        "axes02WorkgroupSize": "min(tunables.AXES02_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Int32Rank3Axes02Keepdims",
+          "shader": "reduce-i32-axes02.wgsl.jinja",
+          "derive": { "op": "\"logsumexp\"", "workgroupSizeSpec": "axes02WorkgroupSize" },
+          "bindings": [
+            "x_t",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "d0", "type": "u32", "value": "dim(shapes.x, 0)" },
+                { "name": "d1", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "d2", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "outCount", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (axes02WorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (axes02WorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noop_empty_axes",
+      "priority": 40,
+      "when": ["dtypes.T == \"f32\"", "attrs.noop_with_empty_axes == 1", "(attrs.axes | length) == 0", "sameShape(shapes.x, shapes.y)"],
+      "derive": { "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.NoopEmptyAxes",
+          "shader": "reduce-noop-empty-axes.wgsl.jinja",
+          "derive": { "op": "\"identity\"" },
+          "bindings": ["x_t", "y", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_rows_last_axis_vec4",
+      "priority": 26,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x >= 1", "reduceAxis == ranks.x - 1", "numel(shapes.y) == rows(shapes.x, ranks.x - 1)", "attrs.noop_with_empty_axes == 0", "lastAxisCols % tunables.VECTOR_WIDTH == 0", "lastAxisCols >= tunables.VECTOR_WIDTH", "has(device.adapterInfo, \"subgroupMinSize\")", "has(device.adapterInfo, \"subgroupMaxSize\")", "device.adapterInfo.subgroupMinSize >= 16", "ceilDiv(lastAxisCols / tunables.VECTOR_WIDTH, device.adapterInfo.subgroupMinSize) <= 8", "lastAxisRows >= 64", "treeWorkgroupOk", "device.adapterInfo.subgroupMaxSize <= reduceWorkgroupSize", "(not rowSerialPreferred or lastAxisCols >= tunables.SUBGROUP_MIN_COLS)"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "reduceWorkgroupSize",
+        "vecsPerLane": "ceilDiv(lastAxisCols / tunables.VECTOR_WIDTH, device.adapterInfo.subgroupMinSize)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.SubgroupRowsVec4",
+          "shader": "reduce-row-subgroup-rows.wgsl.jinja",
+          "bindings": ["x", "y", "params_reduce_row_tree"],
+          "dispatch": {
+            "x": "min(ceilDiv(lastAxisRows, reduceWorkgroupSize / device.adapterInfo.subgroupMaxSize), 65535)",
+            "y": "ceilDiv(ceilDiv(lastAxisRows, reduceWorkgroupSize / device.adapterInfo.subgroupMaxSize), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "tree_last_axis_vec4",
+      "priority": 23,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x >= 1", "reduceAxis == ranks.x - 1", "numel(shapes.y) == rows(shapes.x, ranks.x - 1)", "attrs.noop_with_empty_axes == 0", "lastAxisCols >= tunables.ROW_PARALLEL_MIN_COLS", "lastAxisCols % tunables.VECTOR_WIDTH == 0", "treeWorkgroupOk"],
+      "demoteWhen": ["rowSerialPreferred"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "min(reduceWorkgroupSize, pow2ceil(ceilDiv(lastAxisCols, tunables.VECTOR_WIDTH)))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.TreeRowVec4",
+          "shader": "reduce-row-tree.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y", "params_reduce_row_tree"],
+          "dispatch": { "x": "min(lastAxisRows, 65535)", "y": "ceilDiv(lastAxisRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "rank0_scalar",
+      "priority": 40,
+      "when": ["f16Ok(dtypes.T)", "ranks.x == 0", "ranks.y == 0"],
+      "derive": { "axis": 0, "scalar": "dtypes.T", "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Rank0Scalar",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": {
+            "indexing": "\"axis2d\"",
+            "intMode": "dtypes.T == \"i32\"",
+            "logicalBool": "tensorDtypes.x == \"bool\""
+          },
+          "bindings": ["x_t", "y", "params_rank0_scalar"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "rank1_axis0",
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x == 1", "reduceAxis == 0", "((attrs.keepdims == 0 and ranks.y == 0) or (attrs.keepdims == 1 and ranks.y == 1 and dim(shapes.y, 0) == 1))"],
+      "derive": { "axis": 0, "scalar": "dtypes.T", "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Rank1Axis0",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": {
+            "indexing": "\"axis2d\"",
+            "intMode": "dtypes.T == \"i32\"",
+            "logicalBool": "tensorDtypes.x == \"bool\""
+          },
+          "bindings": ["x_t", "y", "params_rank1_axis0"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis1_parallel",
+      "priority": 20,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x >= 2", "reduceAxis == ranks.x - 1", "numel(shapes.y) == rows(shapes.x, ranks.x - 1)", "lastAxisCols >= tunables.ROW_PARALLEL_MIN_COLS", "treeWorkgroupOk"],
+      "demoteWhen": ["rowSerialPreferred"],
+      "derive": { "workgroupSize": "min(reduceWorkgroupSize, pow2ceil(dim(shapes.x, ranks.x - 1)))" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Axis1Parallel",
+          "shader": "reduce-row-tree.wgsl.jinja",
+          "bindings": ["x_t", "y", "params_rows_cols"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, ranks.x - 1), 65535)",
+            "y": "ceilDiv(rows(shapes.x, ranks.x - 1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_split",
+      "priority": 24,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "attrs.noop_with_empty_axes == 0", "ranks.x >= 2", "reduceAxis < ranks.x - 1", "not (ranks.x == 2 and reduceAxis == 0)", "axisSplitDim >= tunables.AXIS0_SPLIT_MIN_ROWS", "axisSplitOutputs >= 1", "axisSplitOutputs <= 4096", "axisSplitOutputs == rows(shapes.x, reduceAxis)", "axisSplitPathFits"],
+      "derive": {
+        "splitCount": "axisSplitCount",
+        "partialElement": "\"f32\"",
+        "workgroupSize": "reduceWorkgroupSize",
+        "split": "splitCount"
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[3 * splitCount * axisSplitOutputs]" }],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ReduceLogSumExp.AxisSplitReduce",
+          "shader": "reduce-axis-split-reduce.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount" },
+          "bindings": ["x_t", "partials", "params_axis_split"],
+          "dispatch": {
+            "x": "min(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), DISPATCH_FOLD_WIDTH)",
+            "y": "splitCount",
+            "z": "ceilDiv(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "ReduceLogSumExp.AxisSplitCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount", "outputF16": "dtypes.T == \"f16\"" },
+          "bindings": ["partials_combine", "y", "params_axis_split_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_split_tiled_narrow",
+      "priority": 25,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "attrs.noop_with_empty_axes == 0", "ranks.x >= 2", "reduceAxis < ranks.x - 1", "axisSplitDim >= tunables.AXIS0_SPLIT_MIN_ROWS", "axisSplitOutputs >= 1", "axisSplitOutputs <= 2 * tunables.AXIS_SPLIT_TILE_COLS", "reduceWorkgroupSize % tunables.AXIS_SPLIT_TILE_COLS == 0", "axisSplitOutputs == rows(shapes.x, reduceAxis)", "axisSplitPathFits"],
+      "derive": {
+        "splitCount": "axisSplitCount",
+        "partialElement": "\"f32\"",
+        "scalar": "dtypes.T",
+        "workgroupSize": "reduceWorkgroupSize",
+        "split": "splitCount",
+        "tileCols": "tunables.AXIS_SPLIT_TILE_COLS"
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[3 * splitCount * axisSplitOutputs]" }],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ReduceLogSumExp.AxisSplitTiledReduce",
+          "shader": "reduce-axis0-tilecols.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount" },
+          "bindings": ["x_t", "partials", "params_axis_split"],
+          "dispatch": {
+            "x": "min(ceilDiv((axisSplitOutputs), (tileCols)), DISPATCH_FOLD_WIDTH)",
+            "y": "splitCount",
+            "z": "ceilDiv(ceilDiv((axisSplitOutputs), (tileCols)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "ReduceLogSumExp.AxisSplitCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount", "outputF16": "dtypes.T == \"f16\"" },
+          "bindings": ["partials_combine", "y", "params_axis_split_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((axisSplitOutputs), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis0_splitk",
+      "priority": 22,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x == 2", "reduceAxis == 0", "axis0Rows >= tunables.AXIS0_SPLIT_MIN_ROWS", "dim(shapes.x, 1) > 0", "((attrs.keepdims == 0 and ranks.y == 1 and dim(shapes.y, 0) == dim(shapes.x, 1)) or (attrs.keepdims == 1 and ranks.y == 2 and dim(shapes.y, 0) == 1 and dim(shapes.y, 1) == dim(shapes.x, 1)))", "axis0SplitPathFits"],
+      "demoteWhen": ["dtypes.T == \"f32\" and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32 and axis0Rows >= 2 * tunables.AXIS0_SPLIT_MIN_ROWS and axis0Cols >= tunables.AXIS0_TILE_MIN_COLS and axis0TilePathFits and ceilDiv(axis0Cols, tunables.AXIS0_TILE_COLS) >= axis0SplitCount"],
+      "derive": {
+        "splitCount": "axis0SplitCount",
+        "partialElement": "\"f32\"",
+        "workgroupSize": "reduceWorkgroupSize",
+        "split": "splitCount"
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[3 * splitCount * dim(shapes.x, 1)]" }],
+      "passes": [
+        {
+          "id": "split_reduce",
+          "name": "ReduceLogSumExp.Axis0SplitKReduce",
+          "shader": "reduce-axis0-splitk-reduce.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount" },
+          "bindings": ["x_t", "partials", "params_split_reduce"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.x, 1)), (reduceWorkgroupSize)), DISPATCH_FOLD_WIDTH)",
+            "y": "splitCount",
+            "z": "ceilDiv(ceilDiv((dim(shapes.x, 1)), (reduceWorkgroupSize)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "ReduceLogSumExp.Axis0SplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "splitSpec": "splitCount", "outputF16": "dtypes.T == \"f16\"" },
+          "bindings": ["partials_combine", "y", "params_axis0_combine"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.x, 1)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.x, 1)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis0_tilecols",
+      "priority": 20,
+      "when": ["not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x == 2", "reduceAxis == 0", "axis0Rows >= tunables.AXIS0_TILE_MIN_ROWS", "axis0Cols >= tunables.AXIS0_TILE_MIN_COLS", "((attrs.keepdims == 0 and ranks.y == 1 and dim(shapes.y, 0) == dim(shapes.x, 1)) or (attrs.keepdims == 1 and ranks.y == 2 and dim(shapes.y, 0) == 1 and dim(shapes.y, 1) == dim(shapes.x, 1)))", "axis0TilePathFits"],
+      "derive": { "workgroupSize": "reduceWorkgroupSize", "tileCols": "tunables.AXIS0_TILE_COLS" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Axis0TileCols",
+          "shader": "reduce-axis0-tilecols.wgsl.jinja",
+          "derive": {},
+          "bindings": ["x_t", "y", "params_split_reduce"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.x, 1)), (tileCols)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.x, 1)), (tileCols)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_axes_flat",
+      "priority": 31,
+      "when": ["flatParallelCovered"],
+      "derive": {
+        "workgroupSize": "reduceWorkgroupSize",
+        "flatScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if numel(shapes.x) % tunables.VECTOR_WIDTH == 0 else dtypes.T",
+        "split": "flatSplitCount"
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[3 * flatSplitCount]" }],
+      "passes": [
+        {
+          "id": "flat_partial",
+          "name": "ReduceLogSumExp.AllAxesFlatPartial",
+          "shader": "reduce-flat-partial-logsumexp.wgsl.jinja",
+          "derive": { "vec4": "numel(shapes.x) % tunables.VECTOR_WIDTH == 0" },
+          "bindings": [
+            { "arg": "x", "elementType": "$flatScalar" },
+            { "name": "partials", "elementType": "f32" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "flatItems" }] }
+          ],
+          "dispatch": { "x": "flatSplitCount" }
+        },
+        {
+          "id": "combine",
+          "name": "ReduceLogSumExp.AllAxesFlatCombine",
+          "shader": "reduce-flat-combine-logsumexp.wgsl.jinja",
+          "derive": { "outputF16": "dtypes.T == \"f16\"" },
+          "bindings": [
+            { "name": "partials", "buffer": "read-only-storage", "elementType": "f32" },
+            "y",
+            { "name": "params", "struct": [{ "name": "cols", "type": "u32", "value": "1" }] }
+          ],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "rankn_single_axis_generic",
+      "priority": 12,
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x >= 3", "attrs.noop_with_empty_axes == 0", "reduceAxis < ranks.x", "numel(shapes.y) == rows(shapes.x, reduceAxis)", "((attrs.keepdims == 0 and ranks.y == ranks.x - 1) or (attrs.keepdims == 1 and ranks.y == ranks.x and dim(shapes.y, reduceAxis) == 1))"],
+      "supersededBy": ["axis_split_tiled_narrow", "axis_split", "subgroup_last_axis_vec4", "subgroup_last_axis", "tree_last_axis_vec4"],
+      "derive": { "scalar": "dtypes.T", "reduceWorkgroupSize": "reduceWorkgroupSize" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.RankNSingleAxisGeneric",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": {
+            "indexing": "\"rankn\"",
+            "rank": "ranks.x",
+            "axisSpec": "reduceAxis",
+            "dataShape": "shapes.x",
+            "outputShape": "shapes.y",
+            "outputRank": "ranks.y",
+            "keepDims": "attrs.keepdims != 0",
+            "intMode": "dtypes.T == \"i32\""
+          },
+          "bindings": ["x_t", "y", "params_axis_dim_out_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_last_axis_vec4",
+      "priority": 25,
+      "when": ["device.wgslLanguageFeatures.has(\"subgroup_id\")", "not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x >= 1", "reduceAxis == ranks.x - 1", "numel(shapes.y) == rows(shapes.x, ranks.x - 1)", "dim(shapes.x, ranks.x - 1) >= 4", "dim(shapes.x, ranks.x - 1) % tunables.VECTOR_WIDTH == 0", "(lastAxisCols >= tunables.SUBGROUP_MIN_COLS or lastAxisRows < tunables.SUBGROUP_SMALL_ROW_LIMIT)", "not rowSerialPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "min(reduceWorkgroupSize, max(subgroupWorkgroupFloor, pow2ceil(ceilDiv(lastAxisCols, tunables.VECTOR_WIDTH))))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.SubgroupRowVec4",
+          "shader": "reduce-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y", "params_reduce_row_tree"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, ranks.x - 1), 65535)",
+            "y": "ceilDiv(rows(shapes.x, ranks.x - 1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_last_axis",
+      "priority": 24,
+      "when": ["device.wgslLanguageFeatures.has(\"subgroup_id\")", "not flatParallelCovered", "(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "f16Ok(dtypes.T)", "ranks.x >= 1", "reduceAxis == ranks.x - 1", "numel(shapes.y) == rows(shapes.x, ranks.x - 1)", "dim(shapes.x, ranks.x - 1) > 0", "dim(shapes.x, ranks.x - 1) % tunables.VECTOR_WIDTH != 0", "(lastAxisCols >= tunables.SUBGROUP_MIN_COLS or lastAxisRows < tunables.SUBGROUP_SMALL_ROW_LIMIT)", "not rowSerialPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "workgroupSize": "min(reduceWorkgroupSize, max(subgroupWorkgroupFloor, pow2ceil(lastAxisCols)))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.SubgroupRow",
+          "shader": "reduce-row-subgroup.wgsl.jinja",
+          "derive": { "vec4": false },
+          "bindings": ["x_t", "y", "params_rows_chunk_count"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, ranks.x - 1), 65535)",
+            "y": "ceilDiv(rows(shapes.x, ranks.x - 1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis0",
+      "priority": 0,
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x == 2", "reduceAxis == 0", "((attrs.keepdims == 0 and ranks.y == 1 and dim(shapes.y, 0) == dim(shapes.x, 1)) or (attrs.keepdims == 1 and ranks.y == 2 and dim(shapes.y, 0) == 1 and dim(shapes.y, 1) == dim(shapes.x, 1)))"],
+      "supersededBy": ["axis_split_tiled_narrow", "axis0_splitk", "axis0_tilecols"],
+      "derive": { "axis": 0, "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Axis0",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": { "indexing": "\"axis2d\"", "intMode": "dtypes.T == \"i32\"" },
+          "bindings": ["x_t", "y", "params_axis0"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis1",
+      "priority": 0,
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x == 2", "reduceAxis == 1", "((attrs.keepdims == 0 and ranks.y == 1 and dim(shapes.y, 0) == dim(shapes.x, 0)) or (attrs.keepdims == 1 and ranks.y == 2 and dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == 1))"],
+      "derive": { "axis": 1, "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Axis1",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": { "indexing": "\"axis2d\"", "intMode": "dtypes.T == \"i32\"" },
+          "bindings": ["x_t", "y", "params_axis1"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_axes_keepdims",
+      "priority": 30,
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x >= 3", "attrs.keepdims == 1", "ranks.y == ranks.x", "numel(shapes.y) == 1"],
+      "derive": { "axis": 0, "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Rank3AllAxesKeepdims",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": { "indexing": "\"axis2d\"", "intMode": "dtypes.T == \"i32\"" },
+          "bindings": ["x_t", "y", "params_all_axes"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_axes_no_keepdims",
+      "priority": 30,
+      "when": ["not flatParallelCovered", "f16Ok(dtypes.T)", "ranks.x >= 3", "attrs.keepdims == 0", "attrs.noop_with_empty_axes == 0", "ranks.y == 0"],
+      "derive": { "axis": 0, "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReduceLogSumExp.Rank3AllAxesNoKeepdims",
+          "shader": "reduce-serial-axis.wgsl.jinja",
+          "derive": { "indexing": "\"axis2d\"", "intMode": "dtypes.T == \"i32\"" },
+          "bindings": ["x_t", "y", "params_all_axes"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (reduceWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

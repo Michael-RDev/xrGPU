@@ -1,0 +1,125 @@
+{
+  "domain": "com.microsoft",
+  "name": "GatedRelativePositionBias",
+  "sinceVersion": 1,
+  "inputs": {
+    "queryLayerT": { "onnx": "query_layer", "dtype": "T", "rank": 3 },
+    "queryBiasT": { "onnx": "query_bias", "dtype": "T", "rank": 1 },
+    "relPosT": { "onnx": "rel_pos", "dtype": "T", "rank": 4 },
+    "weightT": { "onnx": "weight", "dtype": "T", "rank": 2 },
+    "biasT": { "onnx": "bias", "dtype": "T", "rank": 1 },
+    "ecoAT": { "onnx": "eco_a", "dtype": "T", "rank": 4 }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T",
+      "rank": 4,
+      "shape": "[dim(shapes.queryLayerT, 0), attrs.num_heads, dim(shapes.queryLayerT, 1), dim(shapes.queryLayerT, 1)]"
+    }
+  },
+  "attributes": { "num_heads": {} },
+  "attributeConstraints": { "num_heads": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 128 }, "LANE_WORDS": { "default": 2 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "batchSize": "dim(shapes.queryLayerT, 0)",
+    "seqLen": "dim(shapes.queryLayerT, 1)",
+    "queryHidden": "dim(shapes.queryLayerT, 2)",
+    "numHeads": "attrs.num_heads",
+    "headSize": "queryHidden / max(1, numHeads)",
+    "projDim": "dim(shapes.weightT, 1)",
+    "halfProj": "projDim / 2",
+    "rowCount": "batchSize * numHeads * seqLen",
+    "dtypeOk": "tensorDtypes.queryLayerT == tensorDtypes.queryBiasT and tensorDtypes.queryLayerT == tensorDtypes.relPosT and tensorDtypes.queryLayerT == tensorDtypes.weightT and tensorDtypes.queryLayerT == tensorDtypes.biasT and tensorDtypes.queryLayerT == tensorDtypes.ecoAT and tensorDtypes.queryLayerT == tensorDtypes.outputT and f16Ok(dtypes.T)",
+    "headsOk": "numHeads > 0 and queryHidden > 0 and queryHidden % numHeads == 0 and headSize > 0",
+    "projOk": "ranks.weightT == 2 and dim(shapes.weightT, 0) == headSize and projDim > 0 and projDim % 2 == 0 and projDim <= 32 and ranks.biasT == 1 and dim(shapes.biasT, 0) == projDim",
+    "relPosOk": "ranks.relPosT == 4 and dim(shapes.relPosT, 0) == 1 and dim(shapes.relPosT, 1) == numHeads and dim(shapes.relPosT, 2) == seqLen and dim(shapes.relPosT, 3) == seqLen",
+    "ecoOk": "ranks.ecoAT == 4 and numel(shapes.ecoAT) == numHeads",
+    "outputOk": "ranks.outputT == 4 and dim(shapes.outputT, 0) == batchSize and dim(shapes.outputT, 1) == numHeads and dim(shapes.outputT, 2) == seqLen and dim(shapes.outputT, 3) == seqLen",
+    "biasOk": "ranks.queryBiasT == 1 and dim(shapes.queryBiasT, 0) == queryHidden",
+    "contractOk": "ranks.queryLayerT == 3 and seqLen > 0 and dtypeOk and headsOk and projOk and relPosOk and ecoOk and outputOk and biasOk",
+    "workgroupOk": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap and pow2ceil(tunables.WORKGROUP_SIZE) == tunables.WORKGROUP_SIZE and tunables.LANE_WORDS > 0 and headSize + tunables.WORKGROUP_SIZE * 2 + 1 <= device.limits.maxComputeWorkgroupStorageSize / 4",
+    "dispatchOk": "rowCount <= foldedDispatchCapacity",
+    "vec4Ok": "seqLen % 4 == 0",
+    "vecWords": "seqLen / 4",
+    "vecWorkgroup": "max(32, min(tunables.WORKGROUP_SIZE, pow2ceil(max(1, ceilDiv(vecWords, max(1, tunables.LANE_WORDS))))))",
+    "scalarWorkgroup": "max(32, min(tunables.WORKGROUP_SIZE, pow2ceil(max(1, ceilDiv(seqLen, max(1, tunables.LANE_WORDS))))))",
+    "vecWordsPerLane": "ceilDiv(vecWords, max(1, vecWorkgroup))",
+    "scalarWordsPerLane": "ceilDiv(seqLen, max(1, scalarWorkgroup))",
+    "vectorElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "projectionLaneWidth": "min(vecWorkgroup, scalarWorkgroup, device.adapterInfo.subgroupMinSize) if (has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize > 0) else min(vecWorkgroup, scalarWorkgroup, 32)",
+    "headParallelPreferred": "min(headSize, projectionLaneWidth) >= 4 * min(projDim, projectionLaneWidth) or ((variableSubgroup16To32 or (not device.features.has(\"subgroups\") and not has(device.adapterInfo, \"subgroupMinSize\"))) and vec4Ok and headSize >= 8 * projDim and seqLen >= 2 * tunables.WORKGROUP_SIZE)",
+    "useVec4": "vec4Ok",
+    "rowWords": "vecWords if vec4Ok else seqLen",
+    "wordsPerLane": "vecWordsPerLane if vec4Ok else scalarWordsPerLane",
+    "stageRow": "wordsPerLane <= 8",
+    "workgroupSize": "vecWorkgroup if vec4Ok else scalarWorkgroup",
+    "scalar": "dtypes.T",
+    "vectorScalar": "vectorElement",
+    "rowElement": "vectorElement if vec4Ok else scalar"
+  },
+  "when": ["contractOk", "workgroupOk", "dispatchOk"],
+  "bindings": {
+    "query_layer": { "arg": "queryLayerT", "elementType": "$scalar" },
+    "query_bias": { "arg": "queryBiasT", "elementType": "$scalar" },
+    "weight": { "arg": "weightT", "elementType": "$scalar" },
+    "bias": { "arg": "biasT", "elementType": "$scalar" },
+    "eco_a": { "arg": "ecoAT", "elementType": "$scalar" },
+    "rel_pos": { "arg": "relPosT", "elementType": "$rowElement" },
+    "output": { "arg": "outputT", "elementType": "$rowElement" },
+    "params": { "struct": [{ "name": "seqLen", "type": "u32", "value": "seqLen" }] }
+  },
+  "variants": [
+    {
+      "id": "row",
+      "priority": 10,
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRelativePositionBias.Row",
+          "shader": "gated-relative-position-bias.wgsl.jinja",
+          "bindings": ["query_layer", "query_bias", "weight", "bias", "eco_a", "rel_pos", "output", "params"],
+          "dispatch": { "x": "min(rowCount, DISPATCH_FOLD_WIDTH)", "y": "ceilDiv(rowCount, DISPATCH_FOLD_WIDTH)" }
+        }
+      ]
+    },
+    {
+      "id": "row_head_tree",
+      "priority": 30,
+      "when": ["true"],
+      "demoteWhen": ["not headParallelPreferred"],
+      "requires": { "features": [] },
+      "derive": { "parallelProjection": true, "useSubgroups": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRelativePositionBias.RowHeadTree",
+          "shader": "gated-relative-position-bias.wgsl.jinja",
+          "bindings": ["query_layer", "query_bias", "weight", "bias", "eco_a", "rel_pos", "output", "params"],
+          "dispatch": { "x": "min(rowCount, DISPATCH_FOLD_WIDTH)", "y": "ceilDiv(rowCount, DISPATCH_FOLD_WIDTH)" }
+        }
+      ]
+    },
+    {
+      "id": "row_head_subgroups",
+      "priority": 40,
+      "when": ["device.wgslLanguageFeatures.has(\"subgroup_id\")"],
+      "demoteWhen": ["not headParallelPreferred"],
+      "requires": { "features": ["subgroups"] },
+      "derive": { "parallelProjection": true, "useSubgroups": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRelativePositionBias.RowHeadSubgroups",
+          "shader": "gated-relative-position-bias.wgsl.jinja",
+          "bindings": ["query_layer", "query_bias", "weight", "bias", "eco_a", "rel_pos", "output", "params"],
+          "dispatch": { "x": "min(rowCount, DISPATCH_FOLD_WIDTH)", "y": "ceilDiv(rowCount, DISPATCH_FOLD_WIDTH)" }
+        }
+      ]
+    }
+  ]
+}

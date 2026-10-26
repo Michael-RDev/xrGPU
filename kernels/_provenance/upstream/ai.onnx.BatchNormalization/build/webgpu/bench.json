@@ -1,0 +1,116 @@
+{
+  "cases": [
+    {
+      "name": "nchw_4x64x112x112_vec4",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "batch": 4, "channels": 64, "height": 112, "width": 112 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4, 64, 112, 112], "dist": "normal", "seed": 770, "scale": 0.5 },
+        "scale": { "dtype": "float32", "shape": [64], "dist": "uniform", "seed": 771, "scale": 0.25, "offset": 1 },
+        "b": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 772, "scale": 0.1 },
+        "inputMean": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 773, "scale": 0.1 },
+        "inputVar": { "dtype": "float32", "shape": [64], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 64, 112, 112] } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.channels * args.height * args.width * dtypeBytes(args.dtype) * 2 + args.channels * dtypeBytes(args.dtype) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nchw_1x64x112x112",
+      "vars": { "dtype": "float32", "batch": 1, "channels": 64, "height": 112, "width": 112 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 64, 112, 112] },
+        "scale": { "dtype": "float32", "shape": [64] },
+        "b": { "dtype": "float32", "shape": [64] },
+        "inputMean": { "dtype": "float32", "shape": [64] },
+        "inputVar": { "dtype": "float32", "shape": [64], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64, 112, 112] } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.channels * args.height * args.width * dtypeBytes(args.dtype) * 2 + args.channels * dtypeBytes(args.dtype) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nc_4096x768",
+      "vars": { "dtype": "float32", "batch": 4096, "channels": 768, "height": 1, "width": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4096, 768] },
+        "scale": { "dtype": "float32", "shape": [768] },
+        "b": { "dtype": "float32", "shape": [768] },
+        "inputMean": { "dtype": "float32", "shape": [768] },
+        "inputVar": { "dtype": "float32", "shape": [768], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4096, 768] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.channels * dtypeBytes(args.dtype) * 2 + args.channels * dtypeBytes(args.dtype) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nchw_inference_scalar_no_vec4_1x64x63x63",
+      "preset": "edge",
+      "vars": { "dtype": "float32", "batch": 1, "channels": 64, "height": 63, "width": 63 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 64, 63, 63], "dist": "normal", "seed": 6301, "scale": 1 },
+        "scale": { "dtype": "float32", "shape": [64], "dist": "uniform", "seed": 6302, "scale": 0.25, "offset": 1 },
+        "b": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 6303, "scale": 0.1 },
+        "inputMean": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 6304, "scale": 0.1 },
+        "inputVar": { "dtype": "float32", "shape": [64], "dist": "uniform", "seed": 6305, "scale": 0.5, "offset": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64, 63, 63] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "args.batch * args.channels * args.height * args.width * dtypeBytes(args.dtype) * 2 + args.channels * dtypeBytes(args.dtype) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "batchnorm-nchw-f32-c256-plane49-unaligned",
+      "preset": "edge",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [128, 256, 7, 7] },
+        "scale": { "dtype": "float32", "shape": [256] },
+        "b": { "dtype": "float32", "shape": [256] },
+        "inputMean": { "dtype": "float32", "shape": [256] },
+        "inputVar": { "dtype": "float32", "shape": [256], "min": 0.5, "max": 2 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 256, 7, 7] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "numel(shapes.x) * 4 * 2" }] }
+    },
+    {
+      "name": "batchnorm-nchw-f32-c256-plane64-aligned-control",
+      "preset": "edge",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [98, 256, 8, 8] },
+        "scale": { "dtype": "float32", "shape": [256] },
+        "b": { "dtype": "float32", "shape": [256] },
+        "inputMean": { "dtype": "float32", "shape": [256] },
+        "inputVar": { "dtype": "float32", "shape": [256], "min": 0.5, "max": 2 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [98, 256, 8, 8] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "numel(shapes.x) * 4 * 2" }] }
+    }
+  ]
+}

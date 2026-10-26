@@ -1,0 +1,117 @@
+{
+  "domain": "ai.onnx",
+  "name": "LeakyRelu",
+  "sinceVersion": 16,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "alpha": { "default": 0.01 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LeakyRelu.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "alpha": "attrs.alpha",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": ["x", "y", "params_unary_alpha"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "when": ["numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LeakyRelu",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": ["x_scalar", "y_scalar", "params_2_unary_alpha"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_layout_vec4_tail",
+      "priority": 19,
+      "when": ["numel(shapes.x) > 4", "numel(shapes.x) % 4 != 0", "numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "LeakyRelu.Vec4Bulk",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "alpha": "attrs.alpha",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": ["x", "y", "params_unary_alpha_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "LeakyRelu.Tail",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4, "tailOnly": true },
+          "bindings": ["x_scalar", "y_scalar", "params_2_unary_alpha_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "x": { "buffer": "read-only-storage", "elementType": "$vectorScalar" },
+    "y": { "buffer": "storage", "elementType": "$vectorScalar" },
+    "params_unary_alpha": {
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }],
+      "name": "params"
+    },
+    "x_scalar": { "buffer": "read-only-storage", "name": "x", "elementType": "$scalar" },
+    "y_scalar": { "buffer": "storage", "name": "y", "elementType": "$scalar" },
+    "params_2_unary_alpha": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "alpha", "type": "f32", "value": "attrs.alpha" }
+      ]
+    },
+    "params_unary_alpha_tail": {
+      "struct": [{ "name": "count", "type": "u32", "value": "floor(numel(shapes.y) / 4)" }],
+      "name": "params"
+    },
+    "params_2_unary_alpha_tail": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "alpha", "type": "f32", "value": "attrs.alpha" }
+      ]
+    }
+  }
+}

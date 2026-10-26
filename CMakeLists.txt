@@ -1,42 +1,140 @@
 cmake_minimum_required(VERSION 3.24)
-project(xrGPU LANGUAGES C CXX)
+project(xrGPU VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-if(NOT ANDROID OR NOT ANDROID_ABI STREQUAL "arm64-v8a")
-  message(FATAL_ERROR "xrGPU native app targets Android arm64-v8a. See README.md.")
+option(XRGPU_BUILD_DEMO "Build the Android OpenXR development app" ${ANDROID})
+option(XRGPU_ENABLE_VULKAN "Build Vulkan support" ${ANDROID})
+option(XRGPU_ENABLE_XNNPACK "Build the optional XNNPACK CPU delegate" ${ANDROID})
+option(XRGPU_ENABLE_EXPERIMENTS "Enable unqualified candidates in development builds" ${XRGPU_BUILD_DEMO})
+option(XRGPU_BUILD_RUNNER "Build the standalone inference runner" ON)
+option(XRGPU_BUILD_TESTS "Build native Session acceptance executable" OFF)
+set(XRGPU_KERNEL_PACKAGE_ROOT "" CACHE PATH "Verified immutable xrGPU kernel package")
+set(XRGPU_QUALIFICATION_FILE "" CACHE FILEPATH "Qualified record bundled into this library")
+if(ANDROID AND NOT ANDROID_ABI STREQUAL "arm64-v8a")
+  message(FATAL_ERROR "xrGPU Android supports arm64-v8a")
 endif()
-set(EXECUTORCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps/executorch")
+if(XRGPU_BUILD_DEMO AND (NOT ANDROID OR NOT XRGPU_ENABLE_VULKAN OR NOT XRGPU_ENABLE_EXPERIMENTS))
+  message(FATAL_ERROR "The demo requires Android Vulkan and explicit development experiments")
+endif()
+set(EXECUTORCH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps/executorch" CACHE PATH "Pinned ExecuTorch checkout")
 set(PYTHON_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python" CACHE FILEPATH "Export environment")
-set(EXECUTORCH_BUILD_VULKAN ON CACHE BOOL "" FORCE)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json" dependencies)
+string(JSON et_revision GET "${dependencies}" executorch commit)
+execute_process(COMMAND git -C "${EXECUTORCH_ROOT}" rev-parse HEAD
+  OUTPUT_VARIABLE installed_et_revision OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE et_pin_status)
+if(NOT et_pin_status EQUAL 0 OR NOT installed_et_revision STREQUAL et_revision)
+  message(FATAL_ERROR "ExecuTorch checkout does not match dependencies.json pinned revision")
+endif()
+
+set(EXECUTORCH_BUILD_VULKAN ${XRGPU_ENABLE_VULKAN} CACHE BOOL "" FORCE)
 set(EXECUTORCH_ENABLE_EVENT_TRACER ON CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_DEVTOOLS ON CACHE BOOL "" FORCE)
-set(EXECUTORCH_BUILD_EXTENSION_MODULE ON CACHE BOOL "" FORCE)
-set(EXECUTORCH_BUILD_EXTENSION_TENSOR ON CACHE BOOL "" FORCE)
-set(EXECUTORCH_BUILD_EXTENSION_DATA_LOADER ON CACHE BOOL "" FORCE)
-set(EXECUTORCH_BUILD_EXTENSION_NAMED_DATA_MAP ON CACHE BOOL "" FORCE)
-set(EXECUTORCH_BUILD_XNNPACK ON CACHE BOOL "" FORCE)
+foreach(extension MODULE TENSOR DATA_LOADER NAMED_DATA_MAP)
+  set(EXECUTORCH_BUILD_EXTENSION_${extension} ON CACHE BOOL "" FORCE)
+endforeach()
+set(EXECUTORCH_BUILD_XNNPACK ${XRGPU_ENABLE_XNNPACK} CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_KERNELS_OPTIMIZED OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_BUILD_EXECUTOR_RUNNER OFF CACHE BOOL "" FORCE)
 set(EXECUTORCH_VULKAN_SHADER_COMPILE_NTHREADS 4 CACHE STRING "" FORCE)
-add_subdirectory(artifacts/deps/executorch)
-target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${EXECUTORCH_ROOT}/third-party/json/single_include")
-# The app is an explicit development runner. Build both users of the inline
-# selection header with the same policy to avoid differing inline definitions.
-target_compile_definitions(vulkan_backend PRIVATE XRGPU_ENABLE_EXPERIMENTS)
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
-set(BUILD_LOADER ON CACHE BOOL "" FORCE)
-set(DYNAMIC_LOADER ON CACHE BOOL "" FORCE)
-add_subdirectory(artifacts/deps/openxr)
+add_subdirectory("${EXECUTORCH_ROOT}" artifacts/deps/executorch)
+if(XRGPU_ENABLE_VULKAN)
+  target_include_directories(vulkan_backend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${EXECUTORCH_ROOT}/third-party/json/single_include")
+  if(XRGPU_ENABLE_EXPERIMENTS)
+    if(XRGPU_BUILD_DEMO)
+      # Preserve the development demo's existing backend build configuration.
+      target_compile_definitions(vulkan_backend PRIVATE XRGPU_ENABLE_EXPERIMENTS)
+    else()
+      # Only these pinned integration users include the inline selector. Keeping
+      # policy definitions local avoids rebuilding unrelated shader/API objects.
+      foreach(operation Linear UnaryOp Convolution)
+        set_source_files_properties("${EXECUTORCH_ROOT}/backends/vulkan/runtime/graph/ops/impl/${operation}.cpp"
+          TARGET_DIRECTORY vulkan_backend PROPERTIES COMPILE_DEFINITIONS XRGPU_ENABLE_EXPERIMENTS)
+      endforeach()
+    endif()
+  endif()
+endif()
 
+# Embed only verified build-time policy. Model bundles cannot inject qualification.
+set(package_json "{}")
+set(qualification_json "{}")
+if(XRGPU_KERNEL_PACKAGE_ROOT)
+  set(package_verify_args verify "${XRGPU_KERNEL_PACKAGE_ROOT}" --implementation)
+  if(XRGPU_ENABLE_VULKAN)
+    list(APPEND package_verify_args --executorch "${EXECUTORCH_ROOT}")
+  endif()
+  execute_process(COMMAND "${PYTHON_EXECUTABLE}" -m runtime.kernel_package ${package_verify_args}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" RESULT_VARIABLE package_status OUTPUT_QUIET)
+  if(NOT package_status EQUAL 0)
+    message(FATAL_ERROR "xrGPU kernel package verification failed")
+  endif()
+  file(READ "${XRGPU_KERNEL_PACKAGE_ROOT}/manifest.json" package_json)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${XRGPU_KERNEL_PACKAGE_ROOT}/manifest.json")
+  if(XRGPU_ENABLE_VULKAN)
+    # Keep stock compilation independent; package SPIR-V is embedded verbatim.
+    set(stock_sources "${CMAKE_CURRENT_BINARY_DIR}/stock_shader_sources")
+    file(MAKE_DIRECTORY "${stock_sources}")
+    file(GLOB shader_sources CONFIGURE_DEPENDS "${EXECUTORCH_ROOT}/backends/vulkan/runtime/graph/ops/glsl/*")
+    foreach(source IN LISTS shader_sources)
+      get_filename_component(name "${source}" NAME)
+      if(NOT name MATCHES "^xrgpu_" AND NOT IS_DIRECTORY "${source}")
+        configure_file("${source}" "${stock_sources}/${name}" COPYONLY)
+      endif()
+    endforeach()
+    set(stock_registry "${CMAKE_CURRENT_BINARY_DIR}/stock_shaders/spv.cpp")
+    add_custom_command(OUTPUT "${stock_registry}"
+      COMMAND "${PYTHON_EXECUTABLE}" "${EXECUTORCH_ROOT}/backends/vulkan/runtime/gen_vulkan_spv.py"
+        --glsl-paths "${stock_sources}" --output-path "${CMAKE_CURRENT_BINARY_DIR}/stock_shaders"
+        --tmp-dir-path "${CMAKE_CURRENT_BINARY_DIR}/stock_shaders/cache" --glslc-path "${GLSLC_PATH}" --optimize --nthreads 4
+      DEPENDS ${shader_sources} VERBATIM)
+    set(package_registry "${CMAKE_CURRENT_BINARY_DIR}/xrgpu_package_registry.cpp")
+    execute_process(COMMAND "${PYTHON_EXECUTABLE}" -m runtime.kernel_package registry "${XRGPU_KERNEL_PACKAGE_ROOT}" --output "${package_registry}"
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" RESULT_VARIABLE registry_status OUTPUT_QUIET)
+    if(NOT registry_status EQUAL 0)
+      message(FATAL_ERROR "xrGPU package registry verification failed")
+    endif()
+    get_target_property(backend_sources vulkan_backend SOURCES)
+    list(REMOVE_ITEM backend_sources "${CMAKE_BINARY_DIR}/vulkan_compute_shaders/spv.cpp")
+    set_property(TARGET vulkan_backend PROPERTY SOURCES "${backend_sources}")
+    set_source_files_properties("${stock_registry}" TARGET_DIRECTORY vulkan_backend PROPERTIES GENERATED TRUE)
+    add_custom_target(xrgpu_stock_shader_registry DEPENDS "${stock_registry}")
+    add_dependencies(vulkan_backend xrgpu_stock_shader_registry)
+    target_sources(vulkan_backend PRIVATE "${stock_registry}" "${package_registry}")
+  endif()
+endif()
+if(XRGPU_QUALIFICATION_FILE)
+  if(NOT XRGPU_KERNEL_PACKAGE_ROOT)
+    message(FATAL_ERROR "A qualification record requires an immutable kernel package")
+  endif()
+  execute_process(COMMAND "${PYTHON_EXECUTABLE}" -c
+    "import json,sys;from runtime.integration.qualification import validate_record;validate_record(json.load(open(sys.argv[1])),json.load(open(sys.argv[2])),allow_pending=False)"
+    "${XRGPU_QUALIFICATION_FILE}" "${XRGPU_KERNEL_PACKAGE_ROOT}/manifest.json"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" RESULT_VARIABLE qualification_status)
+  if(NOT qualification_status EQUAL 0)
+    message(FATAL_ERROR "xrGPU qualification validation failed")
+  endif()
+  file(READ "${XRGPU_QUALIFICATION_FILE}" qualification_json)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${XRGPU_QUALIFICATION_FILE}")
+endif()
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/xrgpu_generated")
+foreach(kind package qualification)
+  string(REPLACE "\\" "\\\\" ${kind}_json "${${kind}_json}")
+  string(REPLACE "\"" "\\\"" ${kind}_json "${${kind}_json}")
+  string(REPLACE "\n" "\\n" ${kind}_json "${${kind}_json}")
+  string(REPLACE "\r" "\\r" ${kind}_json "${${kind}_json}")
+endforeach()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/xrgpu_generated/xrgpu_build_config.h"
+  "#pragma once\n#define XRGPU_PACKAGE_JSON \"${package_json}\"\n#define XRGPU_QUALIFICATION_JSON \"${qualification_json}\"\n")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/model_revision_sources.cmake")
+xrgpu_model_kernel_sources("${CMAKE_CURRENT_SOURCE_DIR}" model_kernel_sources)
 file(GLOB_RECURSE revision_sources CONFIGURE_DEPENDS
-  kernels/*.glsl kernels/*.yaml kernels/*.json kernels/*.h devices/*.h
-  runtime/native/*.h runtime/native/*.cpp
+  devices/*.h runtime/native/*.h runtime/native/*.cpp
   runtime/integration/*.h runtime/integration/*.py
   runtime/patches/*.patch app/src/main/*.java app/src/main/*.xml)
-list(APPEND revision_sources "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+list(APPEND revision_sources ${model_kernel_sources}
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/model_revision_sources.cmake"
+  "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
   "${CMAKE_CURRENT_SOURCE_DIR}/app/build.gradle" "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json")
 list(SORT revision_sources)
 set(revision_material "")
@@ -49,16 +147,85 @@ string(SHA256 kernel_revision "${revision_material}")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/dependencies.json" dependencies)
 string(JSON et_revision GET "${dependencies}" executorch commit)
 
+
+add_library(xrgpu_runtime SHARED runtime/native/session.cpp runtime/native/runtime_capabilities.cpp)
+add_library(xrgpu::runtime ALIAS xrgpu_runtime)
+set_target_properties(xrgpu_runtime PROPERTIES EXPORT_NAME runtime)
+target_include_directories(xrgpu_runtime PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/runtime/include>
+  $<INSTALL_INTERFACE:include>
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" runtime/native
+  "${CMAKE_CURRENT_BINARY_DIR}/xrgpu_generated"
+  "${EXECUTORCH_ROOT}/third-party/json/single_include")
+target_compile_definitions(xrgpu_runtime PRIVATE XRGPU_ET_REVISION="${et_revision}")
+if(XRGPU_ENABLE_EXPERIMENTS)
+  target_compile_definitions(xrgpu_runtime PRIVATE XRGPU_ENABLE_EXPERIMENTS)
+endif()
+target_link_libraries(xrgpu_runtime PRIVATE executorch extension_module extension_tensor portable_ops_lib)
+if(XRGPU_ENABLE_XNNPACK)
+  target_link_libraries(xrgpu_runtime PRIVATE xnnpack_backend)
+endif()
+if(XRGPU_ENABLE_VULKAN)
+  target_include_directories(xrgpu_runtime PRIVATE "${EXECUTORCH_ROOT}/backends/vulkan/third-party/Vulkan-Headers/include")
+  target_compile_definitions(xrgpu_runtime PRIVATE XRGPU_HAS_VULKAN)
+  target_link_libraries(xrgpu_runtime PRIVATE vulkan_backend ${CMAKE_DL_LIBS})
+endif()
+if(ANDROID)
+  target_sources(xrgpu_runtime PRIVATE runtime/native/library_jni.cpp)
+  target_link_libraries(xrgpu_runtime PRIVATE android log)
+  target_link_options(xrgpu_runtime PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+if(XRGPU_BUILD_RUNNER)
+  add_executable(xrgpu_run runtime/native/run.cpp)
+  target_include_directories(xrgpu_run PRIVATE "${EXECUTORCH_ROOT}/third-party/json/single_include")
+  target_link_libraries(xrgpu_run PRIVATE xrgpu::runtime)
+endif()
+if(XRGPU_BUILD_TESTS)
+  find_package(Threads REQUIRED)
+  add_executable(xrgpu_session_test tests/native/session.cpp)
+  target_include_directories(xrgpu_session_test PRIVATE "${EXECUTORCH_ROOT}/third-party/json/single_include")
+  target_link_libraries(xrgpu_session_test PRIVATE xrgpu::runtime Threads::Threads)
+endif()
+include(GNUInstallDirs)
+set(xrgpu_library_install_dir "${CMAKE_INSTALL_LIBDIR}")
+if(ANDROID)
+  string(APPEND xrgpu_library_install_dir "/arm64-v8a")
+endif()
+install(TARGETS xrgpu_runtime EXPORT xrGPUTargets LIBRARY DESTINATION ${xrgpu_library_install_dir} COMPONENT xrgpu)
+install(DIRECTORY runtime/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT xrgpu)
+install(DIRECTORY licenses/ DESTINATION ${CMAKE_INSTALL_DATADIR}/xrgpu/licenses COMPONENT xrgpu)
+install(FILES THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/xrgpu COMPONENT xrgpu)
+if(XRGPU_KERNEL_PACKAGE_ROOT)
+  install(FILES "${XRGPU_KERNEL_PACKAGE_ROOT}/manifest.json" DESTINATION ${CMAKE_INSTALL_DATADIR}/xrgpu
+    RENAME kernel-package.json COMPONENT xrgpu)
+endif()
+if(XRGPU_QUALIFICATION_FILE)
+  install(FILES "${XRGPU_QUALIFICATION_FILE}" DESTINATION ${CMAKE_INSTALL_DATADIR}/xrgpu
+    RENAME qualification.json COMPONENT xrgpu)
+endif()
+
+install(EXPORT xrGPUTargets NAMESPACE xrgpu:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/xrGPU COMPONENT xrgpu)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/xrGPUConfig.cmake" "include(\"\${CMAKE_CURRENT_LIST_DIR}/xrGPUTargets.cmake\")\n")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/xrGPUConfig.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/xrGPU COMPONENT xrgpu)
+
+if(XRGPU_BUILD_DEMO)
+  set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
+  set(BUILD_LOADER ON CACHE BOOL "" FORCE)
+  set(DYNAMIC_LOADER ON CACHE BOOL "" FORCE)
+  add_subdirectory(artifacts/deps/openxr)
 add_library(xrgpu SHARED runtime/native/jni.cpp runtime/native/scene.cpp
   "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
+target_compile_definitions(xrgpu PRIVATE XRGPU_ENABLE_EXPERIMENTS)
 target_include_directories(xrgpu PRIVATE runtime/native "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/artifacts/deps"
   "${EXECUTORCH_ROOT}/third-party/json/single_include"
   "${EXECUTORCH_ROOT}/backends/vulkan/third-party/Vulkan-Headers/include"
   "${ANDROID_NDK}/sources/android/native_app_glue")
-target_compile_definitions(xrgpu PRIVATE XRGPU_ENABLE_EXPERIMENTS XR_USE_PLATFORM_ANDROID XR_USE_GRAPHICS_API_OPENGL_ES
+target_compile_definitions(xrgpu PRIVATE XR_USE_PLATFORM_ANDROID XR_USE_GRAPHICS_API_OPENGL_ES
   XRGPU_KERNEL_REVISION="${kernel_revision}" XRGPU_ET_REVISION="${et_revision}")
 target_link_libraries(xrgpu PRIVATE executorch extension_module extension_tensor
   portable_ops_lib vulkan_backend xnnpack_backend openxr_loader android log EGL GLESv3 dl)
 target_link_options(xrgpu PRIVATE "-Wl,-u,ANativeActivity_onCreate" "-Wl,-z,max-page-size=16384")
 install(TARGETS xrgpu openxr_loader LIBRARY DESTINATION lib/arm64-v8a)
+endif()

@@ -1,0 +1,210 @@
+{
+  "domain": "ai.onnx",
+  "name": "SplitToSequence",
+  "conformance": "internal-lowering",
+  "sinceVersion": 11,
+  "inputs": { "input": { "dtype": "T" }, "split": { "dtype": "S", "optional": true } },
+  "outputs": {
+    "y0": { "onnx": "Y0", "dtype": "T", "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1" },
+    "y1": { "onnx": "Y1", "dtype": "T", "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1" },
+    "y2": {
+      "onnx": "Y2",
+      "dtype": "T",
+      "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1",
+      "optional": true
+    },
+    "y3": {
+      "onnx": "Y3",
+      "dtype": "T",
+      "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1",
+      "optional": true
+    },
+    "y4": {
+      "onnx": "Y4",
+      "dtype": "T",
+      "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1",
+      "optional": true
+    },
+    "y5": {
+      "onnx": "Y5",
+      "dtype": "T",
+      "rank": "ranks.input if attrs.keepdims == 1 else ranks.input - 1",
+      "optional": true
+    }
+  },
+  "attributes": { "axis": { "default": 0 }, "keepdims": { "default": 1 } },
+  "attributeConstraints": { "keepdims": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "bool"], "S": ["uint32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "baseContract": "ranks.input >= 1 and (attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input) >= 0 and (attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input) < ranks.input and f16Ok(dtypes.T)",
+    "outputRankContract": "ranks.y0 == ranks.input if present.split else (ranks.y0 == ranks.input if attrs.keepdims == 1 else ranks.y0 == ranks.input - 1)",
+    "twoOutputContract": "baseContract and not present.y2 and ranks.y0 == ranks.y1 and outputRankContract",
+    "threeOutputContract": "baseContract and present.y2 and not present.y3 and ranks.y0 == ranks.y1 and ranks.y0 == ranks.y2 and outputRankContract",
+    "fourOutputContract": "baseContract and present.y2 and present.y3 and not present.y4 and ranks.y0 == ranks.y1 and ranks.y0 == ranks.y2 and ranks.y0 == ranks.y3 and outputRankContract",
+    "sixOutputContract": "baseContract and present.y2 and present.y3 and present.y4 and present.y5 and ranks.y0 == ranks.y1 and ranks.y0 == ranks.y2 and ranks.y0 == ranks.y3 and ranks.y0 == ranks.y4 and ranks.y0 == ranks.y5 and outputRankContract"
+  },
+  "variants": [
+    {
+      "id": "two_outputs",
+      "when": ["twoOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "SplitToSequence2",
+          "shader": "split-to-sequence.wgsl.jinja",
+          "derive": {
+            "inputShape": "shapes.input",
+            "rank": "ranks.input",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+            "squeeze": "ranks.y0 < ranks.input",
+            "numOutputs": "2",
+            "outShapes": ["shapes.y0", "shapes.y1"]
+          },
+          "bindings": [
+            "input",
+            "y0",
+            "y1",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+                { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(numel(shapes.y0), numel(shapes.y1))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_outputs",
+      "priority": 20,
+      "when": ["threeOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "SplitToSequence3",
+          "shader": "split-to-sequence.wgsl.jinja",
+          "derive": {
+            "inputShape": "shapes.input",
+            "rank": "ranks.input",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+            "squeeze": "ranks.y0 < ranks.input",
+            "numOutputs": "3",
+            "outShapes": ["shapes.y0", "shapes.y1", "shapes.y2"]
+          },
+          "bindings": [
+            "input",
+            "y0",
+            "y1",
+            "y2",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+                { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+                { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "four_outputs",
+      "priority": 30,
+      "when": ["fourOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "SplitToSequence4",
+          "shader": "split-to-sequence.wgsl.jinja",
+          "derive": {
+            "inputShape": "shapes.input",
+            "rank": "ranks.input",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+            "squeeze": "ranks.y0 < ranks.input",
+            "numOutputs": "4",
+            "outShapes": ["shapes.y0", "shapes.y1", "shapes.y2", "shapes.y3"]
+          },
+          "bindings": [
+            "input",
+            "y0",
+            "y1",
+            "y2",
+            "y3",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+                { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+                { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" },
+                { "name": "y3Count", "type": "u32", "value": "numel(shapes.y3)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2)), numel(shapes.y3))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2)), numel(shapes.y3))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "six_outputs",
+      "priority": 40,
+      "when": ["sixOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "SplitToSequence6",
+          "shader": "split-to-sequence.wgsl.jinja",
+          "derive": {
+            "inputShape": "shapes.input",
+            "rank": "ranks.input",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+            "squeeze": "ranks.y0 < ranks.input",
+            "numOutputs": "6",
+            "outShapes": ["shapes.y0", "shapes.y1", "shapes.y2", "shapes.y3", "shapes.y4", "shapes.y5"]
+          },
+          "bindings": [
+            "input",
+            "y0",
+            "y1",
+            "y2",
+            "y3",
+            "y4",
+            "y5",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+                { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+                { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" },
+                { "name": "y3Count", "type": "u32", "value": "numel(shapes.y3)" },
+                { "name": "y4Count", "type": "u32", "value": "numel(shapes.y4)" },
+                { "name": "y5Count", "type": "u32", "value": "numel(shapes.y5)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(max(max(max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2)), numel(shapes.y3)), numel(shapes.y4)), numel(shapes.y5))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(max(max(max(max(numel(shapes.y0), numel(shapes.y1)), numel(shapes.y2)), numel(shapes.y3)), numel(shapes.y4)), numel(shapes.y5))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

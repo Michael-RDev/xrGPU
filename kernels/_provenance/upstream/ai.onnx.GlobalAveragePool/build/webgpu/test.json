@@ -1,0 +1,465 @@
+{
+  "cases": [
+    {
+      "name": "dispatch_cliff_nchw2d_16M",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16776961, 1, 1, 1],
+          "data": { "kind": "linspace", "start": -1.0, "end": 1.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16776961, 1, 1, 1], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "f32_subnormal_rank3_average_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool",
+        "notes": "Global average of equal positive subnormal values is still that subnormal value; the rank-3 path must not flush it to zero."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [1e-39, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "f32_subnormal_rank3_plane_parallel_average_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool_Large_128",
+        "notes": "A rank-three input with 1,024 equal subnormal values on its single spatial axis must average exactly to that subnormal."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "cycle", "values": [1e-39, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "f32_subnormal_rank4_average_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool",
+        "notes": "Rank-4 NCHW version of the same valid subnormal global-average edge."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [1e-39, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "f32_subnormal_rank5_average_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool",
+        "notes": "Rank-5 NCDHW projection of the valid subnormal global-average edge."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 1, 2],
+          "data": { "kind": "values", "values": [1e-39, 1e-39, 1e-39, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1, 1], "tolerance": 0 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "nchw",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ncl_rank3",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 10.0, 0.0, -10.0, 20.0, 5.0, 6.0, 7.0, 8.0, -5.0, 15.0, -15.0, 25.0, 0.5, 1.5, 2.5, 3.5]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fp16_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_fp16_op_test.cc",
+        "test": "PoolFp16Test.GlobalAveragePool",
+        "notes": "Compact fp16 rank-4 projection of ORT's fp16 GlobalAveragePool coverage."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 4.0, 8.0, -8.0, 0.0, 2.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 2, 1, 1],
+          "data": { "kind": "values", "values": [1.75, 0.5] },
+          "tolerance": 0.001
+        }
+      }
+    },
+    {
+      "name": "fp16_wg_parallel_8x8_vec4_path",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.13, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 1, 1], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ncdhw_rank5",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_rank4_4x4_sequence",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool",
+        "notes": "Node-level GlobalAveragePool shape/value case from ORT."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_mixed_sign_channels",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [-10.0, -2.0, 4.0, 8.0, 0.0, 6.0, 1.5, -3.5, 7.5, -9.5, 2.5, 5.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "zero_batch_dim_rank4",
+      "inputs": { "x": { "dtype": "float32", "shape": [0, 2, 3, 4], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_rank4_1x3x8x8_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8, 8],
+          "data": {
+            "kind": "values",
+            "values": [0.3337382376194, 0.8794041872024536, 0.33745908737182617, 0.666634202003479, 0.44255536794662476, 0.6473854184150696, 0.7674617171287537, 0.8822641968727112, 0.8852233290672302, 0.7453723549842834, 0.2818361520767212, 0.8706393241882324, 0.5406734347343445, 0.02016347087919712, 0.8047968745231628, 0.6037390828132629, 0.6242085099220276, 0.15702469646930695, 0.19581079483032227, 0.7122684717178345, 0.06907976418733597, 0.5234333872795105, 0.9091887474060059, 0.4319673180580139, 0.8100792169570923, 0.10371053218841553, 0.3888828456401825, 0.27514228224754333, 0.2670423686504364, 0.04306316748261452, 0.36913928389549255, 0.8686641454696655, 0.6307396292686462, 0.7112566232681274, 0.25298961997032166, 0.5131869316101074, 0.11016560345888138, 0.20159587264060974, 0.43771353363990784, 0.7566956877708435, 0.10168474912643433, 0.7238786220550537, 0.4961036741733551, 0.9173188209533691, 0.6056748032569885, 0.250592976808548, 0.4755987823009491, 0.904503583908081, 0.4725301265716553, 0.8506938219070435, 0.13940207660198212, 0.9848986864089966, 0.6715511083602905, 0.8943559527397156, 0.40052708983421326, 0.0880642905831337, 0.8935731649398804, 0.3453705310821533, 0.8090538382530212, 0.19269756972789764, 0.03951506316661835, 0.027226323261857033, 0.8117656111717224, 0.7711597084999084, 0.8593372702598572, 0.20363913476467133, 0.7842649817466736, 0.29195329546928406, 0.5064213871955872, 0.7418627142906189, 0.1069103255867958, 0.5893736481666565, 0.2143796980381012, 0.15637169778347015, 0.1684667021036148, 0.7528857588768005, 0.5846885442733765, 0.9133154153823853, 0.6781020760536194, 0.21141840517520905, 0.05769576504826546, 0.49993178248405457, 0.2309824675321579, 0.05175522714853287, 0.6969341039657593, 0.47234174609184265, 0.11310867220163345, 0.6184650659561157, 0.896835207939148, 0.6077945232391357, 0.3074592649936676, 0.07904505729675293, 0.048881493508815765, 0.24833321571350098, 0.9844338893890381, 0.4520559012889862, 0.26799046993255615, 0.7592704892158508, 0.37819114327430725, 0.30964234471321106, 0.8839467167854309, 0.0934458002448082, 0.379569411277771, 0.09841523319482803, 0.6000676155090332, 0.7950544357299805, 0.45938217639923096, 0.5537487864494324, 0.38861554861068726, 0.4074040949344635, 0.38612639904022217, 0.89164137840271, 0.21732182800769806, 0.6711451411247253, 0.5769082307815552, 0.9865275621414185, 0.03840707615017891, 0.1573856621980667, 0.09340689331293106, 0.9288106560707092, 0.16059239208698273, 0.8247162103652954, 0.422741562128067, 0.987165629863739, 0.9476590752601624, 0.9242128133773804, 0.9987634420394897, 0.32882997393608093, 0.011870949529111385, 0.984099805355072, 0.09365611523389816, 0.33463314175605774, 0.6386845111846924, 0.9860017895698547, 0.4672822654247284, 0.9529699683189392, 0.15891511738300323, 0.7175184488296509, 0.024524977430701256, 0.8217390179634094, 0.14411452412605286, 0.45218998193740845, 0.4429023861885071, 0.9931989312171936, 0.8507111072540283, 0.13051295280456543, 0.07811085134744644, 0.943297803401947, 0.030969098210334778, 0.21649038791656494, 0.9491124749183655, 0.5731316804885864, 0.5927708745002747, 0.7653813362121582, 0.5627018809318542, 0.01101104449480772, 0.7299126982688904, 0.3900069296360016, 0.0853394865989685, 0.43255582451820374, 0.8431127071380615, 0.5303983092308044, 0.6451488137245178, 0.16481569409370422, 0.35921016335487366, 0.036783039569854736, 0.5699883103370667, 0.5847001075744629, 0.9650961756706238, 0.9053892493247986, 0.2933308482170105, 0.2615077495574951, 0.48302537202835083, 0.5642899870872498, 0.20961439609527588, 0.37418732047080994, 0.4921484887599945, 0.7827269434928894, 0.28503814339637756, 0.4663805067539215, 0.1988927721977234, 0.20202897489070892, 0.3183555603027344, 0.4528728425502777, 0.2815922796726227, 0.820142388343811, 0.4963360130786896, 0.46687841415405273, 0.7405545115470886, 0.40191709995269775, 0.21238186955451965, 0.46927347779273987]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_large_128_constant",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool_Large_128"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 128, 128], "data": { "kind": "constant", "value": 2.71828 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.01 } }
+    },
+    {
+      "name": "ort_large_256_constant",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalAveragePool_Large_256"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 256, 256], "data": { "kind": "constant", "value": 3.14159 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.01 } }
+    },
+    {
+      "name": "onnx_backend_precomputed_3x3",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalaveragepool_precomputed" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_globalaveragepool",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902, -0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235, 1.1394007205963135, -1.234825849533081, 0.4023416340351105]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalaveragepool" }
+    },
+    {
+      "name": "onnx_backend_globalaveragepool_precomputed",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalaveragepool_precomputed" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "wg_parallel_9x9_scalar_path",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 9, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "wg_parallel_16x16_vec4_path",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f16_wg_plane_parallel_scalar_load_1x4x9x9",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 4, 9, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.07, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 4, 1, 1], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f16_ncl1d_rank3_2x512x40",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 512, 40],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.13, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 512, 1], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f16_ncdhw3d_rank5_1x4x4x4x2",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 4, 4, 4, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.05, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 4, 1, 1, 1], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f16_nchw2d_scalar_resnet_gap_1x2048x7x7",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2048, 7, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.017, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2048, 1, 1], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_nchw2d_scalar_smallspatial_1x16x7x7",
+      "provenance": { "notes": "A compact float32 7x7 input checks spatial averaging over a short plane." },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 7, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.029, "scale": 0.4 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 16, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_nchw2d_spatial64_boundary_1x16x8x8",
+      "provenance": {
+        "notes": "A float32 global average pool reduces 16 channels of an 8x8 (64-element) plane to a single value each."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.4 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 16, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_nchw2d_planeparallel_unaligned_1x16x65x65",
+      "provenance": {
+        "notes": "A compact float32 65x65 input exercises plane-parallel scalar reduction with an unaligned spatial extent."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 65, 65],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.011, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 16, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_nchw2d_planeparallel_aligned_1x16x66x66",
+      "provenance": {
+        "notes": "A compact float32 66x66 input exercises plane-parallel vec4-aligned spatial reduction."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 66, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.013, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 16, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_nchw2d_lowoccupancy_8planes_1x8x128x128",
+      "provenance": {
+        "notes": "A float32 global average pool reduces 8 channels of a 128x128 (16,384-element) plane to a single value each."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 8, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.017, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "rank4_single_spatial_identity",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 1, 1],
+          "data": { "kind": "values", "values": [1.5, -2.5, 3.0, -4.0, 0.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank3_spatial_1_identity",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 1],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.0, -4.0, 0.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "zero_channel_dim_rank4",
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 0, 4, 4], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 0, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank6_four_spatial_dims",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank8_six_spatial_dims",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2, 2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.27 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1, 1, 1, 1], "tolerance": 0.000001 } }
+    }
+  ]
+}

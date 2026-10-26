@@ -1,0 +1,166 @@
+{
+  "domain": "ai.onnx",
+  "name": "Col2Im",
+  "sinceVersion": 18,
+  "inputs": {
+    "input": { "dtype": "T", "rank": 3 },
+    "image_shape": { "dtype": "I", "rank": 1, "storage": "uint32", "narrowing": "checked" },
+    "block_shape": { "dtype": "I", "rank": 1, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "dim(shapes.image_shape, 0) + 2" } },
+  "attributes": { "dilations": {}, "pads": {}, "strides": {} },
+  "typeConstraints": { "T": ["float32"], "I": ["int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 128 } },
+  "derive": {
+    "spatialRank": "ranks.output - 2",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "spatialAttributesOk": "stridesLengthOk and dilationsLengthOk and padsLengthOk and strideW >= 1 and dilationW >= 1 and padLeft >= 0 and padRight >= 0 and (spatialRank < 2 or (strideH >= 1 and dilationH >= 1 and padTop >= 0 and padBottom >= 0)) and (spatialRank < 3 or (strideD >= 1 and dilationD >= 1 and padFront >= 0 and padBack >= 0))",
+    "colBaseContract": "spatialAttributesOk and ranks.input == 3 and ranks.image_shape == 1 and ranks.block_shape == 1 and (ranks.output == 4 or ranks.output == 5) and dim(shapes.image_shape, 0) == spatialRank and dim(shapes.block_shape, 0) == spatialRank and dim(shapes.input, 0) == dim(shapes.output, 0)"
+  },
+  "when": ["colBaseContract"],
+  "bindings": {
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] },
+    "input": { "elementType": "f32" },
+    "output": { "elementType": "f32" },
+    "image_shape": { "elementType": "u32" },
+    "block_shape": { "elementType": "u32" }
+  },
+  "variants": [
+    {
+      "id": "identity_copy_vec4",
+      "priority": 12,
+      "when": ["dim(shapes.input, 1) == dim(shapes.output, 1)", "dim(shapes.input, 2) * dim(shapes.input, 0) * dim(shapes.input, 1) == numel(shapes.output)", "strideW == 1", "dilationW == 1", "padLeft == 0", "padRight == 0", "spatialRank < 2 or (strideH == 1 and dilationH == 1 and padTop == 0 and padBottom == 0)", "spatialRank < 3 or (strideD == 1 and dilationD == 1 and padFront == 0 and padBack == 0)", "numel(shapes.output) > 0", "numel(shapes.output) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Col2Im.IdentityCopyVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": [
+            { "arg": "input", "name": "src", "elementType": "$vectorScalar" },
+            { "arg": "output", "name": "dst", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "identity_copy",
+      "priority": 11,
+      "when": ["dim(shapes.input, 1) == dim(shapes.output, 1)", "dim(shapes.input, 2) * dim(shapes.input, 0) * dim(shapes.input, 1) == numel(shapes.output)", "strideW == 1", "dilationW == 1", "padLeft == 0", "padRight == 0", "spatialRank < 2 or (strideH == 1 and dilationH == 1 and padTop == 0 and padBottom == 0)", "spatialRank < 3 or (strideD == 1 and dilationD == 1 and padFront == 0 and padBack == 0)", "numel(shapes.output) > 0"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Col2Im.IdentityCopy",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [
+            { "arg": "input", "name": "x", "elementType": "$scalar" },
+            { "arg": "output", "name": "y", "elementType": "$scalar" },
+            "params"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "x", "output": "y" }]
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "when": ["ranks.output == 4"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Col2Im",
+          "shader": "col2im-nd.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 2,
+            "channels": "dim(shapes.output, 1)",
+            "imageD": "dim(shapes.output, 2) if ranks.output == 5 else 1",
+            "imageH": "dim(shapes.output, ranks.output - 2)",
+            "imageW": "dim(shapes.output, ranks.output - 1)",
+            "colChannels": "dim(shapes.input, 1)",
+            "blocks": "dim(shapes.input, 2)",
+            "strideDSpec": "strideD",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "padFrontSpec": "padFront",
+            "padTopSpec": "padTop",
+            "padLeftSpec": "padLeft",
+            "padBottomSpec": "padBottom",
+            "padRightSpec": "padRight",
+            "dilationDSpec": "dilationD",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW"
+          },
+          "bindings": ["input", "output", "image_shape", "block_shape", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d",
+      "when": ["ranks.output == 5"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Col2Im.NCDHW3d",
+          "shader": "col2im-nd.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 3,
+            "channels": "dim(shapes.output, 1)",
+            "imageD": "dim(shapes.output, 2) if ranks.output == 5 else 1",
+            "imageH": "dim(shapes.output, ranks.output - 2)",
+            "imageW": "dim(shapes.output, ranks.output - 1)",
+            "colChannels": "dim(shapes.input, 1)",
+            "blocks": "dim(shapes.input, 2)",
+            "strideDSpec": "strideD",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "padFrontSpec": "padFront",
+            "padTopSpec": "padTop",
+            "padLeftSpec": "padLeft",
+            "padBottomSpec": "padBottom",
+            "padRightSpec": "padRight",
+            "dilationDSpec": "dilationD",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW"
+          },
+          "bindings": ["input", "output", "image_shape", "block_shape", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

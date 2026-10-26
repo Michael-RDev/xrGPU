@@ -1,0 +1,66 @@
+{
+  "domain": "com.microsoft",
+  "name": "QuickGelu",
+  "sinceVersion": 1,
+  "inputs": { "X": { "dtype": "T" } },
+  "outputs": { "Y": { "dtype": "T", "rank": "ranks.X", "shape": "shapes.X" } },
+  "attributes": { "alpha": { "default": 1.702 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "workgroupOk": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "baseOk": "workgroupOk and numel(shapes.X) == numel(shapes.Y) and f16Ok(dtypes.T)",
+    "vec4Ok": "numel(shapes.X) > 0 and numel(shapes.X) % 4 == 0",
+    "scalar": "dtypes.T",
+    "alpha": "attrs.alpha"
+  },
+  "when": ["baseOk"],
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 20,
+      "when": ["vec4Ok"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "vec4": true, "vec4Tail": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "QuickGelu.Vec4",
+          "shader": "quick-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$vectorScalar" },
+            { "arg": "Y", "name": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail",
+      "priority": 10,
+      "derive": { "vec4": false, "vec4Tail": "numel(shapes.X) > 0" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "QuickGelu.Vec4Tail",
+          "shader": "quick-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$scalar" },
+            { "arg": "Y", "name": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "domain": "com.microsoft",
+  "name": "GemmaRotaryEmbedding",
+  "sinceVersion": 1,
+  "inputs": {
+    "embT": { "onnx": "emb", "dtype": "U", "rank": 3, "storage": "float32" },
+    "qT": { "onnx": "q", "dtype": "T", "rank": 4 },
+    "qRotT": { "onnx": "q_rot", "dtype": "T", "rank": 4 },
+    "kT": { "onnx": "k", "dtype": "T", "rank": 4 },
+    "kRotT": { "onnx": "k_rot", "dtype": "T", "rank": 4 }
+  },
+  "outputs": {
+    "output1T": { "onnx": "output1", "dtype": "T", "rank": "ranks.qT", "shape": "shapes.qT" },
+    "output2T": { "onnx": "output2", "dtype": "T", "rank": "ranks.qT", "shape": "shapes.qT" }
+  },
+  "typeConstraints": { "T": ["float16"], "U": ["float32"] },
+  "tunables": { "workgroupSize": { "default": 256 } },
+  "derive": {
+    "batchSize": "dim(shapes.qT, 0)",
+    "numHeads": "dim(shapes.qT, 1)",
+    "seqLen": "dim(shapes.qT, 2)",
+    "headDim": "dim(shapes.qT, 3)",
+    "sameAsQ": "ranks.qRotT == 4 and ranks.kT == 4 and ranks.kRotT == 4 and sameShape(shapes.qRotT, shapes.qT) and sameShape(shapes.kT, shapes.qT) and sameShape(shapes.kRotT, shapes.qT)",
+    "dtypesMatch": "tensorDtypes.qRotT == tensorDtypes.qT and tensorDtypes.kT == tensorDtypes.qT and tensorDtypes.kRotT == tensorDtypes.qT and tensorDtypes.output1T == tensorDtypes.qT and tensorDtypes.output2T == tensorDtypes.qT",
+    "contract": "ranks.qT == 4 and ranks.embT == 3 and sameAsQ and dtypesMatch and tensorDtypes.qT == \"float16\" and f16Ok(dtypes.T) and tensorDtypes.embT == \"float32\" and dim(shapes.embT, 0) == batchSize and dim(shapes.embT, 1) == seqLen and dim(shapes.embT, 2) == headDim and sameShape(shapes.output1T, shapes.qT) and sameShape(shapes.output2T, shapes.qT)",
+    "vec4Ok": "(seqLen * headDim) % 4 == 0"
+  },
+  "when": ["contract", "tunables.workgroupSize >= 1", "floor(tunables.workgroupSize) == tunables.workgroupSize", "tunables.workgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.workgroupSize <= device.limits.maxComputeWorkgroupSizeX"],
+  "variants": [
+    {
+      "id": "elementwise",
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "vec4": "vec4Ok",
+        "lanes": "4 if vec4Ok else 1",
+        "scalar": "dtypes.T",
+        "vector": "\"vec4<f16>\"",
+        "element": "vector if vec4Ok else scalar",
+        "embElement": "\"vec4<f32>\" if vec4Ok else \"f32\"",
+        "workgroupSize": "tunables.workgroupSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmaRotaryEmbedding",
+          "shader": "gemma-rotary-embedding.wgsl.jinja",
+          "bindings": [
+            { "arg": "embT", "name": "emb", "elementType": "$embElement" },
+            { "arg": "qT", "name": "q", "elementType": "$element" },
+            { "arg": "qRotT", "name": "q_rot", "elementType": "$element" },
+            { "arg": "kT", "name": "k", "elementType": "$element" },
+            { "arg": "kRotT", "name": "k_rot", "elementType": "$element" },
+            { "arg": "output1T", "name": "output1", "elementType": "$element" },
+            { "arg": "output2T", "name": "output2", "elementType": "$element" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.qT) / lanes" },
+                { "name": "seqDim", "type": "u32", "value": "(seqLen * headDim) / lanes" },
+                { "name": "headSeqDim", "type": "u32", "value": "(numHeads * seqLen * headDim) / lanes" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.qT) / 4 if vec4Ok else max(1, numel(shapes.qT))), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.qT) / 4 if vec4Ok else max(1, numel(shapes.qT))), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

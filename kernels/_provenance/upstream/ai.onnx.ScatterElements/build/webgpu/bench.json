@@ -1,0 +1,273 @@
+{
+  "cases": [
+    {
+      "name": "axis1",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1024, 768] },
+        "indices": { "dtype": "int32", "shape": [1024, 128], "min": 0, "max": 768 },
+        "updates": { "dtype": "float32", "shape": [1024, 128] }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024, 768] } }
+    },
+    {
+      "name": "axis1_reduction_add",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1024, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [1024, 128], "dist": "randint", "min": 0, "max": 768, "seed": 3 },
+        "updates": { "dtype": "float32", "shape": [1024, 128], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024, 768], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "axis0_reduction_add_contended",
+      "preset": "smoke",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [64, 1024], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [4096, 1024], "dist": "randint", "min": 0, "max": 64, "seed": 3 },
+        "updates": { "dtype": "float32", "shape": [4096, 1024], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [64, 1024], "dist": "empty" } }
+    },
+    {
+      "name": "axis0_reduction_add_single_row",
+      "preset": "smoke",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [64, 1024], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [4096, 1024], "dist": "constant", "value": 0 },
+        "updates": { "dtype": "float32", "shape": [4096, 1024], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [64, 1024], "dist": "empty" } }
+    },
+    {
+      "name": "axis1_reduction_add_f16_slice",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [1024, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [1024, 128], "dist": "randint", "min": 0, "max": 768, "seed": 3 },
+        "updates": { "dtype": "float16", "shape": [1024, 128], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1024, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "axis1_reduction_add_f16_tall_axis_few_columns_single_lane",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [8, 16384], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [8, 16384], "dist": "randint", "min": 0, "max": 16384, "seed": 3 },
+        "updates": { "dtype": "float16", "shape": [8, 16384], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [8, 16384], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "axis0_reduction_mul_contended_cas_spin",
+      "preset": "smoke",
+      "attrs": { "axis": 0, "reduction": "mul" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [64, 1024], "dist": "constant", "value": 1 },
+        "indices": { "dtype": "int32", "shape": [4096, 1024], "dist": "randint", "min": 0, "max": 64, "seed": 3 },
+        "updates": { "dtype": "float32", "shape": [4096, 1024], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [64, 1024], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "axis0_reduction_add_contended_int32_native_atomic",
+      "preset": "smoke",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [64, 1024], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [4096, 1024], "dist": "randint", "min": 0, "max": 64, "seed": 3 },
+        "updates": { "dtype": "int32", "shape": [4096, 1024], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [64, 1024], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16_reduction_add_rank1_single_column_serial",
+      "preset": "stress",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [32768], "dist": "normal", "seed": 10 },
+        "indices": { "dtype": "int32", "shape": [32768], "dist": "randint", "min": 0, "max": 32768, "seed": 11 },
+        "updates": { "dtype": "float16", "shape": [32768], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [32768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "embedding-gradient-f16-axis0-vocab4096-hidden128-tokens65536",
+      "preset": "stress",
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [4096, 128], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [65536, 128], "dist": "randint", "min": 0, "max": 4096, "seed": 21 },
+        "updates": { "dtype": "float16", "shape": [65536, 128], "dist": "normal", "seed": 22, "scale": 0.01 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4096, 128], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-add-outer257-atomic-guard-cliff-pathology",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic",
+        "notes": "One column above reduction_f16_add_atomic_f32's non-axis-column <= 256 guard, so reduction_slice assigns 16384 updates to each of 257 invocations; the outer=256 control isolates the guard boundary."
+      },
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [257, 16384], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [257, 16384], "dist": "randint", "min": 0, "max": 16384, "seed": 23 },
+        "updates": { "dtype": "float16", "shape": [257, 16384], "dist": "normal", "seed": 24, "scale": 0.01 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [257, 16384], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-add-wide-slices-65536x4-short-axis",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [65536, 16], "dist": "normal", "seed": 11 },
+        "indices": { "dtype": "int32", "shape": [65536, 4], "dist": "randint", "min": 0, "max": 16, "seed": 13 },
+        "updates": { "dtype": "float16", "shape": [65536, 4], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [65536, 16], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-add-slices2048-axis128-just-above-gate",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [2048, 768], "dist": "normal", "seed": 11 },
+        "indices": { "dtype": "int32", "shape": [2048, 128], "dist": "randint", "min": 0, "max": 768, "seed": 13 },
+        "updates": { "dtype": "float16", "shape": [2048, 128], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2048, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-add-slices2048-axis4096-long-walk-needs-atomic",
+      "preset": "stress",
+      "attrs": { "axis": 1, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [2048, 8192], "dist": "normal", "seed": 11 },
+        "indices": { "dtype": "int32", "shape": [2048, 4096], "dist": "randint", "min": 0, "max": 8192, "seed": 13 },
+        "updates": { "dtype": "float16", "shape": [2048, 4096], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2048, 8192], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "int8_reduction_add_rank1_single_column_serial",
+      "preset": "stress",
+      "provenance": {
+        "notes": "A rank-1 narrow-integer scatter has one non-axis column, so serial slice reduction assigns every update to one lane."
+      },
+      "attrs": { "axis": 0, "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [32768], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [32768], "dist": "randint", "min": 0, "max": 32768, "seed": 21 },
+        "updates": { "dtype": "int8", "shape": [32768], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [32768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * numel(shapes.data) + 3 * numel(shapes.updates) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    }
+  ]
+}

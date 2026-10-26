@@ -1,0 +1,682 @@
+{
+  "fixtureArrays": {
+    "ort_positive_single_channel_7x7_exact_default_epsilon_input_x": [0.329876, -0.287158, -0.411425, 0.473621, 0.18156, -0.170596, -0.329516, -0.170733, -0.121664, 0.4372, -0.485668, 0.218049, -0.360263, 0.107016, 0.45358, 0.325056, 0.15995, 0.098852, -0.283453, -0.373051, 0.257542, 0.0614853, -0.0592363, 0.434488, -0.0179583, 0.398374, -0.451602, -0.132009, -0.174468, -0.0247169, 0.418897, -0.47159, -0.131925, 0.470943, 0.118357, 0.155664, 0.370062, -0.279229, 0.240311, -0.451034, 0.249178, -0.294496, 0.13683, -0.0806475, -0.309849, -0.450604, -0.28048, -0.420197, -0.433369]
+  },
+  "cases": [
+    {
+      "name": "dispatch_cliff_nc_inference_rank2",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [16776961, 1], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "constant", "value": 1.5 } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "constant", "value": 0.25 } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "constant", "value": 0.1 } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "constant", "value": 0.5 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16776961, 1], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "nchw_inference",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 2.0, 4.0, 6.0, 8.0] }
+        },
+        "scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 0.5, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 1.0, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.5, -2.5, 5.0] } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.25, 1.25, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_variance_epsilon_zero_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the subnormal variance collapses to zero so inverseSqrt yields Infinity instead of a finite value."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.SpatialNoBatch_2",
+        "notes": "Valid epsilon=0 edge: subnormal input variance and tiny normal centered values should produce finite normalized outputs, not infinities."
+      },
+      "attrs": { "epsilon": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1e-20, -1e-20] } },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_scale_rank3_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the subnormal affine scale collapses to zero, losing the tiny output it should preserve."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCase",
+        "notes": "Subnormal scale is a valid affine parameter; inference output should preserve the tiny normalized values."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 3], "data": { "kind": "values", "values": [-1.0, 0.0, 2.0] } },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 3], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "f32_subnormal_scale_rank4_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the subnormal affine scale collapses to zero (vec4 path)."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCase",
+        "notes": "On the vec4 inference path, a subnormal scale must not collapse an otherwise ordinary normalized channel to zero."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, 2.0] }
+        },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-2e-40] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 2, 2], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "nc_inference_rank2",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 0.5, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 1.0, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.5, 3.5, 4.5] } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.25, 2.25, 2.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nc_inference_rank2_vec4",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 0.5, 2.0, -1.0, 0.25, 1.5, -0.75, 0.8] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.0, 1.0, -1.0, 0.25, 0.5, -0.5, 0.75, -0.25] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.2, -0.3, 0.4, -0.5, 0.1, -0.2, 0.3, -0.4] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 0.75, 1.25, 2.0, 0.5, 1.5, 0.9, 1.1] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ncl_inference_rank3",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 2.0, 4.0, 6.0, 8.0, 0.5, 1.5, 2.5, 3.5, -0.5, -1.5, -2.5, -3.5, 3.0, 5.0, 7.0, 9.0]
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 0.5, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 1.0, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.0, -2.5, 5.0] } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.25, 1.25, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ncdhw_inference_rank5",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0]
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.0, 0.5] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.0, 1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [4.5, -4.5] } },
+        "inputVar": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [5.25, 5.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 2, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_variance_large_epsilon",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCase",
+        "notes": "Zero variance with a large epsilon must still produce a finite, correctly scaled output."
+      },
+      "attrs": { "epsilon": 0.25 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 1.25, 0.75, 2.0, -3.0, -2.5, -4.0, -3.5] }
+        },
+        "scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.0, -2.0] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.5, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.0, -3.0] } },
+        "inputVar": { "dtype": "float32", "shape": [2], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_positive_single_channel_7x7_generated",
+      "attrs": { "epsilon": 0.00001 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCase",
+        "notes": "Uses ORT's single-channel rank-4 shape and parameter values; X is generated deterministically."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 7, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.75 }
+        },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.589433] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-0.384622] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-2.45673] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.37998] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 7, 7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_pytorch_rank3_4x5x3_generated",
+      "attrs": { "epsilon": 0.00001 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.BatchNorm1d_3d_Pytorch",
+        "notes": "Uses ORT's rank-3 Pytorch-style shape and parameter values; X is generated deterministically."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 5, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.05, "scale": 1.25 }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.36102, 0.592982, 0.808513, 0.0531484, 0.0960613] }
+        },
+        "b": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 0.0 } },
+        "inputMean": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 0.0 } },
+        "inputVar": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 5, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_positive_single_channel_7x7_exact_default_epsilon",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCaseDefaultEpsilon"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 7, 7],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_positive_single_channel_7x7_exact_default_epsilon_input_x" }
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.589433] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-0.384622] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-2.45673] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.37998] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 7, 7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_pytorch_rank3_4x5x3_exact",
+      "attrs": { "epsilon": 0.00001 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.BatchNorm1d_3d_Pytorch"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 5, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.948241, 1.23591, -0.39321, 1.4254, -0.730771, 0.439872, 0.0265089, 0.8748, -0.197505, 0.962646, 0.421469, 1.94512, 0.234179, -0.931897, -0.214905, -0.982965, -0.495436, 0.81949, -0.796605, -0.758605, 0.665557, 0.0909539, 1.10448, 1.91214, -1.97433, -2.26429, -0.384419, -0.226564, 0.230568, 0.533968, -1.31382, -0.156257, 0.532323, -0.16714, 0.971087, 0.600249, 0.858778, 0.423108, -0.414433, -1.17608, 0.673753, 0.278517, -2.19044, -0.161453, 1.17092, -0.155138, -0.094729, 0.19479, -1.17344, -0.213813, 0.118659, -2.39525, 0.257687, 0.784609, 0.297942, 1.10277, -1.58026, 0.197625, 0.0432784, 1.12924]
+          }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.36102, 0.592982, 0.808513, 0.0531484, 0.0960613] }
+        },
+        "b": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 0.0 } },
+        "inputMean": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 0.0 } },
+        "inputVar": { "dtype": "float32", "shape": [5], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 5, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_positive_single_channel_5d_exact",
+      "attrs": { "epsilon": 0.00001 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.PositiveTestCase_5D"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 7, 7, 1],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_positive_single_channel_7x7_exact_default_epsilon_input_x" }
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.589433] } },
+        "b": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-0.384622] } },
+        "inputMean": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-2.45673] } },
+        "inputVar": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.37998] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 7, 7, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_pytorch_rank4_2x3x6x6_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.BatchNorm2d_Pytorch",
+        "notes": "Uses the ORT PyTorch rank-4 shape and normalization parameters with deterministic fixture data to avoid committing the large literal tensor."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 6, 6],
+          "data": { "kind": "fillFloat32", "scale": 1.4, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.736494, 0.580251, 0.374834] }
+        },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 6, 6], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_pytorch_rank5_2x3x4x4x4_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.BatchNorm3d_Pytorch",
+        "notes": "Uses the ORT PyTorch rank-5 shape and normalization parameters with deterministic fixture data to avoid committing the large literal tensor."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 4, 4],
+          "data": { "kind": "fillFloat32", "scale": 1.1, "sinStep": 0.013, "cosStep": 0.019 }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.241661, 0.960798, 0.474727] }
+        },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 4, 4], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_batchnorm_epsilon",
+      "attrs": { "epsilon": 0.009999999776482582 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.40746182203292847, 1.3439544439315796, -0.8182209730148315, 0.08270993828773499, -1.2910584211349487, -0.6611042022705078, -1.1801910400390625, 0.19764263927936554, 0.4138999879360199, 1.1973220109939575, 1.88335382938385, 0.7142238020896912, 2.2843334674835205, 1.5641025304794312, 0.6111037135124207, -0.8773633241653442, -1.6210875511169434, -0.5816730260848999, -0.5378339290618896, -1.5560237169265747, -0.05446484312415123, -1.8112788200378418, -0.6311752200126648, -0.9281591773033142, 1.4907219409942627, 0.19549933075904846, -0.4716043472290039, 1.8123546838760376, -2.294137477874756, 0.6512093544006348, -1.1304965019226074, -0.777346670627594, 1.115938425064087, 1.3394529819488525, -1.7674336433410645, 0.42441245913505554, 1.0893090963363647, -0.38418567180633545, 0.6322014331817627, -0.5496559143066406, 0.5211257338523865, 0.10834954679012299, 0.26166847348213196, -0.9147553443908691, 0.8582378029823303, 0.09433428943157196, -1.4859038591384888, -1.9005842208862305, -1.1375792026519775, -1.7620388269424438, -0.28862321376800537, 1.0479822158813477, 0.24995754659175873, 0.046904463320970535, -1.032243013381958, 0.4031856954097748, -0.6840592622756958, 1.262322187423706, -2.005556583404541, -0.33203038573265076, -0.2961004078388214, -2.218360662460327, -0.18350288271903992, 0.3923080563545227, 0.241634801030159, 0.10393591225147247, -0.8295711874961853, 0.4927593767642975, 0.09011279046535492, -0.9975675344467163, -0.80003821849823, 0.2070755809545517, 0.5234630107879639, -0.6993948221206665, 0.9137058258056641, -0.6727848052978516, 0.1333245038986206, 0.42689600586891174, -0.01284939143806696, -0.35224831104278564, 0.8194665908813477, 0.5219877362251282, 1.1972599029541016, -0.3824862241744995, 0.6916618943214417, 0.3538850247859955, 1.047585368156433, -0.4238962233066559, -3.514768123626709, -1.3431566953659058, 1.4255061149597168, 0.2285820096731186, -0.257663756608963, 0.0503707155585289, -1.3802108764648438, -0.26167207956314087, -0.1793796867132187, -0.6927706003189087, 1.137826919555664, -0.1691572517156601, -0.7639136910438538, -0.49807310104370117, -0.3628911077976227, 0.2639603018760681, -0.6296418905258179, -0.47225841879844666, -1.5133610963821411, 1.1076246500015259, 0.1762387454509735, -0.940353512763977, 0.9295943379402161, -1.0627949237823486, -0.8864062428474426, 1.92134690284729, -0.4597805142402649, -1.0890344381332397, 0.9841172695159912, -1.1592062711715698, -0.43653708696365356, 1.0092445611953735]
+          }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.7133895754814148, -0.7280577421188354, 0.8395164608955383] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [1.2390209436416626, -1.784803867340088, -0.7961858510971069] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [-1.4005413055419922, -0.18435057997703552, -1.391193151473999] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.044612299650907516, 0.7997958660125732, 0.07695644348859787] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_batchnorm_epsilon" }
+    },
+    {
+      "name": "onnx_backend_batchnorm_example",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902, -0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235, 1.1394007205963135, -1.234825849533081, 0.4023416340351105, -0.6848101019859314, -0.8707971572875977, -0.5788496732711792, -0.3115525245666504, 0.056165341287851334, -1.1651498079299927, 0.9008265137672424, 0.4656624495983124, -1.5362436771392822, 1.4882521629333496, 1.895889163017273, 1.1787796020507812, -0.1799248307943344, -1.0707526206970215, 1.0544517040252686, -0.4031769335269928, 1.222445011138916, 0.2082749754190445, 0.9766390323638916, 0.3563663959503174, 0.7065731883049011, 0.01050002034753561, 1.7858705520629883, 0.12691208720207214, 0.4019893705844879, 1.8831506967544556, -1.3477590084075928, -1.2704850435256958, 0.969396710395813, -1.1731233596801758, 1.9436211585998535, -0.4136189818382263, -0.747454822063446, 1.922942042350769, 1.4805147647857666, 1.8675589561462402, 0.9060446619987488, -0.8612256646156311, 1.910064935684204, -0.26800337433815, 0.8024563789367676, 0.9472519755363464, -0.15501008927822113, 0.6140793561935425, 0.922206699848175]
+          }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.37642553448677063, -1.0994007587432861, 0.29823818802833557] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [1.3263858556747437, -0.694567859172821, -0.14963454008102417] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [-0.4351535439491272, 1.8492637872695923, 0.6722947359085083] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.9755215048789978, 0.855803370475769, 0.011714084073901176] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_batchnorm_example" }
+    },
+    {
+      "name": "ort_fp16_inference_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/batch_norm_op_test.cc",
+        "test": "BatchNormTest.BatchNorm2d_fp16",
+        "notes": "A compact rank-4 float16 tensor exercises two-dimensional inference normalization."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, 0.0, 1.0, 2.0] }
+        },
+        "scale": { "dtype": "float16", "shape": [2], "data": { "kind": "values", "values": [1.5, -2.0] } },
+        "b": { "dtype": "float16", "shape": [2], "data": { "kind": "values", "values": [0.25, 1.0] } },
+        "inputMean": { "dtype": "float16", "shape": [2], "data": { "kind": "values", "values": [2.5, 0.5] } },
+        "inputVar": { "dtype": "float16", "shape": [2], "data": { "kind": "values", "values": [1.25, 1.25] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 2, 2], "tolerance": 0.002 } }
+    },
+    {
+      "name": "empty_zero_dim",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 3, 2, 2], "data": { "kind": "values", "values": [] } },
+        "scale": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 0.0 } },
+        "inputMean": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 0.0 } },
+        "inputVar": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 3, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "empty_zero_dim_nc_vec4_rank2",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 8], "data": { "kind": "values", "values": [] } },
+        "scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 0.5, 2.0, -1.0, 0.25, 1.5, -0.75, 0.8] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.0, 1.0, -1.0, 0.25, 0.5, -0.5, 0.75, -0.25] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.2, -0.3, 0.4, -0.5, 0.1, -0.2, 0.3, -0.4] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 0.75, 1.25, 2.0, 0.5, 1.5, 0.9, 1.1] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "nc_vec4_rank2_multigroup_3x12",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.23, "scale": 1.5 }
+        },
+        "scale": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "values", "values": [1.0, 0.5, 2.0, -1.0, 0.25, 1.5, -0.75, 0.8, 1.2, -0.6, 0.9, -1.3] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "values", "values": [0.0, 1.0, -1.0, 0.25, 0.5, -0.5, 0.75, -0.25, 0.1, -0.1, 0.3, -0.3] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "values", "values": [0.2, -0.3, 0.4, -0.5, 0.1, -0.2, 0.3, -0.4, 0.05, -0.05, 0.15, -0.15] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "values", "values": [1.0, 0.75, 1.25, 2.0, 0.5, 1.5, 0.9, 1.1, 0.6, 1.4, 0.8, 1.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 12], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nchw_inference_vec4_channel_boundary_1x4x1x4",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 4, 1, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 10.0, 20.0, 30.0, 40.0, 0.5, 1.5, 2.5, 3.5]
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 0.5, 2.0, -1.5] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.0, 1.0, -1.0, 0.25] } },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [2.5, -2.5, 25.0, 2.0] }
+        },
+        "inputVar": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1.25, 1.25, 125.0, 1.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 1, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_f16_inference_near_zero_variance_multichannel",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 3, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [8.0, 9.0, 10.0, 11.0, -4.0, -3.0, -2.0, -1.0, 100.0, 120.0, 140.0, 160.0]
+          }
+        },
+        "scale": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [2.0, 1.0, 0.5] } },
+        "b": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [0.5, -1.0, 2.0] } },
+        "inputMean": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [9.5, -2.5, 130.0] } },
+        "inputVar": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [0.01, 1.25, 400.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 3, 2, 2], "tolerance": 0.01 } }
+    },
+    {
+      "name": "inference_rank6_spatial_flatten",
+      "attrs": { "epsilon": 0.00001, "training_mode": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 1, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -4.0, -2.0, 0.0, 2.0] }
+        },
+        "scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [2.0, 0.5] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.25, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [2.5, -1.0] } },
+        "inputVar": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.25, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 2, 1, 2, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "inference_rank8_spatial_flatten",
+      "attrs": { "epsilon": 0.00001, "training_mode": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 1, 2, 1, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.27 }
+        },
+        "scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.5, -0.5] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.25, -1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.1, -0.2] } },
+        "inputVar": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 2, 1, 2, 1, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nc_inference_rank2_vec4_large_mean_small_residual",
+      "provenance": {
+        "notes": "Inputs sit within 0.1..0.4 of channel means of magnitude 125..1000 with variance 1e-6 (alpha = 1000, epsilon 0). The expanded form x*alpha + (bias - mean*alpha) rounds two ~1e6 products to a 1/16 ulp before cancelling and loses ~0.04 of a ~100 result; (x - mean)*alpha + bias keeps the residual exact."
+      },
+      "attrs": { "epsilon": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 8],
+          "data": {
+            "kind": "values",
+            "values": [1000.4, -1000.1999999999999, 500.9, -500.5, 250.4, -249.79999999999998, 126.30000000000001, -125.5, 1000.1999999999999, -1000.4, 500.5, -500.9, 249.79999999999998, -250.4, 125.5, -126.30000000000001]
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [8], "data": { "kind": "constant", "value": 1.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.5, -0.5, 0.25, -0.25, 0.125, -0.125, 0.0625, -0.0625] }
+        },
+        "inputMean": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1000.3, -1000.3, 500.7, -500.7, 250.1, -250.1, 125.9, -125.9] }
+        },
+        "inputVar": { "dtype": "float32", "shape": [8], "data": { "kind": "constant", "value": 0.000001 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 8], "tolerance": 0.002 } }
+    },
+    {
+      "name": "nchw_inference_plane9_flat_vec4",
+      "provenance": {
+        "source": "ONNX BatchNormalization-15 specification",
+        "notes": "A 3x3 channel plane is not a multiple of four, so four consecutive elements can belong to two channels and each channel's own scale, bias, mean and variance must still reach its own elements. The parameters differ per channel so a group taken from the wrong channel changes the result."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 1.145098, 1.126169, 0.970775, 0.726453, 0.451691, 0.205283, 0.035887, -0.026454, 0.024608, 0.170881, 0.373162, 0.578522, 0.730102, 0.77774, 0.687602, 0.449162, 0.078279, -0.384177, -0.878017, -1.332846, -1.679122, -1.859379, -1.837756, -1.606254, -1.186673, -0.627873, 0.001237, 0.621873, 1.15709, 1.543172, 1.738877, 1.731074, 1.535902, 1.195315, 0.76962]
+          }
+        },
+        "scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.0, 0.5] } },
+        "b": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.0, 1.0] } },
+        "inputMean": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.25, -0.5] } },
+        "inputVar": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [4.0, 0.25] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.375, 0.447548, 0.438084, 0.360387, 0.238226, 0.100845, -0.022358, -0.107056, -0.138227, 1.524598, 1.670868, 1.873145, 2.0785, 2.230077, 2.277714, 2.187578, 1.949143, 1.578267, -0.317088, -0.564008, -0.791422, -0.96456, -1.054688, -1.043877, -0.928126, -0.718336, -0.438936, 1.501227, 2.121851, 2.657057, 3.043131, 3.238832, 3.231029, 3.035861, 2.695281, 2.269595]
+          },
+          "tolerance": 0.00001
+        }
+      }
+    }
+  ]
+}

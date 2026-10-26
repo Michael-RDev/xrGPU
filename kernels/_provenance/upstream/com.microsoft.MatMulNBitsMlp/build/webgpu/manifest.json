@@ -1,0 +1,637 @@
+{
+  "domain": "com.microsoft",
+  "name": "MatMulNBitsMlp",
+  "sinceVersion": 1,
+  "inputs": {
+    "aT": { "onnx": "A", "dtype": "T1" },
+    "skipT": { "onnx": "skip", "dtype": "T1", "optional": true },
+    "normScaleT": { "onnx": "norm_scale", "dtype": "T1", "rank": 1, "optional": true },
+    "gateBT": { "onnx": "gate_B", "dtype": "uint8", "rank": 3, "layout": "packed" },
+    "gateScalesT": { "onnx": "gate_scales", "dtype": "T1", "rank": 2 },
+    "gateBiasT": { "onnx": "gate_bias", "dtype": "T1", "rank": 1, "optional": true },
+    "upBT": { "onnx": "up_B", "dtype": "uint8", "rank": 3, "layout": "packed" },
+    "upScalesT": { "onnx": "up_scales", "dtype": "T1", "rank": 2 },
+    "upBiasT": { "onnx": "up_bias", "dtype": "T1", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "yT": { "onnx": "Y", "dtype": "T1", "rank": "ranks.aT", "shape": "shapes.aT[:-1] + [attrs.N]" },
+    "residualT": {
+      "onnx": "input_skip_bias_sum",
+      "dtype": "T1",
+      "rank": "ranks.aT",
+      "optional": true,
+      "shape": "shapes.aT"
+    }
+  },
+  "attributes": {
+    "accuracy_level": { "default": 0 },
+    "bits": { "default": 4 },
+    "epsilon": { "default": 0.00001 },
+    "K": {},
+    "N": {},
+    "activation": {},
+    "block_size": {}
+  },
+  "attributeConstraints": {
+    "K": { "required": true },
+    "N": { "required": true },
+    "accuracy_level": { "values": [0] },
+    "activation": { "required": true, "values": ["silu"] },
+    "bits": { "values": [2, 4, 8] },
+    "block_size": { "required": true }
+  },
+  "typeConstraints": { "T1": ["float32", "float16"] },
+  "tunables": {
+    "TILE_N": { "default": 8 },
+    "LANES": { "default": 8 },
+    "NORM_WORKGROUP_SIZE": { "default": 128 },
+    "ROW_TILE": { "default": 8 },
+    "DECODE_WORKGROUP_SIZE": { "default": 64 }
+  },
+  "derive": {
+    "aRows": "numel(shapes.aT) / max(1, attrs.K)",
+    "codesPerByte": "8 / attrs.bits",
+    "codeMask": "3 if attrs.bits == 2 else (15 if attrs.bits == 4 else 255)",
+    "epsilonValue": "attrs.epsilon",
+    "lanesPow2": "tunables.LANES == pow2ceil(tunables.LANES)",
+    "decodeWalk": "aRows <= 1",
+    "aScalar": "\"f16\" if tensorDtypes.aT == \"float16\" else \"f32\"",
+    "scalar": "\"f16\" if tensorDtypes.aT == \"float16\" else \"f32\"",
+    "K": "attrs.K",
+    "blockSize": "attrs.block_size",
+    "bits": "attrs.bits",
+    "lanes": "tunables.LANES",
+    "rowCount": "aRows",
+    "useSubgroups": "device.features.has(\"subgroups\")",
+    "hidden": "attrs.K",
+    "workgroupSize": "tunables.NORM_WORKGROUP_SIZE",
+    "epsilon": "epsilonValue",
+    "hasSkip": "present.skipT",
+    "writeResidual": "present.residualT",
+    "K_LEN": "attrs.K",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "portableSmallTile": "variableSubgroup16To32 and tensorDtypes.aT == \"float32\" and attrs.bits == 4 and aRows >= 2 * tunables.ROW_TILE and tunables.TILE_N >= 4 and tunables.LANES >= 1 and floor(tunables.TILE_N / 2) * tunables.LANES <= device.limits.maxComputeInvocationsPerWorkgroup and floor(tunables.TILE_N / 2) * tunables.LANES <= device.limits.maxComputeWorkgroupSizeX and ceilDiv(attrs.N, floor(tunables.TILE_N / 2)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and device.limits.maxComputeWorkgroupStorageSize >= 8 * floor(tunables.TILE_N / 2) * tunables.LANES * 2 * tunables.ROW_TILE",
+    "tileN": "floor(tunables.TILE_N / 2) if portableSmallTile else tunables.TILE_N",
+    "rowTile": "min(aRows, 2 * tunables.ROW_TILE, floor(device.limits.maxComputeWorkgroupStorageSize / (8 * tileN * tunables.LANES))) if portableSmallTile else (1 if aRows <= 1 else min(aRows, tunables.ROW_TILE))",
+    "rowGroups": "ceilDiv(aRows, rowTile)",
+    "kBlocks": "dim(shapes.gateBT, 1)",
+    "blobSize": "dim(shapes.gateBT, 2)",
+    "bitsSupported": "attrs.bits == 2 or attrs.bits == 4 or attrs.bits == 8",
+    "weightShapeOk": "ranks.gateBT == 3 and ranks.upBT == 3 and dim(shapes.gateBT, 0) == attrs.N and dim(shapes.upBT, 0) == attrs.N and dim(shapes.upBT, 1) == kBlocks and dim(shapes.upBT, 2) == blobSize and kBlocks == ceilDiv(attrs.K, attrs.block_size) and blobSize * 8 == attrs.block_size * attrs.bits",
+    "scaleShapeOk": "ranks.gateScalesT == 2 and ranks.upScalesT == 2 and dim(shapes.gateScalesT, 0) == attrs.N and dim(shapes.gateScalesT, 1) == kBlocks and dim(shapes.upScalesT, 0) == attrs.N and dim(shapes.upScalesT, 1) == kBlocks",
+    "ioShapeOk": "(ranks.aT == 2 or ranks.aT == 3) and dim(shapes.aT, ranks.aT - 1) == attrs.K and ranks.yT == ranks.aT and dim(shapes.yT, ranks.yT - 1) == attrs.N and sameShape(prefix(shapes.yT, ranks.yT - 1), prefix(shapes.aT, ranks.aT - 1))",
+    "biasShapeOk": "(ranks.gateBiasT == 1 and dim(shapes.gateBiasT, 0) == attrs.N if present.gateBiasT else true) and (ranks.upBiasT == 1 and dim(shapes.upBiasT, 0) == attrs.N if present.upBiasT else true)",
+    "dtypeOk": "tensorDtypes.gateScalesT == tensorDtypes.aT and tensorDtypes.upScalesT == tensorDtypes.aT and tensorDtypes.yT == tensorDtypes.aT and f16Ok(tensorDtypes.aT)",
+    "mlpShapeOk": "bitsSupported and weightShapeOk and scaleShapeOk and ioShapeOk and biasShapeOk and dtypeOk and lanesPow2 and attrs.K > 0 and attrs.N > 0 and attrs.block_size > 0",
+    "normContractOk": "present.normScaleT and ranks.normScaleT == 1 and dim(shapes.normScaleT, 0) == attrs.K and tensorDtypes.normScaleT == tensorDtypes.aT and (sameShape(shapes.skipT, shapes.aT) and tensorDtypes.skipT == tensorDtypes.aT if present.skipT else true) and (sameShape(shapes.residualT, shapes.aT) and tensorDtypes.residualT == tensorDtypes.aT and present.skipT if present.residualT else true)",
+    "decodeVec": "decodeWalk and blobSize % 16 == 0",
+    "decodeActVec4": "decodeVec and attrs.K % attrs.block_size == 0",
+    "decodeLaneSplit": "decodeVec and kBlocks * blobSize <= tunables.DECODE_WORKGROUP_SIZE * 16",
+    "decodeCols": "8 if decodeLaneSplit else 4",
+    "decodeLanes": "tunables.DECODE_WORKGROUP_SIZE * (2 if decodeLaneSplit else 1)",
+    "tileCols": "decodeCols if decodeWalk else tileN",
+    "decodeWorkgroupOk": "tunables.DECODE_WORKGROUP_SIZE >= 4 and pow2ceil(tunables.DECODE_WORKGROUP_SIZE) == tunables.DECODE_WORKGROUP_SIZE and decodeLanes <= device.limits.maxComputeInvocationsPerWorkgroup and decodeLanes <= device.limits.maxComputeWorkgroupSizeX",
+    "gateUpDispatchFits": "decodeWorkgroupOk and ceilDiv(attrs.N, tileCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and aRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and tileN * tunables.LANES <= device.limits.maxComputeInvocationsPerWorkgroup and tileN * tunables.LANES <= device.limits.maxComputeWorkgroupSizeX",
+    "normDispatchFits": "tunables.NORM_WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.NORM_WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupSizeX",
+    "biasPresence_nogb_noub": "not present.gateBiasT and not present.upBiasT",
+    "biasPresence_nogb_ub": "not present.gateBiasT and present.upBiasT",
+    "biasPresence_gb_noub": "present.gateBiasT and not present.upBiasT",
+    "biasPresence_gb_ub": "present.gateBiasT and present.upBiasT",
+    "N": "attrs.N",
+    "defaultZero": "\"2.0\" if attrs.bits == 2 else (\"8.0\" if attrs.bits == 4 else \"128.0\")",
+    "decodeNCols": "decodeCols",
+    "decodeWorkgroupSize": "decodeLanes",
+    "laneGroups": "2 if decodeLaneSplit else 1",
+    "weightElement": "\"vec4<u32>\" if decodeVec else \"u32\"",
+    "actVec4": "decodeActVec4",
+    "normedElement": "\"vec4<f32>\" if decodeActVec4 else \"f32\"",
+    "hasGateBias": "present.gateBiasT",
+    "hasUpBias": "present.upBiasT",
+    "N_LEN": "attrs.N"
+  },
+  "when": ["mlpShapeOk", "gateUpDispatchFits"],
+  "bindings": {
+    "a": { "arg": "aT", "elementType": "$aScalar" },
+    "gate_b": { "arg": "gateBT", "elementType": "$weightElement" },
+    "gate_scales": { "arg": "gateScalesT", "elementType": "$aScalar" },
+    "up_b": { "arg": "upBT", "elementType": "$weightElement" },
+    "up_scales": { "arg": "upScalesT", "elementType": "$aScalar" },
+    "y": { "arg": "yT", "elementType": "$aScalar" },
+    "up_bias": { "arg": "upBiasT", "elementType": "$aScalar", "length": "$N_LEN" },
+    "gate_bias": { "arg": "gateBiasT", "elementType": "$aScalar", "length": "$N_LEN" },
+    "norm_scale": { "arg": "normScaleT", "elementType": "$aScalar", "length": "$K_LEN" },
+    "normed": { "scratch": "normedA", "elementType": "f32" },
+    "params": { "struct": [{ "name": "rows", "type": "u32", "value": "aRows" }] },
+    "normed_main": {
+      "scratch": "normedA",
+      "name": "normed",
+      "buffer": "read-only-storage",
+      "elementType": "$normedElement"
+    },
+    "skip": { "arg": "skipT", "elementType": "$aScalar" },
+    "residual": { "arg": "residualT", "elementType": "$aScalar" }
+  },
+  "variants": [
+    {
+      "id": "plain_nogb_noub",
+      "priority": 10,
+      "when": ["not present.normScaleT", "not present.skipT", "not present.residualT", "biasPresence_nogb_noub"],
+      "derive": { "inlineNorm": "0", "fromNormed": "0" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "plain_nogb_ub",
+      "priority": 10,
+      "when": ["not present.normScaleT", "not present.skipT", "not present.residualT", "biasPresence_nogb_ub"],
+      "derive": { "inlineNorm": "0", "fromNormed": "0" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "plain_gb_noub",
+      "priority": 10,
+      "when": ["not present.normScaleT", "not present.skipT", "not present.residualT", "biasPresence_gb_noub"],
+      "derive": { "inlineNorm": "0", "fromNormed": "0" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "plain_gb_ub",
+      "priority": 10,
+      "when": ["not present.normScaleT", "not present.skipT", "not present.residualT", "biasPresence_gb_ub"],
+      "derive": { "inlineNorm": "0", "fromNormed": "0" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_norm_nogb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "normDispatchFits", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skip_nogb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "normDispatchFits", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skipsum_nogb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "normDispatchFits", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_norm_nogb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "normDispatchFits", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skip_nogb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "normDispatchFits", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skipsum_nogb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "normDispatchFits", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_norm_gb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_noub", "normDispatchFits", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skip_gb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_noub", "normDispatchFits", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skipsum_gb_noub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_noub", "normDispatchFits", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_norm_gb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_ub", "normDispatchFits", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skip_gb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_ub", "normDispatchFits", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "staged_skipsum_gb_ub",
+      "priority": 10,
+      "when": ["normContractOk", "biasPresence_gb_ub", "normDispatchFits", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "0", "fromNormed": "1" },
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsMlp.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.GateUp",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["normed_main", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "fused_norm_nogb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "aRows == 1", "not decodeVec", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skip_nogb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "aRows == 1", "not decodeVec", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skipsum_nogb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_noub", "aRows == 1", "not decodeVec", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "y", "residual"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_norm_nogb_ub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "aRows == 1", "not decodeVec", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skip_nogb_ub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "aRows == 1", "not decodeVec", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skipsum_nogb_ub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_nogb_ub", "aRows == 1", "not decodeVec", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "up_b", "up_scales", "up_bias", "y", "residual"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_norm_gb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_gb_noub", "aRows == 1", "not decodeVec", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skip_gb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_gb_noub", "aRows == 1", "not decodeVec", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skipsum_gb_noub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_gb_noub", "aRows == 1", "not decodeVec", "hasSkip and writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "y", "residual"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_norm_gb_ub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_gb_ub", "aRows == 1", "not decodeVec", "not hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    },
+    {
+      "id": "fused_skip_gb_ub",
+      "priority": 30,
+      "when": ["normContractOk", "biasPresence_gb_ub", "aRows == 1", "not decodeVec", "hasSkip and not writeResidual"],
+      "derive": { "inlineNorm": "1", "fromNormed": "0", "rowTile": "1" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MatMulNBitsMlp.FusedDecode",
+          "shader": "mlp-gate-up.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "gate_b", "gate_scales", "gate_bias", "up_b", "up_scales", "up_bias", "y"],
+          "dispatch": { "x": "ceilDiv(attrs.N, tileCols)", "y": "aRows" }
+        }
+      ]
+    }
+  ]
+}

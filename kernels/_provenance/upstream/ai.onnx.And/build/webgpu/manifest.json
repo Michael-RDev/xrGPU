@@ -1,0 +1,68 @@
+{
+  "domain": "ai.onnx",
+  "name": "And",
+  "sinceVersion": 7,
+  "inputs": { "a": { "onnx": "A", "dtype": "B" }, "b": { "onnx": "B", "dtype": "B" } },
+  "outputs": {
+    "c": { "onnx": "C", "dtype": "B", "rank": "max(ranks.a, ranks.b)", "shape": "broadcastShape(shapes.a, shapes.b)" }
+  },
+  "typeConstraints": { "B": ["bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "same_shape_vec4",
+      "priority": 20,
+      "when": ["sameShape(shapes.a, shapes.c)", "sameShape(shapes.b, shapes.c)", "numel(shapes.c) > 0", "numel(shapes.c) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "And.Vec4",
+          "shader": "logical-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1" },
+          "bindings": ["a_logical", "b_logical", "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c) / 4, 4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c) / 4, 4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast",
+      "when": ["ranks.a <= ranks.c", "ranks.b <= ranks.c"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "And",
+          "shader": "logical-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a_2_logical", "b_2_logical", "c_u32", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "a_logical": { "elementType": "vec4<u32>", "name": "a" },
+    "b_logical": { "elementType": "vec4<u32>", "name": "b" },
+    "c": { "elementType": "vec4<u32>" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c) / 4" }] },
+    "a_2_logical": { "name": "a", "elementType": "u32" },
+    "b_2_logical": { "name": "b", "elementType": "u32" },
+    "c_u32": { "name": "c", "elementType": "u32" },
+    "params_count": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c)" }] }
+  }
+}

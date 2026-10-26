@@ -1,0 +1,651 @@
+{
+  "cases": [
+    {
+      "name": "int16_same_shape_boundaries",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [4], "data": { "kind": "values", "values": [1, 0, 1, 0] } },
+        "x": { "dtype": "int16", "shape": [4], "data": { "kind": "values", "values": [-32768, -1, 32767, 0] } },
+        "y": { "dtype": "int16", "shape": [4], "data": { "kind": "values", "values": [32767, -32768, 1, -32767] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int16",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-32768, -32768, 32767, -32767] }
+        }
+      }
+    },
+    {
+      "name": "f32_subnormal_select_preserves_data",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric",
+        "notes": "Where picks between subnormal float32 values (1e-40) in x and y without performing arithmetic; the finite subnormal payloads must pass through unchanged rather than flush to zero."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [4], "data": { "kind": "values", "values": [1, 0, 1, 0] } },
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1e-40, 10.0, -1e-40, 20.0] } },
+        "y": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [30.0, -1e-40, 40.0, 1e-40] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "rank2_broadcast",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 1], "data": { "kind": "values", "values": [1, 0] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_nonzero_condition_broadcast",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [1, 1, 3, 1], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "zero_size_noop",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [0, 1], "data": { "kind": "values", "values": [] } },
+        "x": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } },
+        "y": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [0, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "scalar_condition_broadcast",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [], "data": { "kind": "values", "values": [1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_all_scalars_false_condition",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [123.5] } },
+        "y": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-7.25] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nan_in_unselected_branch_does_not_leak",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [4], "data": { "kind": "values", "values": [1, 0, 1, 0] } },
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, "NaN", "Infinity", 4.0] } },
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["NaN", 2.0, 3.0, "-Infinity"] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0, "allowNaN": false } }
+    },
+    {
+      "name": "ort_broadcast_dim_with_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BroadcastDimWithZero"
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "y": { "dtype": "float32", "shape": [0, 1], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_numeric_float32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric"
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0] } },
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "y": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [5.0, 6.0, 7.0, 8.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_basic_numeric_float16_adapted",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric",
+        "notes": "A float16 payload exercises the branch pattern with reduced-precision storage."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0] } },
+        "x": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "y": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [5.0, 6.0, 7.0, 8.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [2, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_broadcast_pattern_condition_last_dim",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.Broadcast"
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [1, 1, 3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "float32", "shape": [1, 3, 1], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } },
+        "y": { "dtype": "float32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_pattern_condition_first_dim",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.Broadcast"
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3, 1, 1], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "float32", "shape": [1, 1, 3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } },
+        "y": { "dtype": "float32", "shape": [1, 3, 1], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_with_scalar_float32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BroadcastWithScalar",
+        "notes": "A float32 payload exercises scalar broadcast shape behavior."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "y": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_with_scalar_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BroadcastWithScalar",
+        "notes": "An int32 payload exercises scalar broadcast shape behavior."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "int32", "shape": [1, 3], "data": { "kind": "values", "values": [1, 2, 3] } },
+        "y": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [1, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_where_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_where_example" },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 1, 1] } },
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "y": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [9.0, 8.0, 7.0, 6.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_where_long_example",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_where_long_example",
+        "notes": "The ONNX int64 X/Y payloads are adapted to supported int32; the condition remains bool."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [1, 0, 1, 1] } },
+        "x": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [1, 2, 3, 4] } },
+        "y": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [9, 8, 7, 6] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_numeric_int8_edge_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric",
+        "notes": "Same branch pattern as ORT's numeric test, using ONNX-valid int8 edge values."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0] } },
+        "x": { "dtype": "int8", "shape": [2, 2], "data": { "kind": "values", "values": [-128, -1, 0, 127] } },
+        "y": { "dtype": "int8", "shape": [2, 2], "data": { "kind": "values", "values": [127, 0, -1, -128] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_numeric_uint8_edge_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric",
+        "notes": "Same branch pattern as ORT's numeric test, using ONNX-valid uint8 edge values."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0] } },
+        "x": { "dtype": "uint8", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 254, 255] } },
+        "y": { "dtype": "uint8", "shape": [2, 2], "data": { "kind": "values", "values": [255, 254, 1, 0] } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "scalar_condition_true_vec4",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [], "data": { "kind": "values", "values": [1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "scalar_condition_false_vec4",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1.5, -2.5, -3.5, -4.5, -5.5, -6.5, -7.5, -8.5] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1.5, -2.5, -3.5, -4.5, -5.5, -6.5, -7.5, -8.5] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "scalar_condition_true_vec4_4096",
+      "provenance": { "notes": "A shape-[1] condition broadcasts over a vec4-aligned float32 payload." },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.031, "scale": 1.0 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 1.0 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_bool_exact_condition_basic_numeric",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric"
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 2], "data": { "kind": "values", "values": [0, 1, 1, 0] } },
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "y": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [5.0, 6.0, 7.0, 8.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_exact_condition_zero_dim_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BroadcastDimWithZero",
+        "notes": "Uses int32 payloads in place of ORT's int64 payloads; the zero-dimension broadcast behavior is identical."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "int32", "shape": [1, 3], "data": { "kind": "values", "values": [1, 2, 3] } },
+        "y": { "dtype": "int32", "shape": [0, 1], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_bool_exact_condition_scalar_y_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BroadcastWithScalar",
+        "notes": "Uses int32 payloads in place of ORT's int64 payloads; preserves bool condition and scalar Y broadcasting."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3], "data": { "kind": "values", "values": [1, 0, 1] } },
+        "x": { "dtype": "int32", "shape": [1, 3], "data": { "kind": "values", "values": [1, 2, 3] } },
+        "y": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int32",
+          "shape": [1, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [1, 1, 3] }
+        }
+      }
+    },
+    {
+      "name": "rank6_mixed_axis_broadcast_all_inputs",
+      "inputs": {
+        "condition": {
+          "dtype": "bool",
+          "shape": [2, 1, 3, 1, 1, 1],
+          "data": { "kind": "cycle", "values": [1, 0, 1, 0, 1, 1] }
+        },
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 4, 1, 1, 5, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.11 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.31 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 4, 3, 2, 5, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "broadcast_fold_over_16M_condition_outer",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [8224, 1], "data": { "kind": "cycle", "values": [1, 0] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [8224, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.001, "cosStep": 0.002 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [8224, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.003, "cosStep": 0.004 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8224, 2048], "tolerance": 0 } }
+    },
+    {
+      "name": "broadcast_innermost_dim1_x_expands_y_full",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3, 5], "data": { "kind": "cycle", "values": [1, 0, 1, 0, 1] } },
+        "x": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } },
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "rank7_broadcast_scalar_tail",
+      "inputs": {
+        "condition": {
+          "dtype": "bool",
+          "shape": [1, 1, 1, 1, 1, 1, 3],
+          "data": { "kind": "values", "values": [1, 0, 1] }
+        },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "broadcast_inner_vec4_mixed_splat",
+      "provenance": {
+        "source": "onnxruntime js/web/lib/wasm/jsep webgpu where op",
+        "test": "vec4 outputs under broadcast",
+        "notes": "The output inner axis is a multiple of 4, so each input either loads 4 contiguous elements (last axis matches) or splats one (last axis broadcast)."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [3, 1, 1], "data": { "kind": "cycle", "values": [1, 0, 1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.5 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.5 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 3, 5, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "broadcast_inner_vec4_scalar_y",
+      "provenance": {
+        "source": "onnxruntime js/web/lib/wasm/jsep webgpu where op",
+        "test": "vec4 outputs under broadcast",
+        "notes": "The output inner axis is a multiple of 4, so each input either loads 4 contiguous elements (last axis matches) or splats one (last axis broadcast)."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [1, 1, 12, 1], "data": { "kind": "cycle", "values": [1, 0, 0, 1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 12, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "y": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-7.5] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 1, 12, 12], "tolerance": 0 } }
+    },
+    {
+      "name": "broadcast_inner_vec4_splat_x",
+      "provenance": {
+        "notes": "The vec4 broadcast route loads each operand either as four contiguous elements or as one splat value. Here x is the lower-rank splat operand, independently checking its left-hand broadcast addressing."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [12], "data": { "kind": "cycle", "values": [1, 0, 0, 1] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 12, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 12, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.5 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 1, 12, 12], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "broadcast_inner_vec4_cond_contiguous",
+      "provenance": {
+        "source": "onnxruntime js/web/lib/wasm/jsep webgpu where op",
+        "test": "vec4 outputs under broadcast",
+        "notes": "The output inner axis is a multiple of 4, so each input either loads 4 contiguous elements (last axis matches) or splats one (last axis broadcast)."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [8], "data": { "kind": "cycle", "values": [1, 0] } },
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.27, "scale": 0.5 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 6, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.37, "scale": 0.5 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 6, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "rank8_broadcast_alternating",
+      "attrs": {},
+      "inputs": {
+        "condition": {
+          "dtype": "bool",
+          "shape": [1, 1, 1, 1, 1, 1, 1, 3],
+          "data": { "kind": "values", "values": [1, 0, 1] }
+        },
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 1, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_standard_uint32_payload",
+      "provenance": {
+        "notes": "ONNX-standard uint32 payload coverage with a bool condition and multidirectional broadcasting."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 1], "data": { "kind": "values", "values": [1, 0] } },
+        "x": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0, 2147483648, 4294967295, 1, 2, 3] }
+        },
+        "y": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [9, 8, 7] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_standard_bool_payload",
+      "provenance": {
+        "notes": "ONNX-standard bool payload coverage with independent condition, X, and Y broadcasting."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 1], "data": { "kind": "values", "values": [1, 0] } },
+        "x": { "dtype": "bool", "shape": [1, 3], "data": { "kind": "values", "values": [0, 1, 0] } },
+        "y": { "dtype": "bool", "shape": [], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "output": { "dtype": "bool", "shape": [2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "int64_full_range_int16_same_shape_boundaries",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [4], "data": { "kind": "values", "values": [1, 0, 1, 0] } },
+        "x": {
+          "dtype": "int64",
+          "shape": [4],
+          "data": {
+            "kind": "cycle",
+            "values": ["0", "4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1"]
+          }
+        },
+        "y": {
+          "dtype": "int64",
+          "shape": [4],
+          "data": {
+            "kind": "cycle",
+            "values": ["0", "4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1"]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "int64", "shape": [4], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    },
+    {
+      "name": "int64_full_range_f32_subnormal_select_preserves_data",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/where_op_test.cc",
+        "test": "WhereOpTest.BasicNumeric",
+        "notes": "The int64 values carry 32-bit words that are float32 subnormal bit patterns (2^33 + 1 splits into words 2 and 1), so every selected element must be copied bit-exactly rather than through float32."
+      },
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [4], "data": { "kind": "values", "values": [1, 0, 1, 0] } },
+        "x": {
+          "dtype": "int64",
+          "shape": [4],
+          "data": {
+            "kind": "cycle",
+            "values": ["4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1", "0"]
+          }
+        },
+        "y": {
+          "dtype": "int64",
+          "shape": [4],
+          "data": {
+            "kind": "cycle",
+            "values": ["4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1", "0"]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "int64", "shape": [4], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    },
+    {
+      "name": "int64_mixed_broadcast",
+      "inputs": {
+        "condition": { "dtype": "bool", "shape": [2, 1], "data": { "kind": "values", "values": [0, 1] } },
+        "x": {
+          "dtype": "int64",
+          "shape": [1, 3],
+          "data": { "kind": "values", "values": ["-9223372036854775808", "9223372036854775807", "4294967296"] }
+        },
+        "y": {
+          "dtype": "int64",
+          "shape": [2, 1],
+          "data": { "kind": "values", "values": ["-4294967297", "9223372036854775806"] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int64", "shape": [2, 3], "tolerance": 0, "relTolerance": 0 } }
+    }
+  ]
+}

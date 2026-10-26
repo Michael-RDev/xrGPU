@@ -1,0 +1,1497 @@
+{
+  "domain": "ai.onnx",
+  "name": "Gemm",
+  "sinceVersion": 13,
+  "inputs": {
+    "a": { "onnx": "A", "dtype": "T", "rank": 2 },
+    "b": { "onnx": "B", "dtype": "T", "rank": 2 },
+    "bias": { "onnx": "C", "dtype": "T", "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": 2,
+      "shape": ["dim(shapes.a, 1) if attrs.transA == 1 else dim(shapes.a, 0)", "dim(shapes.b, 0) if attrs.transB == 1 else dim(shapes.b, 1)"]
+    }
+  },
+  "args": {
+    "M": { "kind": "u32", "required": false },
+    "inFeatures": { "kind": "u32", "onnx": "K", "required": false },
+    "outFeatures": { "kind": "u32", "onnx": "N", "required": false }
+  },
+  "attributes": {
+    "alpha": { "default": 1 },
+    "beta": { "default": 1 },
+    "transA": { "default": 0 },
+    "transB": { "default": 0 }
+  },
+  "attributeConstraints": { "transA": { "values": [0, 1] }, "transB": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "TILE": { "default": 8 },
+    "GEMV_WORKGROUP": { "default": 64 },
+    "TAIL_WORKGROUP": { "default": 256 },
+    "GENERIC_REG_MIN_M": { "default": 8 },
+    "GENERIC_REG_MIN_N": { "default": 64 },
+    "GENERIC_REG_MIN_OUTPUTS": { "default": 4096 },
+    "GENERIC_TRANSB_VEC4_MIN_BLOCKS": { "default": 32 },
+    "GENERIC_TRANSB_F16_VEC4_DEMOTE_K_TILES": { "default": 64 },
+    "GENERIC_TRANSB_F16_SMALL_TILE_MAX_BLOCKS": { "default": 128 },
+    "GENERIC_VEC4_LARGE_MIN_M": { "default": 512 },
+    "GENERIC_VEC4_LARGE_MIN_N": { "default": 1024 },
+    "SUBGROUP_MATRIX_SPLITK_TARGET_WGS": { "default": 512 },
+    "SUBGROUP_MATRIX_SPLITK_MIN_K": { "default": 1024 },
+    "SUBGROUP_MATRIX_SPLITK_MAX_TILES": { "default": 128 },
+    "GENERIC_SPLITK_TARGET_WORKGROUPS": { "default": 512 },
+    "GENERIC_SPLITK_MAX_TILES": { "default": 128 },
+    "MODEL_BAND_MAX_ROWS": { "default": 32 },
+    "MODEL_BAND_SPLIT_TARGET_WORKGROUPS": { "default": 256 },
+    "GENERIC_TRANSA_SGMAT_MIN_BLOCKS": { "default": 64 },
+    "GENERIC_TRANSA_SGMAT_MIN_K": { "default": 128 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "genericM": "dim(shapes.y, 0) if ranks.y == 2 else 0",
+    "genericN": "dim(shapes.y, 1) if ranks.y == 2 else 0",
+    "genericK": "dim(shapes.a, 0) if ranks.a == 2 and attrs.transA == 1 else (dim(shapes.a, 1) if ranks.a == 2 else 0)",
+    "genericShapeOk": "ranks.a == 2 and ranks.b == 2 and ranks.y == 2 and dim(shapes.a, 0 if attrs.transA == 0 else 1) == genericM and dim(shapes.b, 0 if attrs.transB == 0 else 1) == genericK and dim(shapes.b, 1 if attrs.transB == 0 else 0) == genericN",
+    "genericRowBiasOk": "present.bias and ((ranks.bias == 1 and dim(shapes.bias, 0) == genericN) or (ranks.bias == 2 and dim(shapes.bias, 0) == 1 and dim(shapes.bias, 1) == genericN))",
+    "genericScalarBiasOk": "present.bias and (ranks.bias == 0 or (ranks.bias == 1 and dim(shapes.bias, 0) == 1) or (ranks.bias == 2 and dim(shapes.bias, 0) == 1 and dim(shapes.bias, 1) == 1))",
+    "genericColumnBiasOk": "present.bias and ranks.bias == 2 and dim(shapes.bias, 0) == genericM and dim(shapes.bias, 1) == 1",
+    "genericMatrixBiasOk": "present.bias and ranks.bias == 2 and dim(shapes.bias, 0) == genericM and dim(shapes.bias, 1) == genericN",
+    "tileDispatchX": "ceilDiv(genericN, tunables.TILE)",
+    "modelLayoutOk": "args.M is defined and args.inFeatures is defined and args.outFeatures is defined and attrs.alpha == 1 and attrs.beta == 1 and attrs.transA == 0 and attrs.transB == 1",
+    "modelBuffersOk": "args.M is defined and args.inFeatures is defined and args.outFeatures is defined and numel(shapes.a) >= args.M * args.inFeatures and numel(shapes.b) >= args.outFeatures * args.inFeatures and present.y and numel(shapes.y) >= args.M * args.outFeatures",
+    "genericNoTransposeShapeOk": "genericShapeOk and attrs.transA == 0 and attrs.transB == 0",
+    "genericWideSimdOk": "device.features.has(\"subgroups\") or (has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize >= 8)",
+    "genericConstrainedSimd8": "not device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 8 and device.adapterInfo.subgroupMaxSize <= 32",
+    "genericScalarResourcesFit": "tunables.TILE <= device.limits.maxComputeWorkgroupSizeX and tunables.TILE <= device.limits.maxComputeWorkgroupSizeY and tunables.TILE * tunables.TILE <= device.limits.maxComputeInvocationsPerWorkgroup",
+    "gemvResourcesFit": "tunables.GEMV_WORKGROUP <= deviceWorkgroupCap and tunables.GEMV_WORKGROUP * 4 <= device.limits.maxComputeWorkgroupStorageSize",
+    "vec4GemvResourcesFit": "tunables.GEMV_WORKGROUP <= deviceWorkgroupCap and tunables.GEMV_WORKGROUP * 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "genericGemvOk": "not modelLayoutOk and genericShapeOk and attrs.transA == 0 and attrs.transB == 1 and genericM == 1 and genericK > 0 and genericN > 0 and genericN % 4 == 0 and attrs.alpha == 1 and attrs.beta == 1 and not present.bias and (tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\") and f16Ok(tensorDtypes.a) and f16Ok(tensorDtypes.b) and f16Ok(tensorDtypes.y) and vec4GemvResourcesFit",
+    "genericGemvBiasOk": "not modelLayoutOk and genericShapeOk and attrs.transA == 0 and attrs.transB == 1 and genericM == 1 and genericK > 0 and genericN > 0 and genericN % 4 == 0 and attrs.alpha == 1 and attrs.beta == 1 and genericRowBiasOk and ranks.bias == 1 and (tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\") and f16Ok(tensorDtypes.a) and f16Ok(tensorDtypes.b) and f16Ok(tensorDtypes.bias) and f16Ok(tensorDtypes.y) and vec4GemvResourcesFit",
+    "modelTiledResourcesFit": "128 <= deviceWorkgroupCap and 12288 <= device.limits.maxComputeWorkgroupStorageSize",
+    "register64Bk16StorageBytes": "(64 * 16 + 16 * 65) * 4",
+    "register128Bk16StorageBytes": "(128 * 16 + 16 * 65) * 4",
+    "transBVec4Blocks128": "ceilDiv(genericM, 128) * ceilDiv(genericN, 64)",
+    "transAVec4Blocks128": "ceilDiv(genericM, 128) * ceilDiv(genericN, 64)",
+    "transBVec4BlockRows": "128 if transBVec4Blocks128 >= tunables.GENERIC_TRANSB_VEC4_MIN_BLOCKS * 2 else 64",
+    "transBVec4Blocks": "ceilDiv(genericM, transBVec4BlockRows) * ceilDiv(genericN, 64)",
+    "genericTransBVec4DeepVariable32": "variableSubgroup16To32 and (genericK >= tunables.GENERIC_TRANSB_F16_VEC4_DEMOTE_K_TILES * 16 or (modelLayoutOk and modelBuffersOk and modelTiledResourcesFit and genericK >= tunables.GENERIC_TRANSB_F16_VEC4_DEMOTE_K_TILES * 4 and genericN >= 4 * genericK))",
+    "deepModelTilePreferred": "modelLayoutOk and modelBuffersOk and modelTiledResourcesFit and genericM >= 4 * 32 and genericN >= 8 * 64 and genericK >= genericN and (variableSubgroup16To32 or (not device.features.has(\"subgroups\") and not has(device.adapterInfo, \"subgroupMinSize\")))",
+    "register64Bk32StorageBytes": "(64 * 32 + 32 * 65) * 4",
+    "register128Bk32StorageBytes": "(128 * 32 + 32 * 65) * 4",
+    "registerTiledResourcesFit": "16 <= device.limits.maxComputeWorkgroupSizeX and 16 <= device.limits.maxComputeWorkgroupSizeY and 256 <= device.limits.maxComputeInvocationsPerWorkgroup and register64Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "genericRegisterResourcesFit": "16 <= device.limits.maxComputeWorkgroupSizeX and 16 <= device.limits.maxComputeWorkgroupSizeY and 256 <= device.limits.maxComputeInvocationsPerWorkgroup and 8192 <= device.limits.maxComputeWorkgroupStorageSize",
+    "modelSgmatConfig": "tunables.sgmatConfig if modelLayoutOk and tunables.sgmatConfig is defined else (13 if modelLayoutOk and tensorDtypes.a == \"float32\" and tensorDtypes.b == \"float32\" and tensorDtypes.y == \"float32\" and args.M >= 1024 and args.M % 96 == 0 and args.inFeatures >= 1024 and args.outFeatures >= 1024 else (2 if modelLayoutOk and tensorDtypes.a == \"float32\" and tensorDtypes.b == \"float32\" and tensorDtypes.y == \"float32\" and args.M % 64 == 0 else (2 if modelLayoutOk and tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" and tensorDtypes.y == \"float16\" and args.M % 64 == 0 and args.inFeatures >= 1024 else 0)))",
+    "modelSgmatTileM": "96 if (modelSgmatConfig == 10 or modelSgmatConfig == 13) and args.M % 96 == 0 else (64 if (modelSgmatConfig == 2 or modelSgmatConfig == 5 or modelSgmatConfig == 7) and args.M % 64 == 0 else 32)",
+    "modelSgmatTileN": "128 if modelSgmatConfig == 3 and args.outFeatures % 128 == 0 else (96 if modelSgmatConfig == 6 and args.outFeatures % 96 == 0 else (48 if modelSgmatConfig == 7 and args.outFeatures % 48 == 0 else 64))",
+    "modelSgmatTileK": "64 if (modelSgmatConfig == 4 or modelSgmatConfig == 5) and args.inFeatures % 64 == 0 else 32",
+    "modelSgmatDirectStore": "modelSgmatConfig != 0 and tensorDtypes.y == \"float32\" and args.M % modelSgmatTileM == 0 and args.outFeatures % modelSgmatTileN == 0",
+    "modelSgmatDirectA": "modelSgmatDirectStore and (modelSgmatConfig == 13 or (modelSgmatTileM > 32 and tensorDtypes.a == \"float32\" and tensorDtypes.b == \"float32\"))",
+    "modelSgmatDoubleB": "modelSgmatDirectA",
+    "modelSgmatOperandBytes": "2 if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else 4",
+    "modelSgmatStorageBytes": "(0 if modelSgmatDirectA else modelSgmatTileM * modelSgmatTileK * modelSgmatOperandBytes) + (2 if modelSgmatDoubleB else 1) * modelSgmatTileN * modelSgmatTileK * modelSgmatOperandBytes + (0 if modelSgmatDirectStore else modelSgmatTileM * modelSgmatTileN * 4)",
+    "modelSgmatResourcesFit": "128 <= deviceWorkgroupCap and modelSgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "fixedSgmatStorageBytes": "(32 * 32 + 64 * 32) * modelSgmatOperandBytes + 32 * 64 * 4",
+    "fixedSgmatResourcesFit": "128 <= deviceWorkgroupCap and fixedSgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "tailSgmatTileN": "64 if 20480 <= device.limits.maxComputeWorkgroupStorageSize else 32",
+    "tailSgmatStorageBytes": "(32 * 32 + tailSgmatTileN * 32) * 4 + 32 * tailSgmatTileN * 4",
+    "tailSgmatResourcesFit": "128 <= deviceWorkgroupCap and tailSgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "nTailSplitResourcesFit": "128 <= deviceWorkgroupCap and 16384 <= device.limits.maxComputeWorkgroupStorageSize",
+    "genericTransASgmatResourcesFit": "nTailSplitResourcesFit",
+    "tailCorrectionResourcesFit": "tunables.TAIL_WORKGROUP <= deviceWorkgroupCap",
+    "modelArgsDefined": "args.M is defined and args.inFeatures is defined and args.outFeatures is defined",
+    "sgmatOutTiles": "ceilDiv(args.M, 32) * ceilDiv(args.outFeatures, 64) if modelArgsDefined else 1",
+    "sgmatSplitKWant": "ceilDiv(tunables.SUBGROUP_MATRIX_SPLITK_TARGET_WGS, sgmatOutTiles)",
+    "sgmatSplitK32Ok": "modelArgsDefined and args.inFeatures % 1024 == 0",
+    "sgmatSplitK16Ok": "modelArgsDefined and args.inFeatures % 512 == 0",
+    "sgmatSplitK8Ok": "modelArgsDefined and args.inFeatures % 256 == 0",
+    "sgmatSplitK4Ok": "modelArgsDefined and args.inFeatures % 128 == 0",
+    "sgmatSplitK2Ok": "modelArgsDefined and args.inFeatures % 64 == 0",
+    "sgmatSplitK": "32 if (sgmatSplitKWant > 16 and sgmatSplitK32Ok) else (16 if (sgmatSplitKWant > 8 and sgmatSplitK16Ok) else (8 if (sgmatSplitKWant > 4 and sgmatSplitK8Ok) else (4 if (sgmatSplitKWant > 2 and sgmatSplitK4Ok) else (2 if sgmatSplitK2Ok else 1))))",
+    "genericSplitTiles": "ceilDiv(genericM, 128) * ceilDiv(genericN, 64)",
+    "genericSplitWant": "ceilDiv(tunables.GENERIC_SPLITK_TARGET_WORKGROUPS, max(1, genericSplitTiles))",
+    "genericSplitK": "8 if (genericSplitWant >= 8 and genericK % 256 == 0 and genericK >= 1024) else (4 if (genericSplitWant >= 4 and genericK % 128 == 0 and genericK >= 512) else (2 if (genericSplitWant >= 2 and genericK % 64 == 0 and genericK >= 256) else 1))",
+    "modelBandArgsOk": "args.M is defined and args.inFeatures is defined and args.outFeatures is defined",
+    "modelBandRowsPerLane": "(min(4, args.M) if args.M <= 16 else 8) if modelBandArgsOk else 1",
+    "modelBandRowGroups": "max(1, ceilDiv(args.M, modelBandRowsPerLane)) if modelBandArgsOk else 1",
+    "modelBandSlices": "max(1, floor(16 / modelBandRowGroups))",
+    "modelBandColumnWorkgroups": "ceilDiv(args.outFeatures, 64) if modelBandArgsOk else 1",
+    "modelBandSplitWant": "pow2ceil(ceilDiv(tunables.MODEL_BAND_SPLIT_TARGET_WORKGROUPS, modelBandColumnWorkgroups))",
+    "modelBandKSteps": "floor(args.inFeatures / (4 * modelBandSlices)) if modelBandArgsOk else 0",
+    "modelBandKSplits": "16 if (modelBandSplitWant >= 16 and modelBandKSteps >= 1024) else (8 if (modelBandSplitWant >= 8 and modelBandKSteps >= 512) else (4 if (modelBandSplitWant >= 4 and modelBandKSteps >= 256) else (2 if (modelBandSplitWant >= 2 and modelBandKSteps >= 128) else 1)))",
+    "modelBandResourcesFit": "16 <= device.limits.maxComputeWorkgroupSizeX and 16 <= device.limits.maxComputeWorkgroupSizeY and 256 <= device.limits.maxComputeInvocationsPerWorkgroup and 4096 <= device.limits.maxComputeWorkgroupStorageSize and modelBandColumnWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and modelBandKSplits <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "biasSgmatTileN": "32 if modelArgsDefined and args.inFeatures < tunables.SUBGROUP_MATRIX_SPLITK_MIN_K and ceilDiv(args.M, 32) * ceilDiv(args.outFeatures, 32) <= tunables.SUBGROUP_MATRIX_SPLITK_MAX_TILES and ceilDiv(args.outFeatures, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) else 64",
+    "biasSgmatStorageBytes": "(32 * 32 + biasSgmatTileN * 32) * modelSgmatOperandBytes + 32 * biasSgmatTileN * 4",
+    "biasSgmatResourcesFit": "128 <= deviceWorkgroupCap and biasSgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "xScalar": "\"f16\" if tensorDtypes.a == \"float16\" else \"f32\"",
+    "wScalar": "\"f16\" if tensorDtypes.b == \"float16\" else \"f32\"",
+    "yScalar": "\"f16\" if tensorDtypes.y == \"float16\" else \"f32\"",
+    "usesF16": "tensorDtypes.a == \"float16\"",
+    "inFeatures": "args.inFeatures",
+    "outFeatures": "args.outFeatures",
+    "wVec4Type": "\"vec4<f16>\" if tensorDtypes.b == \"float16\" else \"vec4<f32>\"",
+    "transA": "attrs.transA == 1",
+    "transB": "attrs.transB == 1"
+  },
+  "bindings": {
+    "a": { "elementType": "$vectorScalar" },
+    "b": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$vectorScalar" },
+    "params": {
+      "struct": [
+        { "name": "alpha", "type": "f32", "value": "attrs.alpha" },
+        { "name": "M", "type": "u32", "value": "genericM" }
+      ]
+    },
+    "a_main": { "name": "a", "elementType": "vec4<f32>" },
+    "b_main": { "name": "b", "elementType": "vec4<f32>" },
+    "y_partial": { "scratch": "partials", "name": "y", "elementType": "vec4<f32>" },
+    "partials": { "buffer": "read-only-storage", "elementType": "f32" },
+    "y_f32": { "name": "y", "elementType": "f32" },
+    "x": { "arg": "a", "elementType": "$xScalar" },
+    "w": { "arg": "b", "elementType": "$wScalar" },
+    "partials_f32": { "name": "partials", "buffer": "storage", "elementType": "f32" },
+    "params_m": { "name": "params", "struct": [{ "name": "M", "type": "u32" }] },
+    "y_bulk": { "name": "y", "elementType": "$yScalar" },
+    "params_cols": {
+      "name": "params",
+      "struct": [{ "name": "cols", "type": "u32", "value": "args.M * args.outFeatures" }]
+    },
+    "bias": { "elementType": "$bScalar" },
+    "x_a": { "arg": "a", "name": "x", "elementType": "$xVec4Type" },
+    "w_b": { "arg": "b", "name": "w", "elementType": "$wVec4Type" },
+    "y_main": { "name": "y", "elementType": "$yVec4Type" },
+    "a_a_scalar": { "name": "a", "elementType": "$aScalar" },
+    "x_f32": { "arg": "a", "name": "x", "elementType": "f32" },
+    "w_f32": { "arg": "b", "name": "w", "elementType": "f32" },
+    "params_bulk": { "name": "params", "struct": [{ "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" }] },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "K", "type": "u32", "value": "genericK" },
+        { "name": "alpha", "type": "f32", "value": "attrs.alpha" }
+      ]
+    },
+    "params_gemm": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "K", "type": "u32", "value": "genericK" },
+        { "name": "alpha", "type": "f32", "value": "attrs.alpha" },
+        { "name": "beta", "type": "f32", "value": "attrs.beta" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "reg_generic_transA_f32_vec4",
+      "priority": 30,
+      "when": ["not present.bias", "genericShapeOk", "attrs.transA == 1", "attrs.transB == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericM >= 128", "genericN >= 64", "genericK > 0", "genericK % 32 == 0", "genericM % 4 == 0", "genericN % 4 == 0", "transAVec4Blocks128 >= tunables.GENERIC_TRANSB_VEC4_MIN_BLOCKS", "ceilDiv(genericM, 128) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "16 <= device.limits.maxComputeWorkgroupSizeX", "16 <= device.limits.maxComputeWorkgroupSizeY", "256 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": {
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\"",
+        "K": "genericK",
+        "N": "genericN",
+        "physicalTransposedA": true,
+        "packedATile": true,
+        "kTile": "32 if register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTransAVec4TiledRegF32",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a", "b", "y", "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 64)", "y": "ceilDiv(genericM, 128)" }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_transB_f32_vec4",
+      "priority": 30,
+      "when": ["not present.bias", "genericShapeOk", "attrs.transA == 0", "attrs.transB == 1", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericM >= 64", "genericN >= 64", "genericK > 0", "genericK % 32 == 0", "genericN % 4 == 0", "transBVec4Blocks >= tunables.GENERIC_TRANSB_VEC4_MIN_BLOCKS", "ceilDiv(genericM, transBVec4BlockRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "16 <= device.limits.maxComputeWorkgroupSizeX", "16 <= device.limits.maxComputeWorkgroupSizeY", "256 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\"",
+        "K": "genericK",
+        "N": "genericN",
+        "blockRows": "transBVec4BlockRows",
+        "physicalTransposedB": true,
+        "kTile": "32 if register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16",
+        "packedATile": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTransBVec4TiledRegF32",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a", "b", "y", "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 64)", "y": "ceilDiv(genericM, transBVec4BlockRows)" }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_transB_f16_vec4",
+      "priority": 51,
+      "demoteWhen": ["genericTransBVec4DeepVariable32", "deepModelTilePreferred"],
+      "when": ["not present.bias", "genericShapeOk", "attrs.transA == 0", "attrs.transB == 1", "tensorDtypes.a == \"float16\"", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericM >= 64", "genericN >= 64", "genericK > 0", "genericK % 16 == 0", "genericN % 4 == 0", "transBVec4Blocks >= tunables.GENERIC_TRANSB_VEC4_MIN_BLOCKS", "ceilDiv(genericM, transBVec4BlockRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "16 <= device.limits.maxComputeWorkgroupSizeX", "16 <= device.limits.maxComputeWorkgroupSizeY", "256 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "scalar": "\"f16\"",
+        "vectorScalar": "\"vec4<f16>\"",
+        "K": "genericK",
+        "N": "genericN",
+        "blockRows": "transBVec4BlockRows",
+        "physicalTransposedB": true,
+        "kTile": "32 if genericK % 32 == 0 and register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTransBVec4TiledRegF16",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a", "b", "y", "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 64)", "y": "ceilDiv(genericM, transBVec4BlockRows)" }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_transB_f16_vec4_wg8",
+      "priority": 52,
+      "demoteWhen": ["genericTransBVec4DeepVariable32", "deepModelTilePreferred"],
+      "when": ["not present.bias", "genericShapeOk", "attrs.transA == 0", "attrs.transB == 1", "tensorDtypes.a == \"float16\"", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericM >= 64", "genericN >= 64", "genericK > 0", "genericK % 16 == 0", "genericN % 4 == 0", "transBVec4Blocks128 >= tunables.GENERIC_TRANSB_VEC4_MIN_BLOCKS * 2", "transBVec4Blocks128 <= tunables.GENERIC_TRANSB_F16_SMALL_TILE_MAX_BLOCKS", "ceilDiv(genericM, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "8 <= device.limits.maxComputeWorkgroupSizeX", "8 <= device.limits.maxComputeWorkgroupSizeY", "64 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "scalar": "\"f16\"",
+        "vectorScalar": "\"vec4<f16>\"",
+        "K": "genericK",
+        "N": "genericN",
+        "blockRows": 32,
+        "blockCols": 32,
+        "workgroupCols": 8,
+        "workgroupRows": 8,
+        "packedATile": true,
+        "physicalTransposedB": true,
+        "kTile": "32 if genericK % 32 == 0 and register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTransBVec4TiledRegF16Wg8",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a", "b", "y", "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 32)", "y": "ceilDiv(genericM, 32)" }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_notrans_vec4_splitk",
+      "priority": 17,
+      "when": ["not present.bias", "genericNoTransposeShapeOk", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "genericM >= 128", "genericN >= 64", "genericM * genericN >= tunables.GENERIC_REG_MIN_OUTPUTS", "genericK > 0", "genericN % 4 == 0", "ceilDiv(genericM, 128) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "16 <= device.limits.maxComputeWorkgroupSizeX", "16 <= device.limits.maxComputeWorkgroupSizeY", "256 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize", "genericK % 32 == 0", "genericSplitK >= 2", "genericSplitTiles <= tunables.GENERIC_SPLITK_MAX_TILES", "genericSplitK * genericM * genericN * 4 <= device.limits.maxStorageBufferBindingSize", "genericSplitK <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "demoteWhen": ["not (genericK < genericN or (genericM >= tunables.GENERIC_VEC4_LARGE_MIN_M and genericN >= tunables.GENERIC_VEC4_LARGE_MIN_N) or not genericWideSimdOk or genericConstrainedSimd8)"],
+      "derive": {
+        "scalar": "\"f32\"",
+        "K": "genericK",
+        "N": "genericN",
+        "kTile": "32 if register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16",
+        "packedATile": true,
+        "splitK": "genericSplitK",
+        "kPerSplit": "genericK / genericSplitK",
+        "split": "genericSplitK",
+        "workgroupSize": 256
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[genericSplitK * genericM * genericN]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "Gemm.GenericNoTransposeVec4TiledRegSplitK",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a_main", "b_main", "y_partial", "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 64)", "y": "ceilDiv(genericM, 128)", "z": "genericSplitK" }
+        },
+        {
+          "id": "combine",
+          "name": "Gemm.GenericNoTransposeVec4TiledRegSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": false },
+          "bindings": [
+            "partials",
+            "y_f32",
+            { "name": "params", "struct": [{ "name": "cols", "type": "u32", "value": "genericM * genericN" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((genericM * genericN), (256)), 65535)",
+            "y": "ceilDiv(ceilDiv((genericM * genericN), (256)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_notrans_vec4",
+      "priority": 16,
+      "when": ["not present.bias", "genericNoTransposeShapeOk", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "genericM >= 128", "genericN >= 64", "genericM * genericN >= tunables.GENERIC_REG_MIN_OUTPUTS", "genericK > 0", "genericK % 32 == 0", "genericN % 4 == 0", "ceilDiv(genericM, 128) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(genericN, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "16 <= device.limits.maxComputeWorkgroupSizeX", "16 <= device.limits.maxComputeWorkgroupSizeY", "256 <= device.limits.maxComputeInvocationsPerWorkgroup", "register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "demoteWhen": ["not (genericK < genericN or (genericM >= tunables.GENERIC_VEC4_LARGE_MIN_M and genericN >= tunables.GENERIC_VEC4_LARGE_MIN_N) or not genericWideSimdOk or genericConstrainedSimd8)"],
+      "derive": {
+        "scalar": "\"f32\"",
+        "K": "genericK",
+        "N": "genericN",
+        "kTile": "32 if register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 16",
+        "packedATile": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericNoTransposeVec4TiledReg",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": ["a_main", "b_main", { "arg": "y", "elementType": "vec4<f32>" }, "params"],
+          "dispatch": { "x": "ceilDiv(genericN, 64)", "y": "ceilDiv(genericM, 128)" }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_splitk",
+      "priority": 104,
+      "when": ["wave32Effective", "modelLayoutOk", "modelBuffersOk", "not present.bias", "args.M >= 2", "args.inFeatures >= tunables.SUBGROUP_MATRIX_SPLITK_MIN_K", "args.inFeatures % 32 == 0", "args.outFeatures % 64 == 0", "sgmatSplitK >= 2", "sgmatOutTiles < tunables.SUBGROUP_MATRIX_SPLITK_MAX_TILES", "sgmatSplitK * args.M * args.outFeatures * 4 <= device.limits.maxStorageBufferBindingSize", "sgmatSplitK <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "(tensorDtypes.y == \"float32\" or device.features.has(\"shader-f16\"))", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "ceilDiv(args.M, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "fixedSgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else \"f32\"",
+        "splitK": "sgmatSplitK",
+        "kPerSplit": "args.inFeatures / sgmatSplitK",
+        "outputBuffer": "\"partials\"",
+        "outScalar": "\"f32\"",
+        "split": "sgmatSplitK",
+        "workgroupSize": 256
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[sgmatSplitK * args.M * args.outFeatures]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "GemmModelSubgroupMatrixSplitK",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "partials_f32", "params_m"],
+          "dispatch": { "x": "ceilDiv(args.outFeatures, 64)", "y": "ceilDiv(args.M, 32)", "z": "sgmatSplitK" }
+        },
+        {
+          "id": "combine",
+          "name": "GemmModelSubgroupMatrixSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "tensorDtypes.y == \"float16\"" },
+          "bindings": ["partials", "y_bulk", "params_cols"],
+          "dispatch": {
+            "x": "min(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "y": "ceilDiv(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_bias_splitk",
+      "priority": 104,
+      "when": ["wave32Effective", "modelLayoutOk", "modelBuffersOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "args.M >= 2", "args.inFeatures >= tunables.SUBGROUP_MATRIX_SPLITK_MIN_K", "args.inFeatures % 32 == 0", "args.outFeatures % 64 == 0", "sgmatSplitK >= 2", "sgmatOutTiles < tunables.SUBGROUP_MATRIX_SPLITK_MAX_TILES", "sgmatSplitK * args.M * args.outFeatures * 4 <= device.limits.maxStorageBufferBindingSize", "sgmatSplitK <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "(tensorDtypes.y == \"float32\" or device.features.has(\"shader-f16\"))", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.bias)", "f16Ok(tensorDtypes.y)", "ceilDiv(args.M, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "fixedSgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else \"f32\"",
+        "splitK": "sgmatSplitK",
+        "kPerSplit": "args.inFeatures / sgmatSplitK",
+        "outputBuffer": "\"partials\"",
+        "outScalar": "\"f32\"",
+        "split": "sgmatSplitK",
+        "workgroupSize": 256,
+        "biasCols": "args.outFeatures",
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\""
+      },
+      "intermediates": [{ "id": "partials", "dtype": "float32", "shape": "[sgmatSplitK * args.M * args.outFeatures]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "GemmModelSubgroupMatrixSplitKBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "partials_f32", "params_m"],
+          "dispatch": { "x": "ceilDiv(args.outFeatures, 64)", "y": "ceilDiv(args.M, 32)", "z": "sgmatSplitK" }
+        },
+        {
+          "id": "combine",
+          "name": "GemmModelSubgroupMatrixSplitKCombineBias",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "tensorDtypes.y == \"float16\"", "addBias": true },
+          "bindings": ["partials", "bias", "y_bulk", "params_cols"],
+          "dispatch": {
+            "x": "min(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "y": "ceilDiv(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_m_tail_split",
+      "priority": 103,
+      "when": ["wave32Effective", "modelLayoutOk", "modelBuffersOk", "not present.bias", "args.M >= 1024", "args.M % 64 != 0", "args.inFeatures >= 1024", "args.inFeatures % 32 == 0", "args.outFeatures >= 64", "args.outFeatures % 64 == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "floor(args.M / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "device.limits.maxComputeWorkgroupStorageSize >= 20480"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "xScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "vectorBStaging": true
+      },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "GemmModelSubgroupMatrixMTailBulk",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "derive": {
+            "tileM": 64,
+            "tileN": 64,
+            "tileK": 32,
+            "directAStorage": true,
+            "doubleBufferedB": true,
+            "directStore": true
+          },
+          "bindings": ["x", "w_b", "y_bulk"],
+          "dispatch": { "x": "ceilDiv(args.outFeatures, 64)", "y": "floor(args.M / 64)" }
+        },
+        {
+          "id": "tail",
+          "name": "GemmModelSubgroupMatrixMTail",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "derive": {
+            "tileM": 32,
+            "tileN": 64,
+            "tileK": 32,
+            "rowTileBase": "floor(args.M / 64) * 2",
+            "directStore": false
+          },
+          "bindings": ["x", "w_b", "y_bulk", "params_m"],
+          "dispatch": { "x": "ceilDiv(args.outFeatures, 64)", "y": "ceilDiv(args.M % 64, 32)" }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_n_tail_split",
+      "priority": 102,
+      "when": ["wave32Effective", "modelLayoutOk", "not present.bias", "args.M >= 64", "args.M % 64 == 0", "args.inFeatures >= 32", "args.inFeatures % 32 == 0", "args.outFeatures >= 4096", "args.outFeatures % 64 != 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "ceilDiv(args.M, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "floor(args.outFeatures / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "nTailSplitResourcesFit", "modelBuffersOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "wScalar": "\"f32\"",
+        "xScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "vectorBStaging": true
+      },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "GemmModelSubgroupMatrixNTailBulk",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "derive": {
+            "tileM": 64,
+            "tileN": 64,
+            "tileK": 32,
+            "directAStorage": true,
+            "doubleBufferedB": true,
+            "tailSafe": false,
+            "directStore": true,
+            "columnTileBase": 0
+          },
+          "bindings": ["x", "w_b", "y_bulk"],
+          "dispatch": {
+            "x": "floor(args.outFeatures / 64)",
+            "y": "min(ceilDiv((args.M), (64)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((args.M), (64)), DISPATCH_FOLD_WIDTH)"
+          }
+        },
+        {
+          "id": "tail",
+          "name": "GemmModelSubgroupMatrixNTail",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "derive": {
+            "tileM": 32,
+            "tileN": 32,
+            "tileK": 32,
+            "tailSafe": true,
+            "directStore": false,
+            "columnTileBase": "floor(args.outFeatures / 64) * 2"
+          },
+          "bindings": ["x", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "ceilDiv(args.outFeatures % 64, 32)",
+            "y": "min(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_tail",
+      "priority": 101,
+      "when": ["wave32Effective", "modelLayoutOk", "not present.bias", "args.M >= 32", "args.inFeatures >= 32", "args.outFeatures >= 64", "(args.inFeatures % 32 != 0 or args.outFeatures % 64 != 0)", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "(tensorDtypes.y == \"float32\" or device.features.has(\"shader-f16\"))", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "ceilDiv(args.M, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "tailSgmatResourcesFit", "modelBuffersOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else \"f32\"",
+        "tailSafe": true,
+        "tileN": "tailSgmatTileN"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelSubgroupMatrixTail",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "ceilDiv(args.outFeatures, tailSgmatTileN)",
+            "y": "min(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix",
+      "priority": 100,
+      "when": ["wave32Effective", "modelLayoutOk", "not present.bias", "args.M > 0", "args.inFeatures > 0", "args.outFeatures > 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "((tensorDtypes.y == \"float16\" and device.features.has(\"shader-f16\") and args.M >= 2) or (tensorDtypes.y == \"float32\" and args.M >= 32))", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "args.inFeatures % 32 == 0", "args.outFeatures % 64 == 0", "ceilDiv(args.M, modelSgmatTileM) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, modelSgmatTileN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "modelSgmatResourcesFit", "modelBuffersOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else \"f32\"",
+        "tileM": "modelSgmatTileM",
+        "tileN": "modelSgmatTileN",
+        "tileK": "modelSgmatTileK",
+        "directAStorage": "modelSgmatDirectA",
+        "doubleBufferedB": "modelSgmatDoubleB",
+        "directStore": "modelSgmatDirectStore",
+        "vectorBStaging": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelSubgroupMatrix",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w_b", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "ceilDiv(args.outFeatures, modelSgmatTileN)",
+            "y": "min(ceilDiv((args.M), (modelSgmatTileM)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((args.M), (modelSgmatTileM)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_subgroup_matrix_bias",
+      "priority": 100,
+      "when": ["wave32Effective", "modelLayoutOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "args.M > 0", "args.inFeatures > 0", "args.outFeatures > 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "((tensorDtypes.y == \"float16\" and device.features.has(\"shader-f16\") and args.M >= 2) or (tensorDtypes.y == \"float32\" and args.M >= 32))", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.bias)", "f16Ok(tensorDtypes.y)", "args.inFeatures % 32 == 0", "args.outFeatures % 64 == 0", "ceilDiv(args.M, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(args.outFeatures, biasSgmatTileN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "biasSgmatResourcesFit", "modelBuffersOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": true,
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\"",
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" and tensorDtypes.b == \"float16\" else \"f32\"",
+        "tileN": "biasSgmatTileN",
+        "vectorBStaging": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelSubgroupMatrixBias",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w_b", "bias", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "ceilDiv(args.outFeatures, biasSgmatTileN)",
+            "y": "min(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((args.M), (32)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_band_transb",
+      "priority": 70,
+      "when": ["not present.bias", "modelLayoutOk", "modelBuffersOk", "args.M >= 2", "args.M <= tunables.MODEL_BAND_MAX_ROWS", "args.inFeatures > 0", "args.inFeatures % 4 == 0", "args.outFeatures > 0", "args.outFeatures % 4 == 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "modelBandResourcesFit", "modelBandKSplits == 1"],
+      "derive": {
+        "hasBias": false,
+        "xVec4Type": "\"vec4<f16>\" if tensorDtypes.a == \"float16\" else \"vec4<f32>\"",
+        "yVec4Type": "\"vec4<f16>\" if tensorDtypes.y == \"float16\" else \"vec4<f32>\"",
+        "K": "args.inFeatures",
+        "N": "args.outFeatures",
+        "slices": "modelBandSlices",
+        "rowsPerLane": "modelBandRowsPerLane",
+        "rowGroups": "modelBandRowGroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelBandTransB",
+          "shader": "gemm-model-band-transb.wgsl.jinja",
+          "bindings": ["x_a", "w_b", "y_main", "params_m"],
+          "dispatch": { "x": "modelBandColumnWorkgroups" }
+        }
+      ]
+    },
+    {
+      "id": "model_band_transb_splitk",
+      "priority": 70,
+      "when": ["not present.bias", "modelLayoutOk", "modelBuffersOk", "args.M >= 2", "args.M <= tunables.MODEL_BAND_MAX_ROWS", "args.inFeatures > 0", "args.inFeatures % 4 == 0", "args.outFeatures > 0", "args.outFeatures % 4 == 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "modelBandResourcesFit", "modelBandKSplits >= 2", "modelBandKSplits * args.M * args.outFeatures * 4 <= device.limits.maxStorageBufferBindingSize"],
+      "derive": {
+        "hasBias": false,
+        "xVec4Type": "\"vec4<f16>\" if tensorDtypes.a == \"float16\" else \"vec4<f32>\"",
+        "K": "args.inFeatures",
+        "N": "args.outFeatures",
+        "slices": "modelBandSlices",
+        "rowsPerLane": "modelBandRowsPerLane",
+        "rowGroups": "modelBandRowGroups",
+        "kSplits": "modelBandKSplits",
+        "split": "modelBandKSplits",
+        "workgroupSize": 256,
+        "biasCols": "args.outFeatures"
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[modelBandKSplits * args.M * args.outFeatures]" }
+      ],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "GemmModelBandTransBSplitK",
+          "shader": "gemm-model-band-transb.wgsl.jinja",
+          "bindings": ["x_a", "w_b", "y_partial", "params_m"],
+          "dispatch": { "x": "modelBandColumnWorkgroups", "y": "modelBandKSplits" }
+        },
+        {
+          "id": "combine",
+          "name": "GemmModelBandTransBSplitKCombine",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "tensorDtypes.y == \"float16\"", "addBias": false },
+          "bindings": ["partials", "y_bulk", "params_cols"],
+          "dispatch": {
+            "x": "min(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "y": "ceilDiv(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_band_transb_bias",
+      "priority": 70,
+      "when": ["present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == args.outFeatures", "modelLayoutOk", "modelBuffersOk", "args.M >= 2", "args.M <= tunables.MODEL_BAND_MAX_ROWS", "args.inFeatures > 0", "args.inFeatures % 4 == 0", "args.outFeatures > 0", "args.outFeatures % 4 == 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "f16Ok(tensorDtypes.bias)", "modelBandResourcesFit", "modelBandKSplits == 1"],
+      "derive": {
+        "hasBias": true,
+        "xVec4Type": "\"vec4<f16>\" if tensorDtypes.a == \"float16\" else \"vec4<f32>\"",
+        "yVec4Type": "\"vec4<f16>\" if tensorDtypes.y == \"float16\" else \"vec4<f32>\"",
+        "K": "args.inFeatures",
+        "N": "args.outFeatures",
+        "slices": "modelBandSlices",
+        "rowsPerLane": "modelBandRowsPerLane",
+        "rowGroups": "modelBandRowGroups",
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelBandTransBBias",
+          "shader": "gemm-model-band-transb.wgsl.jinja",
+          "bindings": ["x_a", "w_b", "bias", "y_main", "params_m"],
+          "dispatch": { "x": "modelBandColumnWorkgroups" }
+        }
+      ]
+    },
+    {
+      "id": "model_band_transb_splitk_bias",
+      "priority": 70,
+      "when": ["present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == args.outFeatures", "modelLayoutOk", "modelBuffersOk", "args.M >= 2", "args.M <= tunables.MODEL_BAND_MAX_ROWS", "args.inFeatures > 0", "args.inFeatures % 4 == 0", "args.outFeatures > 0", "args.outFeatures % 4 == 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "f16Ok(tensorDtypes.bias)", "modelBandResourcesFit", "modelBandKSplits >= 2", "modelBandKSplits * args.M * args.outFeatures * 4 <= device.limits.maxStorageBufferBindingSize"],
+      "derive": {
+        "hasBias": true,
+        "xVec4Type": "\"vec4<f16>\" if tensorDtypes.a == \"float16\" else \"vec4<f32>\"",
+        "K": "args.inFeatures",
+        "N": "args.outFeatures",
+        "slices": "modelBandSlices",
+        "rowsPerLane": "modelBandRowsPerLane",
+        "rowGroups": "modelBandRowGroups",
+        "kSplits": "modelBandKSplits",
+        "split": "modelBandKSplits",
+        "workgroupSize": 256,
+        "biasCols": "args.outFeatures",
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\""
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[modelBandKSplits * args.M * args.outFeatures]" }
+      ],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "GemmModelBandTransBSplitKBias",
+          "shader": "gemm-model-band-transb.wgsl.jinja",
+          "bindings": ["x_a", "w_b", "y_partial", "params_m"],
+          "dispatch": { "x": "modelBandColumnWorkgroups", "y": "modelBandKSplits" }
+        },
+        {
+          "id": "combine",
+          "name": "GemmModelBandTransBSplitKCombineBias",
+          "shader": "reduce-axis0-splitk-combine.wgsl.jinja",
+          "derive": { "op": "\"sum\"", "outputF16": "tensorDtypes.y == \"float16\"", "addBias": true },
+          "bindings": ["partials", "bias", "y_bulk", "params_cols"],
+          "dispatch": {
+            "x": "min(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "y": "ceilDiv(ceilDiv((args.M * args.outFeatures), (256)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f16_tiled",
+      "priority": 50,
+      "when": ["modelLayoutOk", "not present.bias", "args.M > 1", "args.inFeatures > 0", "args.outFeatures > 0", "args.inFeatures % 64 == 0", "tensorDtypes.a == \"float16\"", "tensorDtypes.b == \"float16\"", "(tensorDtypes.y == \"float16\" or tensorDtypes.y == \"float32\")", "modelTiledResourcesFit", "modelBuffersOk"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "hasBias": false,
+        "tileDtype": "\"f16\"",
+        "aScalar": "\"vec4<f16>\"",
+        "wScalar": "\"vec4<f16>\"",
+        "outputDtype": "tensorDtypes.y",
+        "kV4": "args.inFeatures / 4",
+        "mPerThread": "4",
+        "mTile": "32",
+        "nTile": "16",
+        "nPerThread": "4",
+        "outTile": "64",
+        "kTile": "64",
+        "kTileV4": "16",
+        "workgroupSize": "128",
+        "aTileElements": "512",
+        "bTileElements": "1024"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF16Tiled",
+          "shader": "dense-tiled-matmul.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / 32), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f16_tiled_bias",
+      "priority": 50,
+      "when": ["modelLayoutOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "args.M > 1", "args.inFeatures > 0", "args.outFeatures > 0", "args.inFeatures % 64 == 0", "tensorDtypes.a == \"float16\"", "tensorDtypes.b == \"float16\"", "(tensorDtypes.y == \"float16\" or tensorDtypes.y == \"float32\")", "modelTiledResourcesFit", "modelBuffersOk"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "hasBias": true,
+        "tileDtype": "\"f16\"",
+        "aScalar": "\"vec4<f16>\"",
+        "wScalar": "\"vec4<f16>\"",
+        "outputDtype": "tensorDtypes.y",
+        "kV4": "args.inFeatures / 4",
+        "mPerThread": "4",
+        "mTile": "32",
+        "nTile": "16",
+        "nPerThread": "4",
+        "outTile": "64",
+        "kTile": "64",
+        "kTileV4": "16",
+        "workgroupSize": "128",
+        "aTileElements": "512",
+        "bTileElements": "1024",
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF16TiledBias",
+          "shader": "dense-tiled-matmul.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "bias", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / 32), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_tiled_reg",
+      "priority": 31,
+      "when": ["modelLayoutOk", "not present.bias", "ceil(args.M / 64) * ceil(args.outFeatures / 64) >= 128", "args.outFeatures >= 1024", "args.inFeatures > 0", "args.inFeatures % 32 == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "ceil(args.M / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(args.outFeatures / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "registerTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": false,
+        "aScalar": "\"vec4<f32>\"",
+        "wScalar": "\"vec4<f32>\"",
+        "yScalar": "\"vec4<f32>\" if args.outFeatures % 4 == 0 else \"f32\"",
+        "vectorizedLoads": true,
+        "vectorizedOutput": "args.outFeatures % 4 == 0",
+        "blockCols": 64,
+        "blockRows": "128 if args.M >= 128 and args.M % 128 == 0 and register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 64",
+        "guardRows": "not (args.M >= 128 and args.M % 128 == 0 and register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize)",
+        "kTile": "32 if (args.M >= 128 and args.M % 128 == 0 and register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize) or ((args.M < 128 or args.M % 128 != 0) and register64Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize) else 16"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32TiledReg",
+          "shader": "gemm-dense-f32-tiled-reg.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / blockCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / blockRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_tiled_reg_bias",
+      "priority": 31,
+      "when": ["modelLayoutOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "ceil(args.M / 64) * ceil(args.outFeatures / 64) >= 128", "args.outFeatures >= 1024", "args.inFeatures > 0", "args.inFeatures % 32 == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.bias == \"float32\"", "tensorDtypes.y == \"float32\"", "ceil(args.M / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(args.outFeatures / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "registerTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": true,
+        "aScalar": "\"vec4<f32>\"",
+        "wScalar": "\"vec4<f32>\"",
+        "yScalar": "\"vec4<f32>\" if args.outFeatures % 4 == 0 else \"f32\"",
+        "vectorizedLoads": true,
+        "vectorizedOutput": "args.outFeatures % 4 == 0",
+        "blockCols": 64,
+        "blockRows": "128 if args.M >= 128 and args.M % 128 == 0 and register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize else 64",
+        "guardRows": "not (args.M >= 128 and args.M % 128 == 0 and register128Bk16StorageBytes <= device.limits.maxComputeWorkgroupStorageSize)",
+        "kTile": "32 if (args.M >= 128 and args.M % 128 == 0 and register128Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize) or ((args.M < 128 or args.M % 128 != 0) and register64Bk32StorageBytes <= device.limits.maxComputeWorkgroupStorageSize) else 16",
+        "bScalar": "\"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32TiledRegBias",
+          "shader": "gemm-dense-f32-tiled-reg.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "bias", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / blockCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / blockRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_reg_k_unaligned",
+      "priority": 16,
+      "when": ["modelLayoutOk", "not present.bias", "args.M > 1", "args.inFeatures > 0", "args.inFeatures % 32 != 0", "args.outFeatures >= 64", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "ceil(args.M / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(args.outFeatures / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "registerTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": false,
+        "aScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "vectorizedLoads": false,
+        "blockRows": 64,
+        "blockCols": 64,
+        "kTile": 16,
+        "guardRows": "args.M % blockRows != 0"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32RegKUnaligned",
+          "shader": "gemm-dense-f32-tiled-reg.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / blockCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / blockRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_reg_k_unaligned_bias",
+      "priority": 16,
+      "when": ["modelLayoutOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "args.M > 1", "args.inFeatures > 0", "args.inFeatures % 32 != 0", "args.outFeatures >= 64", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.bias == \"float32\"", "tensorDtypes.y == \"float32\"", "ceil(args.M / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(args.outFeatures / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "numel(shapes.bias) >= args.outFeatures", "registerTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": true,
+        "aScalar": "\"f32\"",
+        "wScalar": "\"f32\"",
+        "yScalar": "\"f32\"",
+        "vectorizedLoads": false,
+        "blockRows": 64,
+        "blockCols": 64,
+        "kTile": 16,
+        "guardRows": "args.M % blockRows != 0",
+        "bScalar": "\"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32RegKUnalignedBias",
+          "shader": "gemm-dense-f32-tiled-reg.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "bias", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / blockCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / blockRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_tiled",
+      "priority": 30,
+      "when": ["modelLayoutOk", "not present.bias", "args.M > 1", "args.inFeatures > 0", "args.outFeatures > 0", "args.inFeatures % 32 == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "modelTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": false,
+        "tileDtype": "\"f32\"",
+        "aScalar": "\"vec4<f32>\"",
+        "wScalar": "\"vec4<f32>\"",
+        "yScalar": "\"f32\"",
+        "kV4": "args.inFeatures / 4",
+        "mTile": "32",
+        "nTile": "4",
+        "nPerThread": "16",
+        "outTile": "64",
+        "kTile": "32",
+        "kTileV4": "8",
+        "workgroupSize": "128",
+        "aTileElements": "256",
+        "bTileElements": "512"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32Tiled",
+          "shader": "dense-tiled-matmul.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / 32), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_dense_f32_tiled_bias",
+      "priority": 30,
+      "when": ["modelLayoutOk", "present.bias", "ranks.bias == 1", "dim(shapes.bias, 0) == args.outFeatures", "args.M > 1", "args.inFeatures > 0", "args.outFeatures > 0", "args.inFeatures % 32 == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.bias == \"float32\"", "tensorDtypes.y == \"float32\"", "modelTiledResourcesFit", "modelBuffersOk"],
+      "derive": {
+        "hasBias": true,
+        "tileDtype": "\"f32\"",
+        "aScalar": "\"vec4<f32>\"",
+        "wScalar": "\"vec4<f32>\"",
+        "yScalar": "\"f32\"",
+        "kV4": "args.inFeatures / 4",
+        "mTile": "32",
+        "nTile": "4",
+        "nPerThread": "16",
+        "outTile": "64",
+        "kTile": "32",
+        "kTileV4": "8",
+        "workgroupSize": "128",
+        "aTileElements": "256",
+        "bTileElements": "512",
+        "bScalar": "\"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelDenseF32TiledBias",
+          "shader": "dense-tiled-matmul.wgsl.jinja",
+          "bindings": ["a_a_scalar", "w", "bias", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(ceil(args.outFeatures / 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(args.M / 32), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_scalar_bias",
+      "priority": 10,
+      "when": ["modelLayoutOk", "present.bias", "args.M > 0", "args.inFeatures > 0", "args.outFeatures > 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.bias)", "f16Ok(tensorDtypes.y)", "numel(shapes.bias) >= args.outFeatures", "args.M <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "gemvResourcesFit", "modelBuffersOk"],
+      "supersededBy": ["model_dense_f16_tiled_bias", "model_dense_f32_tiled_bias"],
+      "derive": {
+        "hasBias": true,
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\"",
+        "workgroupSize": "tunables.GEMV_WORKGROUP"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelScalarBias",
+          "shader": "gemm.model.wgsl.jinja",
+          "bindings": ["x", "w", { "arg": "bias", "name": "b", "elementType": "$bScalar" }, "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(args.outFeatures, DISPATCH_FOLD_WIDTH)",
+            "y": "args.M",
+            "z": "ceilDiv(args.outFeatures, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_m1_vec4",
+      "priority": 20,
+      "when": ["modelLayoutOk", "not present.bias", "args.M == 1", "args.inFeatures > 0", "args.outFeatures > 0", "args.outFeatures % 4 == 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "vec4GemvResourcesFit", "modelBuffersOk"],
+      "derive": { "workgroupSize": "tunables.GEMV_WORKGROUP" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelM1Vec4",
+          "shader": "gemv-contiguous.wgsl.jinja",
+          "bindings": ["x", "w", "y_bulk"],
+          "dispatch": {
+            "x": "min(args.outFeatures / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "1",
+            "z": "ceilDiv(args.outFeatures / 4, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "model_scalar",
+      "priority": 0,
+      "when": ["modelLayoutOk", "not present.bias", "args.M > 0", "args.inFeatures > 0", "args.outFeatures >= 0", "(tensorDtypes.y == \"float32\" or tensorDtypes.y == \"float16\")", "f16Ok(tensorDtypes.a)", "f16Ok(tensorDtypes.b)", "f16Ok(tensorDtypes.y)", "args.M <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "gemvResourcesFit", "modelBuffersOk"],
+      "supersededBy": ["model_dense_f16_tiled", "model_dense_f32_tiled"],
+      "derive": { "hasBias": false, "workgroupSize": "tunables.GEMV_WORKGROUP" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GemmModelScalar",
+          "shader": "gemm.model.wgsl.jinja",
+          "bindings": ["x", "w", "y_bulk", "params_m"],
+          "dispatch": {
+            "x": "min(args.outFeatures, DISPATCH_FOLD_WIDTH)",
+            "y": "args.M",
+            "z": "ceilDiv(args.outFeatures, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_matrix_generic_transA_split_tails",
+      "priority": 21,
+      "when": ["wave32Effective", "not present.bias", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "attrs.alpha == 1", "attrs.beta == 1", "attrs.transA == 1", "attrs.transB == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dim(shapes.y, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) >= 64", "dim(shapes.y, 1) >= 64", "dim(shapes.a, 0) >= 32", "dim(shapes.a, 0) % 32 != 0", "dim(shapes.y, 0) % 64 != 0", "dim(shapes.y, 1) % 64 != 0", "floor(dim(shapes.y, 0) / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "floor(dim(shapes.y, 1) / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "genericTransASgmatResourcesFit", "tailCorrectionResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "tileM": 64,
+        "tileN": 64,
+        "tileK": 32,
+        "matrixInputsTransposed": true,
+        "tailSafe": false,
+        "kLoopEnd": "floor(dim(shapes.a, 0) / 32) * 32",
+        "inFeatures": "dim(shapes.a, 0)",
+        "outFeatures": "dim(shapes.y, 1)"
+      },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "Gemm.GenericSubgroupMatrixTransABulk",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "derive": { "directStore": true, "columnTileBase": 0, "rowTileBase": 0 },
+          "bindings": ["x_f32", "w_f32", "y_f32", "params_bulk"],
+          "dispatch": { "x": "floor(dim(shapes.y, 1) / 64)", "y": "floor(dim(shapes.y, 0) / 64)" }
+        },
+        {
+          "id": "k_tail_correction",
+          "name": "Gemm.GenericTransAKTailCorrection",
+          "shader": "gemm-transa-tail-correction.wgsl.jinja",
+          "derive": {
+            "N": "dim(shapes.y, 1)",
+            "K": "dim(shapes.a, 0)",
+            "colBase": 0,
+            "colCount": "floor(dim(shapes.y, 1) / 64) * 64",
+            "kBegin": "floor(dim(shapes.a, 0) / 32) * 32",
+            "addExisting": true
+          },
+          "bindings": [
+            "x_f32",
+            "w_f32",
+            "y_f32",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" },
+                { "name": "rowBase", "type": "u32", "value": "0" },
+                { "name": "rowCount", "type": "u32", "value": "floor(dim(shapes.y, 0) / 64) * 64" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(((floor(dim(shapes.y, 0) / 64) * 64) * (floor(dim(shapes.y, 1) / 64) * 64)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "y": "ceilDiv(ceilDiv(((floor(dim(shapes.y, 0) / 64) * 64) * (floor(dim(shapes.y, 1) / 64) * 64)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "column_fringe",
+          "name": "Gemm.GenericTransAColumnFringe",
+          "shader": "gemm-transa-tail-correction.wgsl.jinja",
+          "derive": {
+            "N": "dim(shapes.y, 1)",
+            "K": "dim(shapes.a, 0)",
+            "colBase": "floor(dim(shapes.y, 1) / 64) * 64",
+            "colCount": "dim(shapes.y, 1) % 64",
+            "kBegin": 0,
+            "addExisting": false
+          },
+          "bindings": [
+            "x_f32",
+            "w_f32",
+            "y_f32",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" },
+                { "name": "rowBase", "type": "u32", "value": "0" },
+                { "name": "rowCount", "type": "u32", "value": "floor(dim(shapes.y, 0) / 64) * 64" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(((floor(dim(shapes.y, 0) / 64) * 64) * (dim(shapes.y, 1) % 64)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "y": "ceilDiv(ceilDiv(((floor(dim(shapes.y, 0) / 64) * 64) * (dim(shapes.y, 1) % 64)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "row_fringe",
+          "name": "Gemm.GenericTransARowFringe",
+          "shader": "gemm-transa-tail-correction.wgsl.jinja",
+          "derive": {
+            "N": "dim(shapes.y, 1)",
+            "K": "dim(shapes.a, 0)",
+            "colBase": 0,
+            "colCount": "dim(shapes.y, 1)",
+            "kBegin": 0,
+            "addExisting": false
+          },
+          "bindings": [
+            "x_f32",
+            "w_f32",
+            "y_f32",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "dim(shapes.y, 0)" },
+                { "name": "rowBase", "type": "u32", "value": "floor(dim(shapes.y, 0) / 64) * 64" },
+                { "name": "rowCount", "type": "u32", "value": "dim(shapes.y, 0) % 64" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(((dim(shapes.y, 0) % 64) * dim(shapes.y, 1)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "y": "ceilDiv(ceilDiv(((dim(shapes.y, 0) % 64) * dim(shapes.y, 1)), (tunables.TAIL_WORKGROUP)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_matrix_generic_transA",
+      "priority": 20,
+      "when": ["wave32Effective", "not present.bias", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "attrs.alpha == 1", "attrs.beta == 1", "attrs.transA == 1", "attrs.transB == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dim(shapes.y, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) >= 64", "dim(shapes.y, 1) >= 64", "dim(shapes.a, 0) >= 32", "dim(shapes.y, 0) % 64 == 0", "dim(shapes.y, 1) % 64 == 0", "dim(shapes.a, 0) % 32 == 0", "ceilDiv(dim(shapes.y, 0), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 1), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "genericTransASgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "tileM": 64,
+        "tileN": 64,
+        "tileK": 32,
+        "matrixInputsTransposed": true,
+        "tailSafe": false,
+        "directStore": true,
+        "inFeatures": "dim(shapes.a, 0)",
+        "outFeatures": "dim(shapes.y, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericSubgroupMatrixTransA",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "y_f32", "params_bulk"],
+          "dispatch": { "x": "ceil(dim(shapes.y, 1) / 64)", "y": "ceil(dim(shapes.y, 0) / 64)" }
+        }
+      ],
+      "demoteWhen": ["false"]
+    },
+    {
+      "id": "subgroup_matrix_generic_transA_preferred",
+      "priority": 31,
+      "when": ["wave32Effective", "not present.bias", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "attrs.alpha == 1", "attrs.beta == 1", "attrs.transA == 1", "attrs.transB == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "dim(shapes.a, 0) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.a, 1)", "dim(shapes.y, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) >= 64", "dim(shapes.y, 1) >= 64", "dim(shapes.a, 0) >= 32", "dim(shapes.y, 0) % 64 == 0", "dim(shapes.y, 1) % 64 == 0", "dim(shapes.a, 0) % 32 == 0", "ceilDiv(dim(shapes.y, 0), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 1), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "genericTransASgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "tileM": 64,
+        "tileN": 64,
+        "tileK": 32,
+        "matrixInputsTransposed": true,
+        "tailSafe": false,
+        "directStore": true,
+        "inFeatures": "dim(shapes.a, 0)",
+        "outFeatures": "dim(shapes.y, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericSubgroupMatrixTransA",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "y_f32", "params_bulk"],
+          "dispatch": { "x": "ceil(dim(shapes.y, 1) / 64)", "y": "ceil(dim(shapes.y, 0) / 64)" }
+        }
+      ],
+      "demoteWhen": ["transAVec4Blocks128 < tunables.GENERIC_TRANSA_SGMAT_MIN_BLOCKS or genericK < tunables.GENERIC_TRANSA_SGMAT_MIN_K"]
+    },
+    {
+      "id": "subgroup_matrix_generic_transB",
+      "priority": 20,
+      "when": ["wave32Effective", "not present.bias", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "attrs.alpha == 1", "attrs.beta == 1", "attrs.transA == 0", "attrs.transB == 1", "tensorDtypes.a == tensorDtypes.b", "tensorDtypes.a == tensorDtypes.y", "(tensorDtypes.a == \"float32\" or tensorDtypes.a == \"float16\")", "(tensorDtypes.a == \"float32\" or device.features.has(\"shader-f16\"))", "dim(shapes.a, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.b, 0)", "dim(shapes.y, 0) >= 64", "dim(shapes.y, 1) >= 64", "dim(shapes.a, 1) >= 32", "dim(shapes.y, 0) % 64 == 0", "dim(shapes.y, 1) % 64 == 0", "dim(shapes.a, 1) % 32 == 0", "ceilDiv(dim(shapes.y, 0), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 1), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "genericTransASgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [
+          { "componentType": "f16", "M": 8, "N": 8, "K": 8 },
+          { "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }
+        ]
+      },
+      "derive": {
+        "hasBias": false,
+        "mmaScalar": "\"f16\" if tensorDtypes.a == \"float16\" else \"f32\"",
+        "tileM": 64,
+        "tileN": 64,
+        "tileK": 32,
+        "aTransposedStorage": false,
+        "bTransposedStorage": false,
+        "tailSafe": false,
+        "directStore": "tensorDtypes.y == \"float32\"",
+        "inFeatures": "dim(shapes.a, 1)",
+        "outFeatures": "dim(shapes.y, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericSubgroupMatrixTransB",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x", "w", "y_bulk", "params_bulk"],
+          "dispatch": { "x": "ceil(dim(shapes.y, 1) / 64)", "y": "ceil(dim(shapes.y, 0) / 64)" }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_matrix_generic_notrans",
+      "priority": 20,
+      "when": ["wave32Effective", "not present.bias", "ranks.a == 2", "ranks.b == 2", "ranks.y == 2", "attrs.alpha == 1", "attrs.beta == 1", "attrs.transA == 0", "attrs.transB == 0", "tensorDtypes.a == \"float32\"", "tensorDtypes.b == \"float32\"", "tensorDtypes.y == \"float32\"", "dim(shapes.a, 1) == dim(shapes.b, 0)", "dim(shapes.y, 0) == dim(shapes.a, 0)", "dim(shapes.y, 1) == dim(shapes.b, 1)", "dim(shapes.y, 0) >= 64", "dim(shapes.y, 1) >= 64", "dim(shapes.a, 1) >= 32", "dim(shapes.y, 0) % 64 == 0", "dim(shapes.y, 1) % 64 == 0", "dim(shapes.a, 1) % 32 == 0", "ceilDiv(dim(shapes.y, 0), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 1), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "genericTransASgmatResourcesFit"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasBias": false,
+        "yScalar": "\"f32\"",
+        "mmaScalar": "\"f32\"",
+        "tileM": 64,
+        "tileN": 64,
+        "tileK": 32,
+        "aTransposedStorage": false,
+        "bTransposedStorage": true,
+        "tailSafe": false,
+        "directStore": true,
+        "inFeatures": "dim(shapes.a, 1)",
+        "outFeatures": "dim(shapes.y, 1)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericSubgroupMatrixNoTrans",
+          "shader": "gemm-subgroup-matrix.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "y_f32", "params_bulk"],
+          "dispatch": { "x": "ceil(dim(shapes.y, 1) / 64)", "y": "ceil(dim(shapes.y, 0) / 64)" }
+        }
+      ]
+    },
+    {
+      "id": "generic_m1_vec4",
+      "priority": 25,
+      "when": ["genericGemvOk"],
+      "derive": { "inFeatures": "genericK", "outFeatures": "genericN", "workgroupSize": "tunables.GEMV_WORKGROUP" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericM1Vec4",
+          "shader": "gemv-contiguous.wgsl.jinja",
+          "bindings": ["x", "w", "y_bulk"],
+          "dispatch": {
+            "x": "min(genericN / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "1",
+            "z": "ceilDiv(genericN / 4, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_m1_vec4_bias",
+      "priority": 26,
+      "when": ["genericGemvBiasOk"],
+      "derive": {
+        "hasBias": true,
+        "bScalar": "\"f16\" if tensorDtypes.bias == \"float16\" else \"f32\"",
+        "inFeatures": "genericK",
+        "outFeatures": "genericN",
+        "workgroupSize": "tunables.GEMV_WORKGROUP"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericM1Vec4Bias",
+          "shader": "gemv-contiguous.wgsl.jinja",
+          "bindings": ["x", "w", "bias", "y_bulk"],
+          "dispatch": {
+            "x": "min(genericN / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "1",
+            "z": "ceilDiv(genericN / 4, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "priority": 5,
+      "when": ["not modelLayoutOk", "not present.bias", "f16Ok(dtypes.T)", "genericShapeOk", "genericScalarResourcesFit"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm",
+          "shader": "gemm.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "y" }, "params_main"],
+          "dispatch": {
+            "x": "tileDispatchX",
+            "y": "min(ceilDiv((genericM), (tunables.TILE)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((genericM), (tunables.TILE)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_bias",
+      "priority": 12,
+      "when": ["not modelLayoutOk", "f16Ok(dtypes.T)", "genericShapeOk", "genericRowBiasOk or genericScalarBiasOk or genericColumnBiasOk or genericMatrixBiasOk", "genericScalarResourcesFit"],
+      "derive": {
+        "hasBias": true,
+        "scalarBias": "genericScalarBiasOk",
+        "matrixBias": "genericMatrixBiasOk",
+        "columnBias": "genericColumnBiasOk"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm",
+          "shader": "gemm.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "bias" }, { "arg": "y" }, "params_gemm"],
+          "dispatch": {
+            "x": "tileDispatchX",
+            "y": "min(ceilDiv((genericM), (tunables.TILE)), DISPATCH_FOLD_WIDTH)",
+            "z": "ceilDiv(ceilDiv((genericM), (tunables.TILE)), DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic",
+      "priority": 15,
+      "when": ["not present.bias", "genericShapeOk", "f16Ok(tensorDtypes.a)", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericM >= tunables.GENERIC_REG_MIN_M", "genericN >= tunables.GENERIC_REG_MIN_N", "genericM * genericN >= tunables.GENERIC_REG_MIN_OUTPUTS", "genericRegisterResourcesFit"],
+      "derive": { "hasBias": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTiledReg",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "y" }, "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv(genericN, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(genericM, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "reg_generic_bias",
+      "priority": 15,
+      "when": ["present.bias", "genericShapeOk", "f16Ok(tensorDtypes.a)", "tensorDtypes.b == tensorDtypes.a", "tensorDtypes.bias == tensorDtypes.a", "tensorDtypes.y == tensorDtypes.a", "genericRowBiasOk or genericScalarBiasOk or genericColumnBiasOk or genericMatrixBiasOk", "genericM >= tunables.GENERIC_REG_MIN_M", "genericN >= tunables.GENERIC_REG_MIN_N", "genericM * genericN >= tunables.GENERIC_REG_MIN_OUTPUTS", "genericRegisterResourcesFit"],
+      "derive": {
+        "hasBias": true,
+        "rowBias": "genericRowBiasOk",
+        "scalarBias": "genericScalarBiasOk",
+        "columnBias": "genericColumnBiasOk"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gemm.GenericTiledRegBias",
+          "shader": "gemm-epilogue-tiled-reg.wgsl.jinja",
+          "bindings": [{ "arg": "a" }, { "arg": "b" }, { "arg": "bias" }, { "arg": "y" }, "params_gemm"],
+          "dispatch": {
+            "x": "min(ceilDiv(genericN, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceilDiv(genericM, 64), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    }
+  ]
+}

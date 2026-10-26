@@ -1,0 +1,177 @@
+{
+  "cases": [
+    {
+      "name": "vector_positive",
+      "inputs": { "x": { "dtype": "float32", "shape": [32], "data": { "kind": "constant", "value": 4.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [32], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_scalar_positive",
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [9.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "special_values_neg_inf_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-1.0, -4.0, 0.0, 4.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "positive_subnormal_values_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float",
+        "notes": "Positive subnormal inputs should produce tiny nonzero square roots; zero-flushing loses the signal."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1e-45, 1e-40, 1e-39, 1e-38] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-27 } }
+    },
+    {
+      "name": "positive_subnormal_values_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float",
+        "notes": "On the scalar path, positive subnormal inputs should produce tiny nonzero square roots."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-45, 1e-40, 1e-39] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-27 } }
+    },
+    {
+      "name": "ort_float_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 4.0, 0.0, 9.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float16_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float",
+        "notes": "ORT TestUnaryFloat16 coverage paired with the float Sqrt fixture."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 4.0, 0.0, 9.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2], "tolerance": 0.00098 } }
+    },
+    {
+      "name": "negative_domain_nonfinite_and_signed_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float",
+        "notes": "Additional node-level domain edge: negative finite inputs produce NaN while zeros and infinities stay on the boundary."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 0.0, 4.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [6],
+          "tolerance": 0,
+          "allowNaN": true,
+          "data": { "kind": "values", "values": ["NaN", 0.0, 0.0, 2.0, "Infinity", "NaN"] }
+        }
+      }
+    },
+    {
+      "name": "large_exact_square_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sqrt_Float",
+        "notes": "Additional node-level edge with exactly representable large square inputs and exact integer roots."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [65536.0, 1048576.0, 16777216.0, 67108864.0, 268435456.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [256.0, 1024.0, 4096.0, 8192.0, 16384.0] }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sqrt_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 4.0, 9.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_sqrt",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sqrt" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, 0.9772778749465942, 0.9500884413719177, 0.15135720372200012, 0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, 0.2051582634449005, 0.3130677044391632, 0.8540957570075989, 2.5529897212982178, 0.653618574142456, 0.8644362092018127, 0.7421650290489197, 2.269754648208618, 1.4543657302856445, 0.04575851559638977, 0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, 0.8877857327461243, 1.980796456336975, 0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, 0.38732680678367615, 0.302302747964859, 1.0485529899597168, 1.420017957687378, 1.7062702178955078, 1.950775384902954, 0.5096521973609924, 0.4380742907524109, 1.2527953386306763, 0.7774903774261475, 1.6138978004455566, 0.21274028718471527, 0.8954665660858154, 0.38690251111984253, 0.5108051300048828, 1.18063223361969, 0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, 0.6343221068382263, 0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_sqrt_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sqrt_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 4.0, 9.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_scalar_fallback_negative_and_nan",
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [-4.0, -1.0, 0.0, 4.0, "NaN"] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5], "tolerance": 0.001, "allowNaN": true } }
+    },
+    {
+      "name": "f16_scalar_fallback_large_and_infinity",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [65504.0, 100.0, 1.0, 0.0, 0.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 1, "allowNaN": true } }
+    }
+  ]
+}

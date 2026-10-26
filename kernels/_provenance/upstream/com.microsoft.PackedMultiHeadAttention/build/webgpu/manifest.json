@@ -1,0 +1,667 @@
+{
+  "domain": "com.microsoft",
+  "name": "PackedMultiHeadAttention",
+  "sinceVersion": 1,
+  "inputs": {
+    "queryT": { "onnx": "query", "dtype": "T" },
+    "keyT": { "onnx": "key", "dtype": "T", "rank": 2, "optional": true },
+    "valueT": { "onnx": "value", "dtype": "T", "rank": 2, "optional": true },
+    "biasT": { "onnx": "bias", "dtype": "T", "rank": 1, "optional": true },
+    "tokenOffsetT": { "onnx": "token_offset", "dtype": "M", "rank": 2, "storage": "int32" },
+    "cumulativeSequenceLengthT": { "onnx": "cumulative_sequence_length", "dtype": "M", "rank": 1, "storage": "int32" },
+    "attentionBiasT": { "onnx": "attention_bias", "dtype": "T", "rank": 4, "optional": true }
+  },
+  "outputs": { "outputT": { "onnx": "output", "dtype": "T", "rank": 2, "shape": "[tokenCount, vHiddenSize]" } },
+  "attributes": { "num_heads": {}, "scale": {} },
+  "attributeConstraints": { "num_heads": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["int32"] },
+  "tunables": { "CLUSTER_TILE_K": { "default": 16 }, "SCALAR_WORKGROUP_SIZE": { "default": 64 } },
+  "derive": {
+    "numHeads": "attrs.num_heads",
+    "qNumHeads": "numHeads",
+    "packedQkv": "ranks.queryT == 4",
+    "tokenCount": "dim(shapes.queryT, 0)",
+    "batchSize": "dim(shapes.tokenOffsetT, 0) if ranks.tokenOffsetT == 2 else 0",
+    "seqPad": "dim(shapes.tokenOffsetT, 1) if ranks.tokenOffsetT == 2 else 0",
+    "packedHeadDim": "dim(shapes.queryT, 3) if packedQkv else 0",
+    "hiddenSize": "numHeads * packedHeadDim if packedQkv else (dim(shapes.queryT, 1) if ranks.queryT == 2 else 0)",
+    "vHiddenSize": "hiddenSize if packedQkv else (dim(shapes.valueT, 1) if present.valueT and ranks.valueT == 2 else 0)",
+    "headDim": "hiddenSize / numHeads if numHeads > 0 and hiddenSize % numHeads == 0 else 0",
+    "vHeadDim": "vHiddenSize / numHeads if numHeads > 0 and vHiddenSize % numHeads == 0 else 0",
+    "attentionScale": "attrs.scale if has(attrs, \"scale\") else 0",
+    "qRowStride": "numHeads * 3 * headDim if packedQkv else hiddenSize",
+    "qHeadStride": "3 * headDim if packedQkv else headDim",
+    "kRowStride": "qRowStride if packedQkv else hiddenSize",
+    "kHeadStride": "qHeadStride if packedQkv else headDim",
+    "kOffset": "headDim if packedQkv else 0",
+    "vRowStride": "qRowStride if packedQkv else vHiddenSize",
+    "vHeadStride": "qHeadStride if packedQkv else vHeadDim",
+    "vOffset": "2 * headDim if packedQkv else 0",
+    "oRowStride": "vHiddenSize",
+    "oHeadStride": "vHeadDim",
+    "biasKOffset": "hiddenSize",
+    "biasVOffset": "2 * hiddenSize",
+    "attnBiasHeads": "dim(shapes.attentionBiasT, 1) if present.attentionBiasT and ranks.attentionBiasT == 4 else 0",
+    "maskSeqStride": "seqPad",
+    "maskHeadStride": "0 if attnBiasHeads == 1 else seqPad * seqPad",
+    "maskBatchStride": "0 if (not present.attentionBiasT) or ranks.attentionBiasT != 4 or dim(shapes.attentionBiasT, 0) == 1 else attnBiasHeads * seqPad * seqPad",
+    "dtypeOk": "tensorDtypes.outputT == tensorDtypes.queryT and (tensorDtypes.queryT == \"float32\" or tensorDtypes.queryT == \"float16\") and f16Ok(dtypes.T)",
+    "packedShapeOk": "packedQkv and not present.keyT and not present.valueT and dim(shapes.queryT, 1) == numHeads and dim(shapes.queryT, 2) == 3 and packedHeadDim > 0",
+    "separateShapeOk": "ranks.queryT == 2 and present.keyT and present.valueT and ranks.keyT == 2 and ranks.valueT == 2 and sameShape(shapes.keyT, shapes.queryT) and dim(shapes.valueT, 0) == tokenCount and tensorDtypes.keyT == tensorDtypes.queryT and tensorDtypes.valueT == tensorDtypes.queryT",
+    "scheduleOk": "ranks.tokenOffsetT == 2 and ranks.cumulativeSequenceLengthT == 1 and dim(shapes.cumulativeSequenceLengthT, 0) == batchSize + 1 and batchSize > 0 and seqPad > 0 and numel(shapes.tokenOffsetT) >= tokenCount",
+    "outputShapeOk": "ranks.outputT == 2 and dim(shapes.outputT, 0) == tokenCount and dim(shapes.outputT, 1) == vHiddenSize",
+    "biasOk": "present.biasT and ranks.biasT == 1 and dim(shapes.biasT, 0) == 2 * hiddenSize + vHiddenSize and tensorDtypes.biasT == tensorDtypes.queryT",
+    "attnBiasOk": "present.attentionBiasT and ranks.attentionBiasT == 4 and (dim(shapes.attentionBiasT, 0) == 1 or dim(shapes.attentionBiasT, 0) == batchSize) and (attnBiasHeads == 1 or attnBiasHeads == numHeads) and dim(shapes.attentionBiasT, 2) == seqPad and dim(shapes.attentionBiasT, 3) == seqPad and tensorDtypes.attentionBiasT == tensorDtypes.queryT",
+    "hasBias": "present.biasT",
+    "hasAttnBias": "present.attentionBiasT",
+    "baseContract": "dtypeOk and scheduleOk and outputShapeOk and numHeads > 0 and headDim > 0 and vHeadDim > 0 and tokenCount > 0 and (packedShapeOk or separateShapeOk)",
+    "usesF16": "tensorDtypes.queryT == \"float16\"",
+    "scalar": "\"f16\" if usesF16 else \"f32\"",
+    "outputScalar": "scalar",
+    "inputVec4": "\"vec4<f16>\" if usesF16 else \"vec4<f32>\"",
+    "qkvBytes": "2 if usesF16 else 4",
+    "packedStageBytes": "4 if usesF16 and present.biasT and vHeadDim != headDim else qkvBytes",
+    "clusterWidthAligned": "headDim % 16 == 0 and vHeadDim % 4 == 0",
+    "headDimV4": "headDim / 4",
+    "qRowStrideV4": "qRowStride / 4",
+    "qHeadStrideV4": "qHeadStride / 4",
+    "kRowStrideV4": "kRowStride / 4",
+    "kHeadStrideV4": "kHeadStride / 4",
+    "kOffsetV4": "kOffset / 4",
+    "vRowStrideV4": "vRowStride / 4",
+    "vHeadStrideV4": "vHeadStride / 4",
+    "vOffsetV4": "vOffset / 4",
+    "oRowStrideV4": "oRowStride / 4",
+    "oHeadStrideV4": "oHeadStride / 4",
+    "scalarWg": "tunables.SCALAR_WORKGROUP_SIZE",
+    "scalarBytes": "4 * scalarWg + 4 * vHeadDim + 12",
+    "scalarOk": "scalarWg <= device.limits.maxComputeInvocationsPerWorkgroup and scalarWg <= device.limits.maxComputeWorkgroupSizeX and scalarBytes <= device.limits.maxComputeWorkgroupStorageSize and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "clusterTileQ": "min(16, pow2ceil(tokenCount)) if vHeadDim != headDim else 16",
+    "clusterBaseLpq": "8 if headDim % 32 == 0 else 4",
+    "clusterTileK": "min(tunables.CLUSTER_TILE_K, pow2ceil(tokenCount)) if vHeadDim != headDim else tunables.CLUSTER_TILE_K",
+    "clusterTileBytes": "clusterTileK * (headDim + vHeadDim) * packedStageBytes",
+    "clusterLaneTarget": "min(32, max(clusterBaseLpq, pow2ceil(headDim / 16)), device.adapterInfo.subgroupMinSize, pow2ceil(floor(min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX) / clusterTileQ) + 1) / 2) if vHeadDim == headDim and clusterWidthAligned and clusterTileBytes <= device.limits.maxComputeWorkgroupStorageSize and device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize >= clusterBaseLpq else clusterBaseLpq",
+    "clusterLpq": "clusterLaneTarget if ceilDiv(headDim, 4 * clusterBaseLpq) >= 2 * ceilDiv(headDim, 4 * clusterLaneTarget) else clusterBaseLpq",
+    "clusterWg": "clusterTileQ * clusterLpq",
+    "clusterNosgBytes": "clusterTileBytes + 4 * clusterWg",
+    "clusterTiles": "ceilDiv(tokenCount, clusterTileQ)",
+    "clusterShapeOk": "clusterWidthAligned and clusterWg <= device.limits.maxComputeInvocationsPerWorkgroup and clusterWg <= device.limits.maxComputeWorkgroupSizeX and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "clusterOk": "clusterShapeOk and clusterTileBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterNosgOk": "clusterShapeOk and clusterNosgBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterSubgroupsOk": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize >= clusterLpq and device.adapterInfo.subgroupMinSize % clusterLpq == 0 and device.adapterInfo.subgroupMaxSize >= device.adapterInfo.subgroupMinSize and device.adapterInfo.subgroupMaxSize % clusterLpq == 0",
+    "portableLaneTarget": "min(64, pow2ceil(max(headDimV4, vHeadDim / 4) / 4), device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "portableLpq": "max(clusterLpq, pow2ceil(portableLaneTarget + 1) / 2) if vHeadDim != headDim else (64 if portableLaneTarget >= 64 and headDimV4 % 64 == 0 else (32 if portableLaneTarget >= 32 and headDimV4 % 32 == 0 else (16 if portableLaneTarget >= 16 and headDimV4 % 16 == 0 else clusterLpq)))",
+    "portableTileQ": "min(clusterTileQ, pow2ceil(tokenCount), max(1, floor(min(clusterWg, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX) / portableLpq)))",
+    "portableWg": "portableTileQ * portableLpq",
+    "portableKeyCapacity": "max(1, floor(device.limits.maxComputeWorkgroupStorageSize / ((headDim + vHeadDim) * packedStageBytes + 4 * portableWg)))",
+    "portableTileK": "min(clusterTileK, pow2ceil(tokenCount), pow2ceil(portableKeyCapacity + 1) / 2)",
+    "clusterDistributedBytes": "portableTileK * (headDim + vHeadDim) * packedStageBytes + 4 * max(portableWg * portableTileK, 2 * portableWg + portableTileQ * portableTileK)",
+    "clusterDistributedOk": "clusterDistributedBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterUseDistributed": "clusterDistributedOk and (clusterLpq > 4 or vHeadDim != headDim)",
+    "portableTiles": "ceilDiv(tokenCount, portableTileQ if clusterUseDistributed else clusterTileQ)",
+    "clusterPortableOk": "clusterShapeOk and (clusterUseDistributed or clusterNosgOk) and portableWg <= device.limits.maxComputeInvocationsPerWorkgroup and portableWg <= device.limits.maxComputeWorkgroupSizeX and ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"
+  },
+  "bindings": {
+    "query": { "arg": "queryT", "name": "query" },
+    "key": { "arg": "keyT", "name": "key" },
+    "value": { "arg": "valueT", "name": "value" },
+    "bias": { "arg": "biasT", "name": "bias" },
+    "tokenOffset": { "arg": "tokenOffsetT", "name": "token_offset" },
+    "cumSeqLen": { "arg": "cumulativeSequenceLengthT", "name": "cumulative_sequence_length" },
+    "attnBias": { "arg": "attentionBiasT", "name": "attn_bias" },
+    "output": { "arg": "outputT", "name": "output" },
+    "query4": { "arg": "queryT", "name": "query", "elementType": "$inputVec4" },
+    "key4": { "arg": "keyT", "name": "key", "elementType": "$inputVec4" },
+    "value4": { "arg": "valueT", "name": "value", "elementType": "$inputVec4" },
+    "output4": { "arg": "outputT", "name": "output", "elementType": "$inputVec4" },
+    "params": {
+      "name": "params",
+      "struct": [
+        { "name": "tokenCount", "type": "u32", "value": "tokenCount" },
+        { "name": "seqPad", "type": "u32", "value": "seqPad" },
+        { "name": "scale", "type": "f32", "value": "attentionScale" }
+      ]
+    },
+    "paramsMask": {
+      "name": "params",
+      "struct": [
+        { "name": "tokenCount", "type": "u32", "value": "tokenCount" },
+        { "name": "seqPad", "type": "u32", "value": "seqPad" },
+        { "name": "scale", "type": "f32", "value": "attentionScale" },
+        { "name": "maskBatchStride", "type": "u32", "value": "maskBatchStride" },
+        { "name": "maskHeadStride", "type": "u32", "value": "maskHeadStride" },
+        { "name": "maskSeqStride", "type": "u32", "value": "maskSeqStride" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "packed_flash",
+      "priority": 40,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "not present.attentionBiasT", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "packed_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "not present.attentionBiasT", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "packed_serial",
+      "priority": 0,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "not present.attentionBiasT", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "attnBiasOk", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "packed_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "attnBiasOk", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "packed_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "packedShapeOk", "not present.biasT", "attnBiasOk", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "not present.attentionBiasT", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "bias", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "packed_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "not present.attentionBiasT", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "bias", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "packed_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "not present.attentionBiasT", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "bias", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_bias_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "attnBiasOk", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "packed_bias_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "attnBiasOk", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "packed_bias_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "packedShapeOk", "biasOk", "attnBiasOk", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "separate_flash",
+      "priority": 40,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "not present.attentionBiasT", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "separate_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "not present.attentionBiasT", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "separate_serial",
+      "priority": 0,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "not present.attentionBiasT", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "separate_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "attnBiasOk", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "separate_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "attnBiasOk", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "separate_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "separateShapeOk", "not present.biasT", "attnBiasOk", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "separate_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "not present.attentionBiasT", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "bias", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "separate_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "not present.attentionBiasT", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "bias", "tokenOffset", "cumSeqLen", "output4", "params"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "separate_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "not present.attentionBiasT", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "bias", "tokenOffset", "cumSeqLen", "output", "params"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "separate_bias_attn_bias_flash",
+      "priority": 40,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "attnBiasOk", "clusterOk", "clusterSubgroupsOk"],
+      "derive": { "useSubgroups": true, "LPQ": "clusterLpq", "TILE_Q": "clusterTileQ", "TILE_K": "clusterTileK" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(clusterTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(clusterTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "requires": { "features": ["subgroups"] },
+      "demoteWhen": ["vHeadDim != headDim and (tokenCount < clusterLpq or (clusterUseDistributed and portableLpq > clusterLpq))"]
+    },
+    {
+      "id": "separate_bias_attn_bias_flash_nosg",
+      "priority": 20,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "attnBiasOk", "clusterPortableOk"],
+      "derive": {
+        "useSubgroups": false,
+        "LPQ": "portableLpq if clusterUseDistributed else clusterLpq",
+        "TILE_Q": "portableTileQ if clusterUseDistributed else clusterTileQ",
+        "TILE_K": "portableTileK if clusterUseDistributed else clusterTileK",
+        "distributedSoftmax": "clusterUseDistributed"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Cluster",
+          "shader": "attn-packed-varlen-cluster.wgsl.jinja",
+          "bindings": ["query4", "key4", "value4", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output4", "paramsMask"],
+          "dispatch": {
+            "x": "min(portableTiles, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(portableTiles, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ],
+      "demoteWhen": ["vHeadDim != headDim and tokenCount < clusterLpq"]
+    },
+    {
+      "id": "separate_bias_attn_bias_serial",
+      "priority": 0,
+      "when": ["baseContract", "separateShapeOk", "biasOk", "attnBiasOk", "scalarOk"],
+      "derive": { "workgroupSize": "scalarWg" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "PackedMultiHeadAttention.Serial",
+          "shader": "attn-packed-varlen-scalar.wgsl.jinja",
+          "bindings": ["query", "key", "value", "bias", "tokenOffset", "cumSeqLen", "attnBias", "output", "paramsMask"],
+          "dispatch": {
+            "x": "min(tokenCount, DISPATCH_FOLD_WIDTH)",
+            "y": "numHeads",
+            "z": "ceilDiv(tokenCount, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    }
+  ]
+}

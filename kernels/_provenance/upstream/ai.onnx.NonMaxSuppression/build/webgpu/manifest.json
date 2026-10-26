@@ -1,0 +1,429 @@
+{
+  "domain": "ai.onnx",
+  "name": "NonMaxSuppression",
+  "sinceVersion": 11,
+  "inputs": {
+    "boxes": { "dtype": "T", "rank": 3 },
+    "scores": { "dtype": "T", "rank": 3 },
+    "max_output_boxes_per_class": {
+      "dtype": "M",
+      "rank": 0,
+      "optional": true,
+      "storage": "uint32",
+      "narrowing": "saturating"
+    },
+    "iou_threshold": { "dtype": "T", "rank": 0, "optional": true },
+    "score_threshold": { "dtype": "T", "rank": 0, "optional": true }
+  },
+  "outputs": { "selected_indices": { "dtype": "I", "rank": 2, "storage": "uint32" } },
+  "attributes": { "center_point_box": { "default": 0 } },
+  "attributeConstraints": { "center_point_box": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32"], "M": ["int64"], "I": ["int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "NMS_BITMASK_MAX_GROUPS": { "default": 4 },
+    "NMS_BITMASK_MIN_BOXES": { "default": 2048 },
+    "NMS_PRIVATE_MASK_MAX_WORDS": { "default": 4 },
+    "NMS_BITMASK_MIN_KEEP_RATIO": { "default": 2 }
+  },
+  "derive": {
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "validLayout": "ranks.boxes == 3 and ranks.scores == 3 and ranks.selected_indices == 2 and dim(shapes.boxes, 0) == dim(shapes.scores, 0) and dim(shapes.boxes, 1) == dim(shapes.scores, 2) and dim(shapes.boxes, 2) == 4 and dim(shapes.selected_indices, 1) == 3 and dim(shapes.selected_indices, 0) <= dim(shapes.boxes, 0) * dim(shapes.scores, 1) * dim(shapes.boxes, 1) and (present.max_output_boxes_per_class or dim(shapes.selected_indices, 0) == 0) and (not present.max_output_boxes_per_class or (ranks.max_output_boxes_per_class == 0 and numel(shapes.max_output_boxes_per_class) == 1)) and (not present.iou_threshold or (ranks.iou_threshold == 0 and numel(shapes.iou_threshold) == 1)) and (not present.score_threshold or (ranks.score_threshold == 0 and numel(shapes.score_threshold) == 1))",
+    "numGroups": "dim(shapes.boxes, 0) * dim(shapes.scores, 1)",
+    "maxKeep": "max(1, dim(shapes.boxes, 1))",
+    "parallelDispatchFits": "numGroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "parallelScratchFits": "numGroups * dim(shapes.boxes, 1) * 4 <= storageBufferLimit and numGroups * maxKeep * 4 <= storageBufferLimit and numGroups * 4 <= storageBufferLimit",
+    "bitmaskSortN": "pow2ceil(dim(shapes.boxes, 1))",
+    "bitmaskMaskWords": "ceilDiv(dim(shapes.boxes, 1), 32)",
+    "bitmaskPairBlocks": "ceilDiv(numGroups * dim(shapes.boxes, 1) * bitmaskMaskWords, tunables.WORKGROUP_SIZE)",
+    "bitmaskDispatchFits": "numGroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and bitmaskPairBlocks <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "bitmaskScratchFits": "4 * numGroups * bitmaskSortN <= storageBufferLimit and 4 * numGroups * bitmaskSortN * bitmaskMaskWords <= storageBufferLimit and numGroups * maxKeep * 4 <= storageBufferLimit and numGroups * 4 <= storageBufferLimit",
+    "workgroupSize": "tunables.WORKGROUP_SIZE",
+    "privateMaskWords": "ceilDiv(ceilDiv(dim(shapes.boxes, 1), max(1, workgroupSize)), 32)",
+    "privateSuppressionFits": "privateMaskWords >= 1 and privateMaskWords <= tunables.NMS_PRIVATE_MASK_MAX_WORDS and workgroupSize >= 1 and pow2ceil(workgroupSize) == workgroupSize and workgroupSize <= deviceWorkgroupCap and workgroupSize * 8 + 4 <= device.limits.maxComputeWorkgroupStorageSize",
+    "windowScratchFits": "4 * numGroups * bitmaskSortN <= storageBufferLimit and numGroups * maxKeep * 4 <= storageBufferLimit and numGroups * 4 <= storageBufferLimit",
+    "windowWorkgroupFits": "workgroupSize >= 32 and pow2ceil(workgroupSize) == workgroupSize and workgroupSize <= deviceWorkgroupCap and 4 * (workgroupSize * ceilDiv(workgroupSize, 32) + 5 * workgroupSize + 1) <= device.limits.maxComputeWorkgroupStorageSize",
+    "sortTileN": "min(bitmaskSortN, pow2ceil(max(1, floor(device.limits.maxComputeWorkgroupStorageSize / 8)) + 1) / 2)",
+    "bitmaskWorkgroupFits": "workgroupSize >= 32 and pow2ceil(workgroupSize) == workgroupSize and workgroupSize <= deviceWorkgroupCap and 4 * (bitmaskMaskWords + 2 * workgroupSize + workgroupSize * ceilDiv(workgroupSize, 32) + 1) <= device.limits.maxComputeWorkgroupStorageSize"
+  },
+  "when": ["validLayout"],
+  "bindings": {
+    "scores": { "elementType": "f32" },
+    "score_threshold": { "elementType": "f32", "length": 1 },
+    "params": {
+      "struct": [
+        { "name": "boxesPerBatch", "type": "u32", "value": "dim(shapes.boxes, 1)" },
+        { "name": "classes", "type": "u32", "value": "dim(shapes.scores, 1)" },
+        { "name": "centerPointBox", "type": "u32", "value": "attrs.center_point_box" }
+      ]
+    },
+    "boxes": { "elementType": "f32" },
+    "iou_threshold": { "elementType": "f32", "length": 1 },
+    "sortIdx": { "buffer": "read-only-storage", "elementType": "u32" },
+    "max_output_boxes_per_class": { "elementType": "u32", "length": 1 },
+    "groupSel": { "buffer": "storage", "elementType": "u32" },
+    "groupCount": { "buffer": "storage", "elementType": "u32" },
+    "groupSel_2": { "name": "groupSel", "buffer": "read-only-storage", "elementType": "u32" },
+    "groupCount_2": { "name": "groupCount", "buffer": "read-only-storage", "elementType": "u32" },
+    "selected_indices": { "elementType": "u32" },
+    "params_2": {
+      "name": "params",
+      "struct": [
+        { "name": "batches", "type": "u32", "value": "dim(shapes.boxes, 0)" },
+        { "name": "classes", "type": "u32", "value": "dim(shapes.scores, 1)" },
+        { "name": "capacity", "type": "u32", "value": "dim(shapes.selected_indices, 0)" }
+      ]
+    },
+    "params_3": {
+      "name": "params",
+      "struct": [
+        { "name": "batches", "type": "u32", "value": "dim(shapes.boxes, 0)" },
+        { "name": "boxesPerBatch", "type": "u32", "value": "dim(shapes.boxes, 1)" },
+        { "name": "classes", "type": "u32", "value": "dim(shapes.scores, 1)" },
+        { "name": "capacity", "type": "u32", "value": "dim(shapes.selected_indices, 0)" },
+        { "name": "centerPointBox", "type": "u32", "value": "attrs.center_point_box" }
+      ]
+    },
+    "params_5": {
+      "name": "params",
+      "struct": [{ "name": "boxesPerBatch", "type": "u32", "value": "dim(shapes.boxes, 1)" }]
+    }
+  },
+  "variants": [
+    {
+      "id": "rank_window",
+      "priority": 29,
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold", "dim(shapes.selected_indices, 0) > 0", "dim(shapes.boxes, 1) >= workgroupSize", "parallelDispatchFits", "windowScratchFits", "windowWorkgroupFits"],
+      "intermediates": [
+        { "id": "sortKey", "dtype": "uint32", "shape": "[numGroups * bitmaskSortN]" },
+        { "id": "sortIdx", "dtype": "uint32", "shape": "[numGroups * bitmaskSortN]" },
+        { "id": "groupSel", "dtype": "uint32", "shape": "[numGroups * maxKeep]" },
+        { "id": "groupCount", "dtype": "uint32", "shape": "[numGroups]" }
+      ],
+      "passes": [
+        {
+          "id": "sort",
+          "name": "NonMaxSuppression.BitmaskSort",
+          "shader": "nms-shared-sort.wgsl.jinja",
+          "derive": { "sortN": "bitmaskSortN", "sortTileN": "sortTileN", "compactSort": "true" },
+          "bindings": [
+            "scores",
+            "score_threshold",
+            { "name": "sortKey", "elementType": "u32" },
+            { "name": "sortIdx", "elementType": "u32" },
+            "params_5"
+          ],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "walk",
+          "name": "NonMaxSuppression.RankWindow",
+          "shader": "nms-window.wgsl.jinja",
+          "derive": { "sortN": "bitmaskSortN", "maxKeepSpec": "maxKeep" },
+          "bindings": ["boxes", "iou_threshold", "sortIdx", "max_output_boxes_per_class", "groupSel", "groupCount", "params"],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "compact",
+          "name": "NonMaxSuppression.GroupCompact",
+          "shader": "nms-groups-compact.wgsl.jinja",
+          "derive": { "maxKeepSpec": "maxKeep" },
+          "bindings": ["groupSel_2", "groupCount_2", "selected_indices", "params_2"],
+          "dispatch": { "x": 1 }
+        }
+      ],
+      "demoteWhen": ["dim(shapes.selected_indices, 0) < numGroups * log2ceil(bitmaskSortN) or dim(shapes.selected_indices, 0) * dim(shapes.boxes, 1) < numGroups * workgroupSize * workgroupSize"]
+    },
+    {
+      "id": "bitmask_low_occupancy",
+      "priority": 30,
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold", "dim(shapes.selected_indices, 0) > 0", "dim(shapes.boxes, 1) >= tunables.NMS_BITMASK_MIN_BOXES", "numGroups <= tunables.NMS_BITMASK_MAX_GROUPS", "bitmaskDispatchFits", "bitmaskScratchFits", "bitmaskWorkgroupFits"],
+      "intermediates": [
+        { "id": "sortKey", "dtype": "uint32", "shape": "[numGroups * bitmaskSortN]" },
+        { "id": "sortIdx", "dtype": "uint32", "shape": "[numGroups * bitmaskSortN]" },
+        { "id": "pairMask", "dtype": "uint32", "shape": "[numGroups * bitmaskSortN * bitmaskMaskWords]" },
+        { "id": "groupSel", "dtype": "uint32", "shape": "[numGroups * maxKeep]" },
+        { "id": "groupCount", "dtype": "uint32", "shape": "[numGroups]" }
+      ],
+      "passes": [
+        {
+          "id": "sort",
+          "name": "NonMaxSuppression.BitmaskSort",
+          "shader": "nms-shared-sort.wgsl.jinja",
+          "derive": { "sortN": "bitmaskSortN", "sortTileN": "sortTileN" },
+          "bindings": [
+            "scores",
+            "score_threshold",
+            { "name": "sortKey", "elementType": "u32" },
+            { "name": "sortIdx", "elementType": "u32" },
+            "params_5"
+          ],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "pairs",
+          "name": "NonMaxSuppression.BitmaskPairs",
+          "shader": "nms-bitmask.wgsl.jinja",
+          "derive": {
+            "stage": "\"pairs\"",
+            "sortN": "bitmaskSortN",
+            "maskWords": "bitmaskMaskWords",
+            "numGroupsSpec": "numGroups"
+          },
+          "bindings": ["boxes", "iou_threshold", "sortIdx", { "name": "pairMask", "elementType": "u32" }, "params"],
+          "dispatch": { "x": "bitmaskPairBlocks" }
+        },
+        {
+          "id": "walk",
+          "name": "NonMaxSuppression.BitmaskWalk",
+          "shader": "nms-bitmask.wgsl.jinja",
+          "derive": {
+            "stage": "\"walk\"",
+            "sortN": "bitmaskSortN",
+            "maskWords": "bitmaskMaskWords",
+            "maxKeepSpec": "maxKeep"
+          },
+          "bindings": [
+            "max_output_boxes_per_class",
+            "sortIdx",
+            { "name": "pairMask", "buffer": "read-only-storage", "elementType": "u32" },
+            "groupSel",
+            "groupCount",
+            "params_5"
+          ],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "compact",
+          "name": "NonMaxSuppression.GroupCompact",
+          "shader": "nms-groups-compact.wgsl.jinja",
+          "derive": { "maxKeepSpec": "maxKeep" },
+          "bindings": ["groupSel_2", "groupCount_2", "selected_indices", "params_2"],
+          "dispatch": { "x": 1 }
+        }
+      ],
+      "demoteWhen": ["tunables.NMS_BITMASK_MIN_KEEP_RATIO * dim(shapes.selected_indices, 0) < numGroups * dim(shapes.boxes, 1)"]
+    },
+    {
+      "id": "groups_parallel",
+      "priority": 25,
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold", "dim(shapes.selected_indices, 0) > 0", "dim(shapes.boxes, 1) > 0", "parallelDispatchFits", "parallelScratchFits"],
+      "intermediates": [
+        { "id": "suppressed", "dtype": "uint32", "shape": "[numGroups * dim(shapes.boxes, 1)]" },
+        { "id": "groupSel", "dtype": "uint32", "shape": "[numGroups * maxKeep]" },
+        { "id": "groupCount", "dtype": "uint32", "shape": "[numGroups]" }
+      ],
+      "passes": [
+        {
+          "id": "select",
+          "name": "NonMaxSuppression.GroupSelect",
+          "shader": "nms-groups-select.wgsl.jinja",
+          "derive": {
+            "maxKeepSpec": "maxKeep",
+            "useSubgroups": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+            "privateSuppression": false,
+            "localMaskWords": "privateMaskWords"
+          },
+          "bindings": [
+            "boxes",
+            "scores",
+            "max_output_boxes_per_class",
+            "iou_threshold",
+            "score_threshold",
+            { "name": "suppressed", "buffer": "storage", "elementType": "u32" },
+            "groupSel",
+            "groupCount",
+            "params"
+          ],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "compact",
+          "name": "NonMaxSuppression.GroupCompact",
+          "shader": "nms-groups-compact.wgsl.jinja",
+          "derive": { "maxKeepSpec": "maxKeep" },
+          "bindings": ["groupSel_2", "groupCount_2", "selected_indices", "params_2"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "groups_private",
+      "priority": 26,
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold", "dim(shapes.selected_indices, 0) > 0", "dim(shapes.boxes, 1) > 0", "parallelDispatchFits", "parallelScratchFits", "privateSuppressionFits"],
+      "intermediates": [
+        { "id": "groupSel", "dtype": "uint32", "shape": "[numGroups * maxKeep]" },
+        { "id": "groupCount", "dtype": "uint32", "shape": "[numGroups]" }
+      ],
+      "passes": [
+        {
+          "id": "select",
+          "name": "NonMaxSuppression.GroupSelect",
+          "shader": "nms-groups-select.wgsl.jinja",
+          "derive": {
+            "maxKeepSpec": "maxKeep",
+            "useSubgroups": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+            "privateSuppression": true,
+            "localMaskWords": "privateMaskWords"
+          },
+          "bindings": ["boxes", "scores", "max_output_boxes_per_class", "iou_threshold", "score_threshold", "groupSel", "groupCount", "params"],
+          "dispatch": { "x": "numGroups" }
+        },
+        {
+          "id": "compact",
+          "name": "NonMaxSuppression.GroupCompact",
+          "shader": "nms-groups-compact.wgsl.jinja",
+          "derive": { "maxKeepSpec": "maxKeep" },
+          "bindings": ["groupSel_2", "groupCount_2", "selected_indices", "params_2"],
+          "dispatch": { "x": 1 }
+        }
+      ],
+      "demoteWhen": ["dim(shapes.boxes, 1) < workgroupSize"]
+    },
+    {
+      "id": "serial_defaults",
+      "when": ["not present.max_output_boxes_per_class", "not present.iou_threshold", "not present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_max",
+      "when": ["present.max_output_boxes_per_class", "not present.iou_threshold", "not present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "max_output_boxes_per_class", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_iou",
+      "when": ["not present.max_output_boxes_per_class", "present.iou_threshold", "not present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "iou_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_score",
+      "when": ["not present.max_output_boxes_per_class", "not present.iou_threshold", "present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "score_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_max_iou",
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "not present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "max_output_boxes_per_class", "iou_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_max_score",
+      "when": ["present.max_output_boxes_per_class", "not present.iou_threshold", "present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "max_output_boxes_per_class", "score_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_iou_score",
+      "when": ["not present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "iou_threshold", "score_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_all_inputs",
+      "when": ["present.max_output_boxes_per_class", "present.iou_threshold", "present.score_threshold"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonMaxSuppression",
+          "shader": "non-max-suppression.wgsl.jinja",
+          "derive": {
+            "hasMaxOutput": "present.max_output_boxes_per_class",
+            "hasIouThreshold": "present.iou_threshold",
+            "hasScoreThreshold": "present.score_threshold"
+          },
+          "bindings": ["boxes", "scores", "max_output_boxes_per_class", "iou_threshold", "score_threshold", "selected_indices", "params_3"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    }
+  ]
+}

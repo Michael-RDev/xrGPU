@@ -1,0 +1,1784 @@
+{
+  "fixtureArrays": {
+    "same_upper_stride2_autopad_input_x": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    "backend_qlinearconv_pointwise_u8_input_x": [255, 174, 162, 25, 203, 168, 58, 15, 59, 237, 95, 129, 0, 64, 56, 242, 153, 221, 168, 12, 166, 232, 178, 186, 195, 237, 162, 237, 188, 39, 124, 77, 80, 102, 43, 127, 230, 21, 83, 41, 40, 134, 255, 154, 92, 141, 42, 148, 247],
+    "ort_depthwise_per_channel_weight_zero_points_s8s8_input_x": [-8, -4, 0, 4, 8, 12, -12, 16, -16, 3, -3, 6, -6, 9, -9, 12, -12, 15, -20, -10, 0, 10, 20, 30, -30, 40, -40],
+    "ort_depthwise_per_channel_weight_zero_points_s8s8_input_w": [-10, -8, -6, -4, -2, 0, 2, 4, 6, 3, 5, 7, 9, 11, 13, 15, 17, 19, -20, -15, -10, -5, 0, 5, 10, 15, 20],
+    "dp4a_pointwise_u8s8_c8_batched_input_w": [-77, 3, 100, -100, 42, -5, 19, -64, 88, -33, 7, 125, -90, -128, 127, 0, -1, 56],
+    "dp4a_pointwise_s8s8_c12_signed_output_input_x": [-128, 127, 0, -1, 56, -77, 3, 100, -100, 42, -5, 19, -64, 88, -33, 7, 125, -90]
+  },
+  "cases": [
+    {
+      "name": "same_upper_stride2_autopad",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider (QLinearConv-10)",
+        "notes": "QLinearConv inherits Conv auto_pad semantics. This fixture exercises the exact SAME_UPPER spelling and derived asymmetric bottom/right padding; unit scales and zero points make the expected requantized values equal the integer convolution sums."
+      },
+      "attrs": { "auto_pad": "SAME_UPPER", "kernel_shape": [3, 3], "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/same_upper_stride2_autopad_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 3, 3], "data": { "kind": "constant", "value": 1 } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [54, 45, 72, 54] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "dispatch_cliff_pointwise_u8",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 4096, 4097],
+          "data": { "kind": "cycle", "values": [120, 128, 136, 144] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.1] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [130] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.2] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 4096, 4097], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "uint8_padding",
+      "attrs": { "strides": [1, 1], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [128, 129, 130, 131, 132, 133, 134, 135, 136] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [127, 128, 129, 130] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 4, 4] } }
+    },
+    {
+      "name": "int8_output",
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [-4, 3, -2, 1, 0, -1, 2, -3, 4] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1, -1, 2, -2] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-3] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 1, 2, 2] } },
+      "attrs": {},
+      "provenance": {
+        "notes": "Signed output storage with a nonzero output zero point. The input is not a ramp, so the 2x2 kernel gives each output position its own response."
+      }
+    },
+    {
+      "name": "int8_input_uint8_output_pairwise_route",
+      "provenance": {
+        "notes": "Pairs the signed input route with the independently typed uint8 output on a compact 1-D pointwise convolution."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [1, 1, 1], "data": { "kind": "values", "values": [2] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 1], "data": { "kind": "values", "values": [3] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "requant_exact_half_ties_to_even",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Requantize_NoBias",
+        "notes": "ONNX quantized convolution requantization uses ORT's RoundHalfToEven helper; pointwise accumulators +/-1 and +/-5 with y_scale=2 produce exact +/-0.5 and +/-2.5 tie values."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [1] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [4, 1, 1, 1], "data": { "kind": "values", "values": [1, -1, 5, -5] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 4, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [128, 128, 130, 126] }
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "requant_huge_finite_saturates_before_i32_overflow",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Pointwise",
+        "notes": "Finite requantized outputs far outside uint8 must saturate; the scalar WebGPU requant pass currently converts to i32 before clamping."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [1] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [2, 1, 1, 1], "data": { "kind": "values", "values": [1, -1] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-20] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [255, 0] }
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "requant_subnormal_y_scale_saturates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Pointwise",
+        "notes": "A valid positive subnormal output scale can make a one-pixel convolution requantize beyond uint8; the result should saturate before any i32 conversion of an infinite f32."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [1] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [2, 1, 1, 1], "data": { "kind": "values", "values": [1, -1] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [255, 0] }
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "dp4a_pointwise_requant_subnormal_y_scale_saturates",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Pointwise",
+        "notes": "Fused DP4A pointwise route with a valid positive subnormal output scale should saturate uint8 results before any i32 conversion of an infinite f32."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 4, 1, 1], "data": { "kind": "values", "values": [1, 0, 0, 0] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [2, 4, 1, 1],
+          "data": { "kind": "values", "values": [1, 0, 0, 0, -1, 0, 0, 0] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [255, 0] }
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "uint8_pointwise_subnormal_scale_ratio",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2DTest",
+        "notes": "Valid positive subnormal input/output scales whose ratio is exactly meaningful for scalar quantization."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 4, 1, 1], "data": { "kind": "values", "values": [1, 0, 0, 0] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [4, 4, 1, 1],
+          "data": { "kind": "values", "values": [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 4, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [1, 2, 3, 4] }
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "backend_qlinearconv_pointwise_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2DTest",
+        "notes": "Uses the same quantized tensors as ORT's handwritten pointwise Conv2D test."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 7, 7],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/backend_qlinearconv_pointwise_u8_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.00369204697] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [132] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [0] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.00172794575] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [255] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.00162681262] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [123] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 7, 7], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "group2_depthwise_scalar_quant_u8",
+      "attrs": { "group": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [128, 129, 130, 131, 120, 124, 128, 132] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.1] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [2, 1, 1, 1], "data": { "kind": "values", "values": [130, 126] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.2] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 2, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "dilated_stride2_padding_saturates_u8",
+      "attrs": { "strides": [2, 2], "dilations": [2, 2], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 128, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 255, 255, 0] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.04] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.001] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_style_multi_channel_four_outputs_pad1_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.WithBias_2D",
+        "notes": "Adapts the handwritten 2D multi-channel/multi-output QLinearConv shape without optional bias."
+      },
+      "attrs": { "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 4, 4],
+          "data": { "kind": "cycle", "values": [135, 140, 128, 120, 150, 110, 160, 100] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [4, 2, 3, 3],
+          "data": { "kind": "cycle", "values": [110, 115, 105, 130, 100, 125] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.03] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [110] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 4, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_style_group3_stride2_pad1_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.WithGroup_2D",
+        "notes": "Covers grouped convolution with group=3 and stride=2 using symmetric padding supported by the WebGPU manifest."
+      },
+      "attrs": { "group": 3, "strides": [2, 2], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 6, 5, 5],
+          "data": { "kind": "cycle", "values": [98, 166, 219, 195, 46, 97, 27, 211, 239, 1] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.01] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [135] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [6, 2, 3, 3],
+          "data": { "kind": "cycle", "values": [220, 111, 73, 254, 235, 151, 6, 156, 129, 204, 234, 198] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.015] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [110] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.04] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 6, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_with_group_2d_asymmetric_pad_no_bias_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.WithGroup_2D",
+        "notes": "Uses ORT's grouped convolution tensors and asymmetric pads without optional bias."
+      },
+      "attrs": { "group": 3, "strides": [2, 2], "pads": [0, 0, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 6, 3, 5],
+          "data": {
+            "kind": "values",
+            "values": [98, 166, 219, 195, 46, 97, 27, 211, 239, 1, 28, 208, 143, 144, 215, 252, 79, 5, 154, 56, 122, 191, 94, 25, 221, 48, 37, 182, 68, 245, 210, 206, 183, 22, 163, 104, 242, 112, 161, 66, 181, 235, 117, 75, 236, 61, 115, 36, 120, 253, 165, 214, 159, 132, 11, 201, 30, 249, 89, 171, 186, 67, 225, 197, 135, 142, 241, 169, 170, 164, 178, 58, 50, 51, 200, 43, 199, 126, 222, 123, 227, 42, 3, 21, 124, 220, 24, 47, 63, 110]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.01] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [135] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [6, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [220, 111, 73, 254, 235, 151, 6, 156, 129, 204, 234, 198, 44, 89, 202, 82, 118, 189, 71, 120, 123, 121, 110, 83, 173, 248, 108, 229, 124, 68, 85, 239, 133, 213, 112, 122, 170, 231, 225, 195, 192, 9, 232, 97, 160, 227, 67, 137]
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.15] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [110] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.75] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 6, 2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "mixed_u8_i8_uint8_output_dilated_pad1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Dilations",
+        "notes": "Exercises the ORT-covered mixed uint8 activation / int8 weight quantization path with dilation."
+      },
+      "attrs": { "dilations": [2, 2], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 5, 5],
+          "data": { "kind": "cycle", "values": [0, 32, 96, 127, 128, 160, 224, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.04] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [-128, 127, -32, 96] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.01] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 5, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_u8s8_pointwise_multi_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Pointwise",
+        "notes": "Adapts QLinearConvTest.Conv2D_U8S8_Pointwise with multiple input and output channels."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [4, 15, 64, 128, 200, 255, 250, 180, 127, 80, 42, 0] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [3, 2, 1, 1],
+          "data": { "kind": "values", "values": [0, 12, -7, 31, 63, -63] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.55] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [54] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 3, 2, 3], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "ort_u8s8_stride2_small",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Strides",
+        "notes": "Adapts QLinearConvTest.Conv2D_U8S8_Strides using stride=2 and scalar quantization."
+      },
+      "attrs": { "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [4, 18, 32, 47, 63, 79, 95, 111, 127, 143, 159, 175, 191, 207, 223, 239, 255, 231, 199, 167, 135, 103, 71, 39, 7]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [-63, -9, 17, 63] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.31] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [30] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_u8s8_dilation2_small",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Dilations",
+        "notes": "Adapts QLinearConvTest.Conv2D_U8S8_Dilations using dilation=2."
+      },
+      "attrs": { "dilations": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [4, 60, 116, 172, 228, 200, 144, 88, 32, 12, 68, 124, 180, 236, 252, 96]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [-3, 19, -41, 63] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.24] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [15] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_u8s8_group2_small",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Groups",
+        "notes": "Adapts QLinearConvTest.Conv2D_U8S8_Groups with two groups and scalar weight quantization."
+      },
+      "attrs": { "group": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 3, 3],
+          "data": { "kind": "cycle", "values": [4, 17, 33, 65, 97, 129, 161, 193, 225, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [4, 2, 2, 2],
+          "data": { "kind": "cycle", "values": [-63, -45, -18, -1, 0, 7, 23, 49, 63] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.76] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [88] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 4, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_s8s8_stride2_pad1_signed_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_Strides",
+        "notes": "Adapts QLinearConvTest.Conv2D_S8S8_Strides with signed activations, signed weights, padding, and stride."
+      },
+      "attrs": { "strides": [2, 2], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 1, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [-128, -96, -64, -32, 0, 32, 64, 96, 127, 95, 63, 31, -1, -33, -65, -97, -127, -80, -40, 8, 48, 88, 120, 72, 24]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [-63, -31, 0, 17, 45, 63, -12, 29, -48] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.31] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-30] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 1, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_u8u8_pointwise_multi_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8U8_Pointwise",
+        "notes": "Adapts the ORT pointwise U8/U8 path using scalar quantization and multiple output channels."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [4, 15, 64, 128, 200, 255, 250, 180, 127, 80, 42, 0] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [3, 2, 1, 1],
+          "data": { "kind": "values", "values": [4, 12, 31, 63, 127, 255] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.03125] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.55] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [54] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 3, 2, 3], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "ort_s8s8_pointwise_signed_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_Pointwise",
+        "notes": "Adapts the ORT signed-activation/signed-weight pointwise path with signed output saturation."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [-128, -96, -64, -32, 0, 31, 63, 95, 127, 64, 16, -16] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.04] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-3] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [3, 2, 1, 1],
+          "data": { "kind": "values", "values": [-63, -31, -7, 0, 31, 63] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0275] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-5] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 3, 2, 3], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "ort_u8s8_depthwise_no_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_Depthwise_NoBias",
+        "notes": "Adapts ORT's depthwise no-bias coverage using scalar quantization and group=in_channels."
+      },
+      "attrs": { "group": 3, "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 3, 3, 3],
+          "data": { "kind": "cycle", "values": [4, 31, 63, 95, 127, 159, 191, 223, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.04] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": { "dtype": "int8", "shape": [3, 1, 2, 2], "data": { "kind": "cycle", "values": [-63, -17, 0, 23, 63] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [80] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 3, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_s8s8_depthwise_no_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_Depthwise_NoBias",
+        "notes": "Adapts ORT's signed depthwise no-bias coverage using scalar quantization and group=in_channels."
+      },
+      "attrs": { "group": 2, "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 2, 3, 3],
+          "data": { "kind": "cycle", "values": [-128, -96, -64, -16, 0, 16, 64, 96, 127] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-1] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [2, 1, 2, 2],
+          "data": { "kind": "values", "values": [-63, -31, 17, 63, 45, -12, -48, 29] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-12] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 2, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_1d_u8s8_pad1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv1D_U8S8",
+        "notes": "Compact 1D convolution with symmetric padding."
+      },
+      "attrs": { "pads": [1, 1] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 5], "data": { "kind": "values", "values": [10, 11, 12, 13, 14] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 3], "data": { "kind": "values", "values": [1, 2, 3] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [100] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 5],
+          "data": { "kind": "values", "values": [103, 108, 114, 120, 111] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_1d_u8s8_stride2_dilation2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv1D_U8S8_Dilations",
+        "notes": "Compact 1D convolution combining padding, stride, and dilation."
+      },
+      "attrs": { "strides": [2], "dilations": [2], "pads": [1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 7],
+          "data": { "kind": "values", "values": [10, 12, 14, 16, 18, 20, 22] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 3], "data": { "kind": "values", "values": [1, -2, 3] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [100] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 3],
+          "data": { "kind": "values", "values": [114, 120, 86] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_1d_s8s8_pointwise_signed_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv1D_S8S8_Pointwise",
+        "notes": "Compact signed 1D pointwise convolution."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [1, 1, 4], "data": { "kind": "values", "values": [-3, -2, -1, 0] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-3] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 1], "data": { "kind": "values", "values": [4] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int8",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [-10, -6, -2, 2] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "onnx_backend_qlinearconv",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_qlinearconv" },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 7, 7],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/backend_qlinearconv_pointwise_u8_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.003692046971991658] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [132] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [0] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0017279457533732057] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [255] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.001626812620088458] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [123] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 7, 7], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "ort_pointwise_2d_with_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.WithBias_2D",
+        "notes": "Compact ORT-valid pointwise adaptation that preserves optional int32 bias semantics."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [10, 11, 12, 13] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 1, 1], "data": { "kind": "values", "values": [14] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [100] } },
+        "B": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [-2] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [98, 102, 106, 110] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "ort_pointwise_3d_u8u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv3DTest",
+        "notes": "Compact ORT-valid pointwise adaptation of the 3D QLinearConv path."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [10, 11, 12, 13, 14, 15, 16, 17] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 1, 1, 1], "data": { "kind": "values", "values": [14] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [100] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [100, 104, 108, 112, 116, 120, 124, 128] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "ort_3d_u8s8_compact",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv3D_U8S8",
+        "notes": "Compact deterministic adaptation of ORT's 3D uint8-input/int8-weight QLinearConv coverage."
+      },
+      "attrs": { "strides": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2, 2],
+          "data": { "kind": "values", "values": [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [4] } },
+        "w": { "dtype": "int8", "shape": [1, 2, 2, 1, 1], "data": { "kind": "values", "values": [2, -3, 4, 1] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.025] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [54] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 1, 2, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [62, 63, 64, 65] }
+        }
+      }
+    },
+    {
+      "name": "ort_3d_s8s8_compact",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv3D_S8S8",
+        "notes": "A compact three-dimensional QLinearConv uses int8 input, weights, and output."
+      },
+      "attrs": { "strides": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 2, 2, 2, 2],
+          "data": { "kind": "values", "values": [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-4] } },
+        "w": { "dtype": "int8", "shape": [1, 2, 2, 1, 1], "data": { "kind": "values", "values": [2, -3, 4, 1] } },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.025] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-54] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int8",
+          "shape": [1, 1, 1, 2, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-46, -45, -44, -43] }
+        }
+      }
+    },
+    {
+      "name": "ort_per_channel_weight_zero_points_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8U8_PerChannelZeroPoints",
+        "notes": "Compact ORT-validated per-output-channel weight scales and zero-points without optional bias."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [120, 128, 136, 144, 100, 110, 130, 150] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [2, 2, 1, 1], "data": { "kind": "values", "values": [100, 120, 140, 160] } },
+        "w_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.5, 0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [2], "data": { "kind": "values", "values": [100, 150] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [0, 37, 137, 237, 102, 105, 119, 135] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "ort_per_channel_weight_zero_points_u8s8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8S8_PerChannelZeroPoints",
+        "notes": "Compact mixed uint8 activation / int8 weight per-output-channel quantization case without optional bias."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [120, 128, 136, 144, 100, 110, 130, 150] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.2] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "int8", "shape": [2, 2, 1, 1], "data": { "kind": "values", "values": [-8, 12, 16, -4] } },
+        "w_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.25, 0.5] } },
+        "w_zero_point": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [-2, 6] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [59, 78, 124, 170, 208, 200, 152, 104] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "ort_per_channel_weight_zero_points_s8s8_signed_output",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_PerChannelZeroPoints",
+        "notes": "Compact signed activation / signed weight projection with per-output-channel weight scales and zero-points."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [-8, -4, 0, 4, 8, -12, 16, -16] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-3] } },
+        "w": { "dtype": "int8", "shape": [2, 2, 1, 1], "data": { "kind": "values", "values": [-10, 5, 12, -6] } },
+        "w_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.5, 0.25] } },
+        "w_zero_point": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [-8, 4] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-5] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int8",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [71, -63, 115, -97, -43, 15, -47, 41] },
+          "tolerance": 0
+        }
+      },
+      "attrs": {}
+    },
+    {
+      "name": "ort_grouped_per_channel_weight_zero_points_u8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_U8U8_Groups_PerChannelZeroPoints",
+        "notes": "Compact grouped 1x1 projection with per-output-channel weight scales and zero-points."
+      },
+      "attrs": { "group": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [120, 128, 136, 144, 100, 110, 130, 150, 126, 130, 134, 138, 90, 120, 160, 200]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [4, 2, 1, 1],
+          "data": { "kind": "values", "values": [100, 120, 140, 160, 110, 130, 170, 90] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.5, 0.25, 0.4, 0.3] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [100, 150, 120, 80] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 4, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [0, 37, 137, 237, 102, 105, 119, 135, 55, 107, 179, 251, 43, 142, 255, 255]
+          },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_depthwise_per_channel_weight_zero_points_s8s8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_DepthwiseFallback_PerChannelZeroPoints",
+        "notes": "Compact depthwise projection with distinct per-output-channel weight scales and zero-points."
+      },
+      "attrs": { "group": 3, "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 3, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_depthwise_per_channel_weight_zero_points_s8s8_input_x" }
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [3, 1, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_depthwise_per_channel_weight_zero_points_s8s8_input_w" }
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.1, 0.13, 0.16] } },
+        "w_zero_point": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [-10, -4, 6] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-8] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 3, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_depthwise_uniform_per_channel_weight_zero_points_s8s8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc",
+        "test": "QLinearConvTest.Conv2D_S8S8_Depthwise_PerChannelUniformZeroPoints",
+        "notes": "Uses a per-channel weight zero-point tensor with identical values, while keeping per-output-channel scales."
+      },
+      "attrs": { "group": 3, "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 3, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_depthwise_per_channel_weight_zero_points_s8s8_input_x" }
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [3, 1, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_depthwise_per_channel_weight_zero_points_s8s8_input_w" }
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.1, 0.13, 0.16] } },
+        "w_zero_point": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [-7, -7, -7] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-8] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 3, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_pointwise_u8s8_c8_batched",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [2, 8, 3, 5],
+          "data": {
+            "kind": "cycle",
+            "values": [0, 255, 128, 127, 56, 77, 3, 100, 200, 42, 5, 19, 64, 88, 33, 7, 125, 90, 211, 16]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [113] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [6, 8, 1, 1],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/dp4a_pointwise_u8s8_c8_batched_input_w" } }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.015] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-7] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [2, 6, 3, 5], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "dp4a_pointwise_s8s8_c12_signed_output",
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 12, 7, 11],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/dp4a_pointwise_s8s8_c12_signed_output_input_x" }
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.025] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [5] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [9, 12, 1, 1],
+          "data": {
+            "kind": "cycle",
+            "values": [19, -64, 88, -33, 7, 125, -90, -128, 127, 0, -1, 56, -77, 3, 100, -100, 42, -5]
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.018] } },
+        "w_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-3] } },
+        "y_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.6] } },
+        "y_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 9, 7, 11], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "empty_zero_dim",
+      "attrs": { "strides": [1, 1] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [0, 4, 2, 2], "data": { "kind": "values", "values": [] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [2, 4, 1, 1], "data": { "kind": "constant", "value": 128 } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [0, 2, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_direct_3x3_u8s8_padding_spatial_oc_tails",
+      "provenance": {
+        "notes": "Compact 3x3 quantized convolution with nonzero zero points, 10-by-11 spatial output and 12 output channels checks exact arithmetic at tails."
+      },
+      "attrs": { "strides": [1, 1], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 16, 10, 11],
+          "data": { "kind": "cycle", "values": [0, 255, 128, 127, 56, 77, 3, 100, 200, 42, 5, 19] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [113] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [12, 16, 3, 3],
+          "data": { "kind": "cycle", "values": { "$ref": "#/fixtureArrays/dp4a_pointwise_u8s8_c8_batched_input_w" } }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": {
+            "kind": "values",
+            "values": [0.011, 0.012, 0.013, 0.014, 0.015, 0.016, 0.017, 0.018, 0.019, 0.02, 0.021, 0.022]
+          }
+        },
+        "w_zero_point": {
+          "dtype": "int8",
+          "shape": [12],
+          "data": { "kind": "values", "values": [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4] }
+        },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.6] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 12, 10, 11], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_im2col_u8s8_oc64_c16_3x3_24x24",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 16, 24, 24],
+          "data": { "kind": "cycle", "values": [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 8] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "cycle", "values": [2] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [64, 16, 3, 3],
+          "data": { "kind": "cycle", "values": [2, -1, 3, -2, 1, 4, -3, 2, 0, -4] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "cycle", "values": [1] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.002] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "cycle", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 64, 22, 22] } },
+      "attrs": {},
+      "provenance": {
+        "notes": "The dot4 im2col route over 16 input channels. A ten-value weight cycle does not tile the nine taps of a 3x3 kernel, so every output channel carries its own filter, and the output scale resolves the accumulator instead of quantizing every position onto the zero point."
+      }
+    },
+    {
+      "name": "im2col_dp4a_requant_huge_finite_saturates_3x3",
+      "attrs": { "strides": [1, 1], "pads": [0, 0, 0, 0] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 16, 24, 24], "data": { "kind": "constant", "value": 255 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [16, 16, 3, 3], "data": { "kind": "constant", "value": 127 } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-20] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 16, 22, 22], "tolerance": 0 } }
+    },
+    {
+      "name": "im2col_dp4a_zero_spatial_output_empty",
+      "attrs": { "strides": [1, 1], "pads": [0, 0, 0, 0] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [10, 20, 30, 40] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 3, 3], "data": { "kind": "constant", "value": 128 } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.125] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 0, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "per_channel_grouped_requant_oc_indexing_g4_i8",
+      "attrs": { "group": 4, "strides": [1, 1], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 8, 4, 4],
+          "data": { "kind": "cycle", "values": [-8, -4, 0, 4, 8, 12, -12, 16, -16, 3, -3, 6, -6, 9, -9, 12, 20, -20] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.05] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [4] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 2, 3, 3],
+          "data": { "kind": "cycle", "values": [-10, -8, -6, -4, -2, 0, 2, 4, 6, 3, 5, 7, 9, 11, 13, 15, 17, 19] }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.1, 0.13, 0.16, 0.09, 0.2, 0.07, 0.11, 0.14] }
+        },
+        "w_zero_point": {
+          "dtype": "int8",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-10, -4, 6, 0, 3, -7, 5, -2] }
+        },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "y_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-5] } }
+      },
+      "outputs": { "y": { "dtype": "int8", "shape": [1, 8, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_pointwise_u8_weight_zero_128_bias_shift_edge",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 8, 6, 6],
+          "data": { "kind": "cycle", "values": [0, 255, 1, 254, 128, 127, 200, 55, 33, 222, 99, 156] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "uint8",
+          "shape": [4, 8, 1, 1],
+          "data": { "kind": "cycle", "values": [0, 255, 128, 64, 200, 30, 129, 127, 1, 254, 100, 156] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.015] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 4, 6, 6], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "conv3d_depth_dilation2_compact",
+      "provenance": {
+        "source": "ONNX QLinearConv-10 volumetric dilation semantics",
+        "notes": "A three-dimensional quantized convolution uses a nondefault depth dilation."
+      },
+      "attrs": { "strides": [1, 1, 1], "dilations": [2, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 4, 2, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/same_upper_stride2_autopad_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 2, 1, 1], "data": { "kind": "values", "values": [1, 2] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [19, 22, 25, 28, 31, 34, 37, 40] }
+        }
+      }
+    },
+    {
+      "name": "dp4a_pointwise_per_channel_bias_compact",
+      "provenance": {
+        "source": "ONNX QLinearConv-10 per-output-channel quantization",
+        "notes": "Locks the common per-channel weight-scale/zero-point plus int32 bias combination on an aligned pointwise DP4A shape."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 3, 3],
+          "data": { "kind": "cycle", "values": [0, 17, 128, 255, 63, 191] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [4, 4, 1, 1],
+          "data": { "kind": "cycle", "values": [-127, -13, 0, 11, 63, 126] }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0.01, 0.015, 0.02, 0.025] }
+        },
+        "w_zero_point": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-3, 0, 2, 5] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "B": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-17, 0, 31, 4096] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 4, 3, 3], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "feature_independent_x4_odd_width_k5_compact",
+      "provenance": {
+        "source": "ONNX QLinearConv-10 scalar quantization",
+        "notes": "Locks four-column feature-independent accumulation with an odd output-width tail and K not divisible by four."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 5, 3, 5],
+          "data": { "kind": "cycle", "values": [0, 17, 63, 127, 128, 191, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [3, 5, 1, 1],
+          "data": { "kind": "cycle", "values": [-127, -31, -1, 0, 7, 63, 126] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.015] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-3] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [129] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 3, 3, 5], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "dp4a_pointwise_padded_k66_baseline_16x16",
+      "provenance": {
+        "source": "ONNX QLinearConv-10 pointwise quantized convolution",
+        "notes": "Locks the aligned-padding DP4A fallback for a realistic odd channel count on devices without shader-f16. Padding uses raw zero points and must remain exact."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 66, 16, 16],
+          "data": { "kind": "cycle", "values": [0, 17, 63, 127, 128, 191, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 66, 1, 1],
+          "data": { "kind": "cycle", "values": [-127, -31, -1, 0, 7, 63, 126] }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.01, 0.012, 0.014, 0.016, 0.018, 0.02, 0.022, 0.024] }
+        },
+        "w_zero_point": {
+          "dtype": "int8",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-7, -3, -1, 0, 2, 4, 6, 9] }
+        },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.4] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [129] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 8, 16, 16], "tolerance": 0 } },
+      "attrs": {}
+    },
+    {
+      "name": "dp4a_im2col_padded_k81_baseline_exact",
+      "provenance": {
+        "notes": "Odd K=81 with a nonzero input zero point and a per-channel weight zero point checks exact convolution arithmetic; an 18x18 input with no padding reduces to a 16x16 output over 9 input and 32 output channels."
+      },
+      "attrs": { "strides": [1, 1], "pads": [0, 0, 0, 0] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 9, 18, 18],
+          "data": { "kind": "cycle", "values": [0, 255, 127, 7, 200, 31, 129, 64, 99, 3, 254, 1, 88, 173, 240, 16, 5] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [32, 9, 3, 3],
+          "data": {
+            "kind": "cycle",
+            "values": { "$ref": "#/fixtureArrays/dp4a_pointwise_s8s8_c12_signed_output_input_x" }
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [32], "data": { "kind": "constant", "value": 0.03 } },
+        "w_zero_point": { "dtype": "int8", "shape": [32], "data": { "kind": "constant", "value": -4 } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [8.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 32, 16, 16], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_im2col_bias_tail_k27_baseline_exact",
+      "provenance": {
+        "notes": "Odd K=27 and int32 bias check exact quantized convolution through the final three reduction elements."
+      },
+      "attrs": { "strides": [1, 1], "pads": [0, 0, 0, 0] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 3, 5, 5],
+          "data": { "kind": "cycle", "values": [0, 17, 63, 127, 128, 191, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [121] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 3, 3, 3],
+          "data": { "kind": "cycle", "values": [-128, -77, -5, 0, 7, 42, 88, 127] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.03] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-4] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [4.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } },
+        "B": {
+          "dtype": "int32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-4096, -31, -1, 0, 1, 29, 1024, 4096] }
+        }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 8, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "dp4a_im2col_3d_u8s8_b1c4m8_4x8x8_k3",
+      "provenance": {
+        "source": "ONNX QLinearConv-10 volumetric convolution",
+        "notes": "Three-dimensional quantized convolution checks zero-point-filled spatial padding and per-output-channel quantization."
+      },
+      "attrs": { "pads": [1, 1, 1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 4, 8, 8],
+          "data": { "kind": "cycle", "values": [0, 17, 63, 127, 128, 191, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 4, 3, 3, 3],
+          "data": { "kind": "cycle", "values": [-127, -31, -1, 0, 7, 63, 126] }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.01, 0.012, 0.014, 0.016, 0.018, 0.02, 0.022, 0.024] }
+        },
+        "w_zero_point": {
+          "dtype": "int8",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-7, -3, -1, 0, 2, 4, 6, 9] }
+        },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [129] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 8, 4, 8, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "feature_independent_x4_group2_octile4_odd_width_compact",
+      "provenance": {
+        "notes": "Compact grouped 3x3 QLinearConv with four output channels per group and an odd output width checks exact quantized results at a spatial tail."
+      },
+      "attrs": { "group": 2, "strides": [1, 1], "pads": [1, 1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 5, 5],
+          "data": { "kind": "cycle", "values": [0, 17, 63, 127, 128, 191, 255] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.02] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 2, 3, 3],
+          "data": { "kind": "cycle", "values": [-127, -31, -1, 0, 7, 63, 126] }
+        },
+        "w_scale": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.01, 0.012, 0.014, 0.016, 0.018, 0.02, 0.022, 0.024] }
+        },
+        "w_zero_point": {
+          "dtype": "int8",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-7, -3, -1, 0, 2, 4, 6, 9] }
+        },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [129] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 8, 5, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "same_lower_stride2_autopad",
+      "provenance": {
+        "source": "ONNX Runtime's CPU provider (QLinearConv-10)",
+        "notes": "ONNX auto_pad SAME_LOWER places the odd padding element at the start of the axis. The nonzero leading pad verifies that execution uses the derived padding rather than unrelated explicit pad attributes."
+      },
+      "attrs": { "auto_pad": "SAME_LOWER", "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/same_upper_stride2_autopad_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "uint8", "shape": [1, 1, 3, 3], "data": { "kind": "constant", "value": 1 } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "uint8", "shape": [1, 1, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ncw1d_scalar_bias",
+      "provenance": {
+        "source": "ONNX Operators.md, QLinearConv",
+        "notes": "A one-dimensional quantized convolution carrying a bias, which is the ordinary audio form. The bias is non-zero so the case proves it is applied, not merely that a route exists."
+      },
+      "attrs": { "kernel_shape": [2], "pads": [0, 0] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 2, 3, 4] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1, 1] } },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "B": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [10] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 3],
+          "data": { "kind": "values", "values": [13, 15, 17] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ncdhw3d_scalar_bias",
+      "provenance": {
+        "source": "ONNX Operators.md, QLinearConv",
+        "notes": "A three-dimensional quantized convolution includes a nonzero bias."
+      },
+      "attrs": { "kernel_shape": [2, 2, 2], "pads": [0, 0, 0, 0, 0, 0] },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1, 2, 3, 4, 5, 6, 7, 8] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1, 1, 1, 1, 1, 1, 1, 1] }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "B": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [4] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 1, 1, 1, 1],
+          "data": { "kind": "values", "values": [40] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ncw1d_per_channel_weight_quantization",
+      "provenance": {
+        "source": "ONNX Operators.md, QLinearConv",
+        "notes": "One-dimensional convolution uses weights quantized independently per output channel."
+      },
+      "attrs": { "kernel_shape": [2], "pads": [0, 0] },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 2, 3, 4] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": { "dtype": "int8", "shape": [2, 1, 2], "data": { "kind": "values", "values": [1, 1, 2, -1] } },
+        "w_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1.0, 1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [3, 5, 7, 0, 1, 2] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "requant_grouped_integer_dot_low_bits",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 1040, 1, 4],
+          "data": {
+            "kind": "values",
+            "values": [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2, 2, 2, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2, 2, 2, 2]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 520, 1, 1],
+          "data": {
+            "kind": "values",
+            "values": [127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 7, 1, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -7, -1, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 7, 0, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -7, 0, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 7, 1, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -7, -1, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 7, 0, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -7, 0]
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [33554432.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "attrs": { "group": 2 },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 8, 1, 4],
+          "tolerance": 0,
+          "relTolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [129, 129, 129, 129, 127, 127, 127, 127, 128, 128, 128, 128, 128, 128, 128, 128, 129, 129, 129, 129, 127, 127, 127, 127, 128, 128, 128, 128, 128, 128, 128, 128]
+          }
+        }
+      },
+      "provenance": {
+        "notes": "Independent integer stencil sum gives ±(2^24+1) in the full contraction. Explicit nearest-even byte outputs preserve the low-bit distinction; partial/padded pixels are included. No bias or int32 overflow."
+      }
+    },
+    {
+      "name": "requant_direct3x3_integer_dot_low_bits",
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 64, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "w": {
+          "dtype": "int8",
+          "shape": [8, 64, 3, 3],
+          "data": {
+            "kind": "cycle",
+            "values": [127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -127, -7, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          }
+        },
+        "w_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "w_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } },
+        "y_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [33554432.0] } },
+        "y_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "attrs": { "pads": [1, 1, 1, 1] },
+      "outputs": {
+        "y": {
+          "dtype": "uint8",
+          "shape": [1, 8, 3, 3],
+          "tolerance": 0,
+          "relTolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [128, 128, 128, 128, 129, 128, 128, 128, 128, 128, 128, 128, 128, 127, 128, 128, 128, 128, 128, 128, 128, 128, 129, 128, 128, 128, 128, 128, 128, 128, 128, 127, 128, 128, 128, 128, 128, 128, 128, 128, 129, 128, 128, 128, 128, 128, 128, 128, 128, 127, 128, 128, 128, 128, 128, 128, 128, 128, 129, 128, 128, 128, 128, 128, 128, 128, 128, 127, 128, 128, 128, 128]
+          }
+        }
+      },
+      "provenance": {
+        "notes": "Independent integer stencil sum gives ±(2^24+1) in the full contraction. Explicit nearest-even byte outputs preserve the low-bit distinction; partial/padded pixels are included. No bias or int32 overflow."
+      }
+    }
+  ]
+}

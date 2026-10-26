@@ -17,7 +17,8 @@ def gelu(source):
   const bool supported = graph.dtype_of(args[0]) == vkapi::kFloat &&
       (graph.is_buffer_storage(args[2]) || graph.storage_type_of(args[2]) == utils::kTexture3D) &&
       (mode == "none" || mode == "tanh");
-  if (!xrgpu_package::choose(request, supported, mode != "tanh").empty()) {
+  if (!xrgpu_package::choose(request, supported, mode != "tanh",
+      xrgpu_package::node_identity(&graph, args[2])).empty()) {
     return add_unary_op_node(graph, args[0], kDummyFloat, kDummyFloat, args[2],
         mode == "none" ? "xrgpu_gelu_erf" : "xrgpu_gelu_tanh");
   }
@@ -37,7 +38,8 @@ def linear(source):
       graph->packed_dim_of(input) == WHCN::kWidthDim && graph->packed_dim_of(out) == WHCN::kWidthDim;
   auto request = xrgpu_package::descriptor("linear", sizes, graph->sizes_of(out), "texture3d",
       {{"bias", bias}, {"weight_shape", {graph->size_at<int64_t>(-1, out), graph->size_at<int64_t>(-1, input)}}});
-  return !xrgpu_package::choose(request, supported).empty();
+  return !xrgpu_package::choose(request, supported, false,
+      xrgpu_package::node_identity(graph, out)).empty();
 }
 
 utils::uvec3 xrgpu_linear_local(ComputeGraph* graph, const vkapi::ShaderInfo& shader,
@@ -83,7 +85,8 @@ def convolution(source):
         graph.storage_type_of(in) == utils::kTexture3D && graph.storage_type_of(out) == utils::kTexture3D &&
         ci % groups_val == 0 && co % groups_val == 0 && ws.at(1) == ci / groups_val;
     const bool unsafe_stock = method != Conv2dMethod::Depthwise;
-    if (!xrgpu_package::choose(request, supported, unsafe_stock).empty()) {
+    if (!xrgpu_package::choose(request, supported, unsafe_stock,
+        xrgpu_package::node_identity(&graph, out)).empty()) {
       check_conv_args(graph, in, out);
       const Kernel2dParams kp = create_kernel2d_params(graph, weight_data, false, stride, padding, dilation);
       check_conv2d_params(kp, false);

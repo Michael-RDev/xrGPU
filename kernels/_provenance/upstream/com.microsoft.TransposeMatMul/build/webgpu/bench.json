@@ -1,0 +1,449 @@
+{
+  "cases": [
+    {
+      "name": "transposematmul-f32-plain-512x2048x512",
+      "preset": "smoke",
+      "attrs": { "alpha": 1 },
+      "inputs": {
+        "A": { "shape": [512, 2048], "dtype": "float32", "dist": "normal", "seed": 520, "scale": 0.1 },
+        "B": { "shape": [2048, 512], "dtype": "float32", "dist": "normal", "seed": 521, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "shape": [512, 512], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 512 * 512 * 2048" }] }
+    },
+    {
+      "name": "transposematmul-f16-plain-512x2048x512",
+      "preset": "smoke",
+      "attrs": { "alpha": 1 },
+      "inputs": {
+        "A": { "shape": [512, 2048], "dtype": "float16", "dist": "normal", "seed": 530, "scale": 0.1 },
+        "B": { "shape": [2048, 512], "dtype": "float16", "dist": "normal", "seed": 531, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "shape": [512, 512], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 512 * 512 * 2048" }] }
+    },
+    {
+      "name": "transposematmul-f32-unaligned-500x2000x500",
+      "preset": "smoke",
+      "attrs": { "alpha": 1 },
+      "inputs": {
+        "A": { "shape": [500, 2000], "dtype": "float32", "dist": "normal", "seed": 540, "scale": 0.1 },
+        "B": { "shape": [2000, 500], "dtype": "float32", "dist": "normal", "seed": 541, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "shape": [500, 500], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 500 * 500 * 2000" }] }
+    },
+    {
+      "name": "transposematmul-f16-decode-gemv-m1-1x2048x512",
+      "preset": "smoke",
+      "attrs": { "alpha": 1 },
+      "vars": { "M": 1, "K": 2048, "N": 512 },
+      "inputs": {
+        "A": { "shape": [1, 2048], "dtype": "float16", "dist": "normal", "seed": 606, "scale": 0.1 },
+        "B": { "shape": [2048, 512], "dtype": "float16", "dist": "normal", "seed": 607, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "shape": [1, 512], "dtype": "float16" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * 1 * 512 * 2048" }] }
+    },
+    {
+      "name": "transposematmul-f16-attn-scores-transb-8x512x64",
+      "preset": "smoke",
+      "attrs": { "alpha": 0.125, "transB": 1 },
+      "vars": { "M": 512, "K": 64, "N": 512 },
+      "inputs": {
+        "A": { "shape": [8, 512, 64], "dtype": "float16", "dist": "normal", "seed": 608, "scale": 0.2 },
+        "B": { "shape": [8, 512, 64], "dtype": "float16", "dist": "normal", "seed": 609, "scale": 0.2 }
+      },
+      "outputs": { "Y": { "shape": [8, 512, 512], "dtype": "float16" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * 8 * 512 * 512 * 64" }] }
+    },
+    {
+      "name": "transposematmul-f16-broadcast-batch-rank4x3-2x8x512x64",
+      "preset": "model",
+      "attrs": { "alpha": 0.125, "transB": 1 },
+      "vars": { "M": 512, "K": 64, "N": 512 },
+      "inputs": {
+        "A": { "shape": [2, 8, 512, 64], "dtype": "float16", "dist": "normal", "seed": 610, "scale": 0.2 },
+        "B": { "shape": [8, 512, 64], "dtype": "float16", "dist": "normal", "seed": 611, "scale": 0.2 }
+      },
+      "outputs": { "Y": { "shape": [2, 8, 512, 512], "dtype": "float16" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * 2 * 8 * 512 * 512 * 64" }] }
+    },
+    {
+      "name": "transposematmul-f16-rank4-by-rank2-shared-weight-b2h8-m512-k2048-n512",
+      "preset": "model",
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batched (2x8) projection sharing one rank-2 [2048,512] weight, with M=512, K=2048, N=512 (float16)."
+      },
+      "attrs": { "alpha": 1 },
+      "vars": { "dtype": "float16", "M": 512, "K": 2048, "N": 512 },
+      "inputs": {
+        "A": { "shape": [2, 8, 512, 2048], "dtype": "float16", "dist": "normal", "seed": 744, "scale": 0.05 },
+        "B": { "shape": [2048, 512], "dtype": "float16", "dist": "normal", "seed": 745, "scale": 0.05 }
+      },
+      "outputs": { "Y": { "shape": [2, 8, 512, 512], "dtype": "float16", "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * args.K" }] }
+    },
+    {
+      "name": "transposematmul-f16-band-m16-k2560-n4096",
+      "preset": "smoke",
+      "attrs": { "alpha": 0.5 },
+      "inputs": {
+        "A": { "shape": [16, 2560], "dtype": "float16", "dist": "normal", "seed": 752, "scale": 0.1 },
+        "B": { "shape": [2560, 4096], "dtype": "float16", "dist": "normal", "seed": 753, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "shape": [16, 4096], "dtype": "float16", "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 16 * 2560 * 4096" }] }
+    },
+    {
+      "name": "broadcast-transb-tails-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [2, 1, 129, 65], "dist": "normal", "seed": 7302, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [3, 129, 65], "dist": "normal", "seed": 7303, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [2, 3, 129, 129] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-4 by rank-3 broadcast (batch dims 2x1 against 3) with transposed B: M=129, K=65, N=129 (float16)."
+      }
+    },
+    {
+      "name": "broadcast-transb-rank3x2-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [4, 256, 128], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [512, 128], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [4, 256, 512] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-3 by rank-2 broadcast with transposed B: M=256, K=128, N=512, batch=4 (float16)."
+      }
+    },
+    {
+      "name": "broadcast-transb-rank5x3-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [2, 1, 2, 128, 32], "dist": "normal", "seed": 7306, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [2, 128, 32], "dist": "normal", "seed": 7307, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [2, 1, 2, 128, 128] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-5 by rank-3 broadcast with transposed B: M=128, K=32, N=128, batch dims 2x1x2 (float16)."
+      }
+    },
+    {
+      "name": "broadcast-transb-low_tiles-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [1, 64, 32], "dist": "normal", "seed": 7308, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [64, 32], "dist": "normal", "seed": 7309, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [1, 64, 64] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-3 by rank-2 broadcast with transposed B: M=64, K=32, N=64, batch=1 (float16)."
+      }
+    },
+    {
+      "name": "broadcast-transb-large-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [2, 8, 512, 64], "dist": "normal", "seed": 7300, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [8, 512, 64], "dist": "normal", "seed": 7301, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [2, 8, 512, 512] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-4 by rank-3 broadcast with transposed B: M=512, K=64, N=512, batch dims 2x8 (float32)."
+      }
+    },
+    {
+      "name": "broadcast-transb-tails-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [2, 1, 129, 65], "dist": "normal", "seed": 7302, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [3, 129, 65], "dist": "normal", "seed": 7303, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [2, 3, 129, 129] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-4 by rank-3 broadcast (batch dims 2x1 against 3) with transposed B: M=129, K=65, N=129 (float32)."
+      }
+    },
+    {
+      "name": "broadcast-transb-rank3x2-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [4, 256, 128], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [512, 128], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [4, 256, 512] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-3 by rank-2 broadcast with transposed B: M=256, K=128, N=512, batch=4 (float32)."
+      }
+    },
+    {
+      "name": "broadcast-transb-rank5x3-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [2, 1, 2, 128, 32], "dist": "normal", "seed": 7306, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [2, 128, 32], "dist": "normal", "seed": 7307, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [2, 1, 2, 128, 128] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-5 by rank-3 broadcast with transposed B: M=128, K=32, N=128, batch dims 2x1x2 (float32)."
+      }
+    },
+    {
+      "name": "broadcast-transb-low_tiles-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [1, 64, 32], "dist": "normal", "seed": 7308, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [64, 32], "dist": "normal", "seed": 7309, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [1, 64, 64] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-3 by rank-2 broadcast with transposed B: M=64, K=32, N=64, batch=1 (float32)."
+      }
+    },
+    {
+      "name": "broadcast-grid-b3-m128-k64-n256-float16-a0.125",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [3, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [3, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=3 grid with transposed B: M=128, K=64, N=256, alpha=0.125 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b4-m128-k64-n256-float16-a-0.375",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.375 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [4, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [4, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=4 grid with transposed B: M=128, K=64, N=256, alpha=-0.375 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m128-k64-n256-float16-a0.5",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [8, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=128, K=64, N=256, alpha=0.5 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m129-k65-n257-float16-a0.125",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [8, 129, 65], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [257, 65], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=129, K=65, N=257, alpha=0.125 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m128-k96-n128-float16-a0",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [8, 128, 96], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [128, 96], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8, 128, 128] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=128, K=96, N=128, alpha=0 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b4-m256-k127-n512-float16-a-0.5",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [4, 256, 127], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [512, 127], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [4, 256, 512] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=4 grid with transposed B: M=256, K=127, N=512, alpha=-0.5 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b3-m128-k64-n256-float32-a0.125",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [3, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [3, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=3 grid with transposed B: M=128, K=64, N=256, alpha=0.125 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b4-m128-k64-n256-float32-a-0.375",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.375 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [4, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [4, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=4 grid with transposed B: M=128, K=64, N=256, alpha=-0.375 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m128-k64-n256-float32-a0.5",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [8, 128, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [256, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [8, 128, 256] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=128, K=64, N=256, alpha=0.5 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m129-k65-n257-float32-a0.125",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [8, 129, 65], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [257, 65], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [8, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=129, K=65, N=257, alpha=0.125 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b8-m128-k96-n128-float32-a0",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [8, 128, 96], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [128, 96], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [8, 128, 128] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=128, K=96, N=128, alpha=0 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-grid-b4-m256-k127-n512-float32-a-0.5",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": -0.5 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [4, 256, 127], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [512, 127], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [4, 256, 512] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=4 grid with transposed B: M=256, K=127, N=512, alpha=-0.5 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-selected-mn-tail-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [8, 129, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [257, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=129, K=64, N=257, alpha=0.125 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-selected-mn-tail-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [8, 129, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [257, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [8, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a batch=8 grid with transposed B: M=129, K=64, N=257, alpha=0.125 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-selected-broadcast-tail-float16",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float16", "shape": [4, 1, 129, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float16", "shape": [3, 257, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [4, 3, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-4 by rank-3 broadcast (batch dims 4x1 against 3) with transposed B: M=129, K=64, N=257, alpha=0.125 (float16)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    },
+    {
+      "name": "broadcast-selected-broadcast-tail-float32",
+      "preset": "stress",
+      "attrs": { "transB": 1, "alpha": 0.125 },
+      "inputs": {
+        "A": { "dtype": "float32", "shape": [4, 1, 129, 64], "dist": "normal", "seed": 7304, "scale": 0.1 },
+        "B": { "dtype": "float32", "shape": [3, 257, 64], "dist": "normal", "seed": 7305, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [4, 3, 129, 257] } },
+      "provenance": {
+        "notes": "Measures TransposeMatMul over a rank-4 by rank-3 broadcast (batch dims 4x1 against 3) with transposed B: M=129, K=64, N=257, alpha=0.125 (float32)."
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * numel(shapes.Y) * dim(shapes.A, ranks.A - 1)" }] }
+    }
+  ]
+}

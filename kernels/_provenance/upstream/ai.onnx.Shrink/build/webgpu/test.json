@@ -1,0 +1,399 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "attrs": { "bias": 0.25, "lambd": 0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-2.0, -0.75, -0.25, 0.25, 0.75, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_zero_threshold_subnormal_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "ShrinkOpTest",
+        "notes": "With lambd=0 and bias=0, every nonzero value should pass through, including subnormal values on both sides of zero."
+      },
+      "attrs": { "bias": 0, "lambd": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 0.0, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_zero_threshold_subnormal_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "ShrinkOpTest",
+        "notes": "On the vectorized path with lambd=0 and bias=0, nonzero subnormal values should pass through unchanged."
+      },
+      "attrs": { "bias": 0, "lambd": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "attrs": { "bias": 0.25, "lambd": 0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-2.0, -0.75, -0.25, 0.25, 0.75, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.001
+    },
+    {
+      "name": "onnx_hard_shrink",
+      "attrs": { "lambd": 1.5 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.000001 } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_shrink_hard" }
+    },
+    {
+      "name": "onnx_soft_shrink",
+      "attrs": { "bias": 1.5, "lambd": 1.5 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.000001 } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_shrink_soft" }
+    },
+    {
+      "name": "default_boundary_nonfinite",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": ["-Infinity", -0.5, -0.50000006, 0.0, 0.5, 0.50000006, "Infinity"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkFloatType",
+        "notes": "GenerateSignedTestCases<float>(), default attributes."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [-1.0, 0.0, 0.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkFloatType",
+        "notes": "GenerateSignedTestCases<float>(), non-default attributes."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [-3.0, -1.0, 1.0, 4.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_f16_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkMLFloat16Type",
+        "notes": "MLFloat16 non-default attributes."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [-3.0, -1.0, 1.0, 4.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_f16_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkMLFloat16Type",
+        "notes": "MLFloat16 default attributes."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [-1.0, 0.0, 0.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_int32_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt32Type",
+        "notes": "GenerateSignedTestCases<int32_t>(), default attributes."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [-1, 0, 0, 1] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt32Type",
+        "notes": "GenerateSignedTestCases<int32_t>(), non-default attributes."
+      },
+      "inputs": { "x": { "dtype": "int32", "shape": [2, 2], "data": { "kind": "values", "values": [-3, -1, 1, 4] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int16_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt16Type",
+        "notes": "GenerateSignedTestCases<int16_t>(), default attributes."
+      },
+      "inputs": { "x": { "dtype": "int16", "shape": [2, 2], "data": { "kind": "values", "values": [-1, 0, 0, 1] } } },
+      "outputs": { "y": { "dtype": "int16", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int16_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt16Type",
+        "notes": "GenerateSignedTestCases<int16_t>(), non-default attributes."
+      },
+      "inputs": { "x": { "dtype": "int16", "shape": [2, 2], "data": { "kind": "values", "values": [-3, -1, 1, 4] } } },
+      "outputs": { "y": { "dtype": "int16", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkUint32Type",
+        "notes": "GenerateUnsignedTestCases<uint32_t>(), non-default attributes."
+      },
+      "inputs": { "x": { "dtype": "uint32", "shape": [2, 2], "data": { "kind": "values", "values": [37, 1, 1, 11] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkUint32Type",
+        "notes": "GenerateUnsignedTestCases<uint32_t>(), default attributes."
+      },
+      "inputs": { "x": { "dtype": "uint32", "shape": [2, 2], "data": { "kind": "values", "values": [0, 0, 0, 1] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int8_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt8Type",
+        "notes": "GenerateSignedTestCases<int8_t>(), default attributes using logical int8 storage."
+      },
+      "inputs": { "x": { "dtype": "int8", "shape": [2, 2], "data": { "kind": "values", "values": [-1, 0, 0, 1] } } },
+      "outputs": { "y": { "dtype": "int8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int8_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt8Type",
+        "notes": "GenerateSignedTestCases<int8_t>(), non-default attributes using logical int8 storage."
+      },
+      "inputs": { "x": { "dtype": "int8", "shape": [2, 2], "data": { "kind": "values", "values": [-3, -1, 1, 4] } } },
+      "outputs": { "y": { "dtype": "int8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint8_nondefault_attrs_2x2",
+      "attrs": { "bias": 10, "lambd": 2 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkUint8Type",
+        "notes": "GenerateUnsignedTestCases<uint8_t>(), non-default attributes using logical uint8 storage."
+      },
+      "inputs": { "x": { "dtype": "uint8", "shape": [2, 2], "data": { "kind": "values", "values": [37, 1, 1, 11] } } },
+      "outputs": { "y": { "dtype": "uint8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint8_default_attrs_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkUint8Type",
+        "notes": "GenerateUnsignedTestCases<uint8_t>(), default attributes using logical uint8 storage."
+      },
+      "inputs": { "x": { "dtype": "uint8", "shape": [2, 2], "data": { "kind": "values", "values": [0, 0, 0, 1] } } },
+      "outputs": { "y": { "dtype": "uint8", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_float_attr_rounding_boundary",
+      "attrs": { "bias": 1, "lambd": 1 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkInt32Type",
+        "notes": "Integer Shrink uses float-valued attributes; this documents ORT's f32 boundary behavior above 2^24."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "int32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-16777218, -16777217, -16777216, 0, 16777216, 16777217, 16777218] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "int32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-16777216, -16777215, -16777215, 0, 16777215, 16777215, 16777216] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_uint32_float_attr_rounding_boundary",
+      "attrs": { "bias": 1, "lambd": 1 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/shrink_test.cc",
+        "test": "MathOpTest.ShrinkUint32Type",
+        "notes": "Unsigned integer Shrink uses float-valued attributes; this documents ORT's f32 boundary behavior above 2^24."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [0, 1, 2, 16777216, 16777217, 16777218, 4000000000] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "uint32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [0, 0, 1, 16777215, 16777215, 16777216, 4000000000] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_shrink_hard",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_shrink_hard" },
+      "attrs": { "lambd": 1.5 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_shrink_soft",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_shrink_soft" },
+      "attrs": { "bias": 1.5, "lambd": 1.5 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "bias": 0.25, "lambd": 0.5 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "negative_bias_threshold_boundary_vec4",
+      "attrs": { "bias": -0.25, "lambd": 0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-0.75, -0.5, -0.49999997, 0.0, 0.49999997, 0.5, 0.75, 1.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f16_threshold_boundary_vec4",
+      "attrs": { "bias": 0.25, "lambd": 0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [-1.5, -0.5, -0.4990234375, 0.0, 0.4990234375, 0.5, 0.50048828125, 1.5]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f32_rank4_nondefault_attrs",
+      "attrs": { "bias": 1.5, "lambd": 1.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [-3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -2.0, 2.0, -1.6, 1.6, -1.4, 1.4, -0.1, 0.1, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -2.0, 2.0, -1.6, 1.6, -1.4, 1.4, -0.1, 0.1, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -2.0, 2.0, -1.6, 1.6, -1.4, 1.4, -0.1, 0.1, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -3.0, -2.5, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, -2.0, 2.0, -1.6, 1.6, -1.4, 1.4, -0.1, 0.1]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int8_nonmult4_scalar_path_boundary",
+      "attrs": { "bias": 0.5, "lambd": 0.5 },
+      "inputs": { "x": { "dtype": "int8", "shape": [5], "data": { "kind": "values", "values": [-2, -1, 0, 1, 2] } } },
+      "outputs": { "y": { "dtype": "int8", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_nan_input_with_nonzero_bias",
+      "attrs": { "bias": 1, "lambd": 0.5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": ["NaN", "-Infinity", -1.0, -0.5, 0.5, 1.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "uint8_empty_zero_dim",
+      "inputs": { "x": { "dtype": "uint8", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "uint8", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_vec4_sustained_default_1024",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1024], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1024], "tolerance": 0.000001 } }
+    }
+  ]
+}

@@ -1,0 +1,3126 @@
+{
+  "domain": "com.microsoft",
+  "name": "MoE",
+  "sinceVersion": 1,
+  "inputs": {
+    "inputT": { "onnx": "input", "dtype": "T" },
+    "routerT": { "onnx": "router_probs", "dtype": "T", "rank": 2 },
+    "fc1T": { "onnx": "fc1_experts_weights", "dtype": "T", "rank": 3 },
+    "fc1BiasT": { "onnx": "fc1_experts_bias", "dtype": "T", "rank": 2, "optional": true },
+    "fc2T": { "onnx": "fc2_experts_weights", "dtype": "T", "rank": 3 },
+    "fc2BiasT": { "onnx": "fc2_experts_bias", "dtype": "T", "rank": 2, "optional": true },
+    "fc3T": { "onnx": "fc3_experts_weights", "dtype": "T", "rank": 3, "optional": true },
+    "fc3BiasT": { "onnx": "fc3_experts_bias", "dtype": "T", "rank": 2, "optional": true }
+  },
+  "outputs": { "outputT": { "onnx": "output", "dtype": "T", "rank": "ranks.inputT", "shape": "shapes.inputT" } },
+  "attributes": {
+    "activation_alpha": { "default": 1 },
+    "activation_beta": { "default": 0 },
+    "activation_type": { "default": "relu" },
+    "k": { "default": 1 },
+    "normalize_routing_weights": { "default": 0 },
+    "swiglu_fusion": { "default": 0 },
+    "use_sparse_mixer": { "default": 0 },
+    "swiglu_limit": {}
+  },
+  "attributeConstraints": {
+    "activation_type": { "values": ["relu", "gelu", "silu", "swiglu", "identity"] },
+    "normalize_routing_weights": { "values": [0, 1] },
+    "swiglu_fusion": { "values": [0, 1, 2] },
+    "use_sparse_mixer": { "values": [0] }
+  },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": {
+    "workgroupSize": { "default": 64 },
+    "decodeLanes": { "default": 32 },
+    "decodeBlockTarget": { "default": 1024 },
+    "decodeMinLaneTrips": { "default": 4 },
+    "groupThreads": { "default": 8 },
+    "groupRegM": { "default": 4 },
+    "groupRegN": { "default": 4 },
+    "groupTileK": { "default": 16 },
+    "groupRouteWorkgroup": { "default": 256 },
+    "matrixMinWorkgroups": { "default": 16 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "groupTileK": "tunables.groupTileK",
+    "groupThreads": "tunables.groupThreads",
+    "regM": "tunables.groupRegM",
+    "regN": "tunables.groupRegN",
+    "groupRouteWorkgroup": "tunables.groupRouteWorkgroup",
+    "groupTileM": "tunables.groupThreads * tunables.groupRegM",
+    "groupTileN": "tunables.groupThreads * tunables.groupRegN",
+    "groupTileKVec": "ceilDiv(tunables.groupTileK, 4)",
+    "groupThreadCount": "tunables.groupThreads * tunables.groupThreads",
+    "groupSharedBytes": "(groupTileM * tunables.groupTileK + 2 * groupTileN * tunables.groupTileK + groupTileM) * 4",
+    "topK": "attrs.k",
+    "activationType": "attrs.activation_type",
+    "workgroupSizeOk": "tunables.workgroupSize >= 1 and tunables.workgroupSize <= deviceWorkgroupCap",
+    "decodeLanesOk": "tunables.decodeLanes >= 1 and tunables.decodeLanes <= tunables.workgroupSize and tunables.workgroupSize % tunables.decodeLanes == 0",
+    "decodeRows": "max(1, tunables.workgroupSize / max(1, tunables.decodeLanes))",
+    "decodeDeviceOk": "workgroupSizeOk and decodeLanesOk and tunables.decodeLanes <= device.limits.maxComputeWorkgroupSizeX and decodeRows <= device.limits.maxComputeWorkgroupSizeY and tunables.workgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "fc1Rows": "dim(shapes.fc1T, 1)",
+    "hasSwigluLimit": "has(attrs, \"swiglu_limit\")",
+    "swigluLimit": "attrs.swiglu_limit if has(attrs, \"swiglu_limit\") else 0",
+    "workgroupSize": "tunables.workgroupSize",
+    "hiddenDim": "dim(shapes.inputT, ranks.inputT - 1)",
+    "tokenCount": "numel(shapes.inputT) / max(1, hiddenDim)",
+    "expertCount": "dim(shapes.routerT, 1)",
+    "isSwiglu": "activationType == \"swiglu\"",
+    "fusionMode": "attrs.swiglu_fusion",
+    "fusionSize": "2 if isSwiglu and fusionMode != 0 else 1",
+    "interSize": "dim(shapes.fc1T, 1) / max(1, fusionSize)",
+    "fusionOk": "(fusionMode == 0 or fusionMode == 1 or fusionMode == 2) if isSwiglu else fusionMode == 0",
+    "fc3ShapeOk": "not present.fc3T or (ranks.fc3T == 3 and dim(shapes.fc3T, 0) == expertCount and dim(shapes.fc3T, 1) == interSize and dim(shapes.fc3T, 2) == hiddenDim)",
+    "fc3PresenceOk": "(present.fc3T if fusionMode == 0 else not present.fc3T) if isSwiglu else (not present.fc3T or activationType == \"silu\")",
+    "fc1BiasOk": "not present.fc1BiasT or (ranks.fc1BiasT == 2 and dim(shapes.fc1BiasT, 0) == expertCount and dim(shapes.fc1BiasT, 1) == dim(shapes.fc1T, 1))",
+    "fc2BiasOk": "not present.fc2BiasT or (ranks.fc2BiasT == 2 and dim(shapes.fc2BiasT, 0) == expertCount and dim(shapes.fc2BiasT, 1) == hiddenDim)",
+    "fc3BiasOk": "not present.fc3BiasT or (present.fc3T and ranks.fc3BiasT == 2 and dim(shapes.fc3BiasT, 0) == expertCount and dim(shapes.fc3BiasT, 1) == interSize)",
+    "shapeOk": "(ranks.inputT == 2 or ranks.inputT == 3) and ranks.outputT == ranks.inputT and sameShape(shapes.inputT, shapes.outputT) and ranks.routerT == 2 and ranks.fc1T == 3 and ranks.fc2T == 3 and hiddenDim > 0 and interSize > 0 and dim(shapes.routerT, 0) == tokenCount and dim(shapes.fc1T, 0) == expertCount and dim(shapes.fc2T, 0) == expertCount and dim(shapes.fc1T, 2) == hiddenDim and dim(shapes.fc1T, 1) % max(1, fusionSize) == 0 and dim(shapes.fc2T, 1) == hiddenDim and dim(shapes.fc2T, 2) == interSize and topK >= 1 and topK <= expertCount",
+    "contractOk": "shapeOk and fusionOk and fc3ShapeOk and fc3PresenceOk and fc1BiasOk and fc2BiasOk and fc3BiasOk",
+    "portSet": "\"fc1\" ~ (\"bias\" if present.fc1BiasT else \"plain\") ~ \"_fc3\" ~ (\"biased\" if present.fc3BiasT else (\"plain\" if present.fc3T else \"none\")) ~ \"_fc2\" ~ (\"bias\" if present.fc2BiasT else \"plain\")",
+    "hiddenChunkBytes": "topK * interSize * 4",
+    "hiddenChunkFits": "hiddenChunkBytes <= device.limits.maxStorageBufferBindingSize and hiddenChunkBytes <= device.limits.maxBufferSize",
+    "hiddenChunkTokens": "min(tokenCount, max(1, floor(min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) / max(1, hiddenChunkBytes))))",
+    "hiddenChunkCount": "max(1, ceilDiv(tokenCount, max(1, hiddenChunkTokens)))",
+    "routeScratchBytes": "tokenCount * topK * 4",
+    "routeScratchFits": "routeScratchBytes <= device.limits.maxStorageBufferBindingSize and routeScratchBytes <= device.limits.maxBufferSize",
+    "splitContract": "contractOk and workgroupSizeOk and hiddenChunkFits and routeScratchFits",
+    "groupSlots": "hiddenChunkTokens * topK",
+    "groupMaxTiles": "ceilDiv(groupSlots, max(1, groupTileM)) + expertCount",
+    "groupedDeviceOk": "groupThreadCount <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.groupThreads <= device.limits.maxComputeWorkgroupSizeX and tunables.groupThreads <= device.limits.maxComputeWorkgroupSizeY and tunables.groupRouteWorkgroup <= deviceWorkgroupCap and groupSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and expertCount * 8 <= device.limits.maxComputeWorkgroupStorageSize and tunables.groupTileK % 4 == 0",
+    "groupedDispatchOk": "groupMaxTiles <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(interSize, max(1, groupTileN)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(hiddenDim, max(1, groupTileN)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "groupedShapeOk": "tokenCount * topK * 4 >= groupTileM * expertCount",
+    "groupSlotOutBytes": "hiddenChunkTokens * topK * hiddenDim * 4",
+    "groupSlotOutFits": "groupSlotOutBytes <= device.limits.maxStorageBufferBindingSize and groupSlotOutBytes <= device.limits.maxBufferSize",
+    "groupedContract": "splitContract and groupedDeviceOk and groupedDispatchOk and groupSlotOutFits and groupedShapeOk",
+    "decodeDispatchOk": "ceilDiv(interSize, decodeRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(hiddenDim, decodeRows) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and hiddenChunkTokens * topK <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "decodeLaneDepth": "min(hiddenDim, interSize) / max(1, tunables.decodeLanes)",
+    "decodeDepthOk": "decodeLaneDepth >= tunables.decodeMinLaneTrips",
+    "splitFfnBlocks": "ceilDiv(tokenCount * topK * interSize, max(1, tunables.workgroupSize))",
+    "decodeOccupancyOk": "splitFfnBlocks <= tunables.decodeBlockTarget",
+    "decodeContract": "splitContract and decodeDeviceOk and decodeDispatchOk and decodeDepthOk and (decodeOccupancyOk or not groupedContract)",
+    "groupedVec4Ok": "hiddenDim % 4 == 0 and interSize % 4 == 0",
+    "hidden": "hiddenDim",
+    "inter": "interSize",
+    "experts": "expertCount",
+    "activation": "activationType",
+    "swigluFusion": "fusionMode",
+    "hasFc1Bias": "present.fc1BiasT",
+    "hasFc2Bias": "present.fc2BiasT",
+    "hasFc3": "present.fc3T",
+    "hasFc3Bias": "present.fc3BiasT",
+    "sgmatFfnCols": "32 if present.fc3T or isSwiglu else 64",
+    "sgmatOutputCols": "64",
+    "groupedSgmatSharedBytes": "max(groupTileM * 32, 2 * 4 * 4 * 64) * 4",
+    "groupedSgmatOk": "splitContract and groupSlotOutFits and groupedShapeOk and groupTileM == 32 and groupMaxTiles <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(interSize, sgmatFfnCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(hiddenDim, sgmatOutputCols) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and deviceWorkgroupCap >= 128 and tunables.groupRouteWorkgroup >= 1 and tunables.groupRouteWorkgroup <= deviceWorkgroupCap and expertCount * 8 <= device.limits.maxComputeWorkgroupStorageSize and groupedSgmatSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and hiddenDim % sgmatOutputCols == 0 and interSize % sgmatFfnCols == 0"
+  },
+  "bindings": {
+    "router_probs": { "arg": "routerT", "elementType": "f32" },
+    "route_expert": { "scratch": "routeExpert", "elementType": "u32" },
+    "route_mix": { "scratch": "routeMix", "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "normalizeRoutingWeights", "type": "u32", "value": "attrs.normalize_routing_weights" },
+        { "name": "tokenCount", "type": "u32", "value": "tokenCount" }
+      ]
+    },
+    "input": { "arg": "inputT", "elementType": "f32" },
+    "route_expert_u32": {
+      "scratch": "routeExpert",
+      "name": "route_expert",
+      "buffer": "read-only-storage",
+      "elementType": "u32"
+    },
+    "fc1_experts_weights": { "arg": "fc1T", "elementType": "f32" },
+    "hidden_act": { "scratch": "hiddenAct", "elementType": "f32" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "activationAlpha", "type": "f32", "value": "attrs.activation_alpha" },
+        { "name": "activationBeta", "type": "f32", "value": "attrs.activation_beta" },
+        { "name": "tokenOffset", "type": "u32", "value": "repeat.chunk * hiddenChunkTokens" },
+        {
+          "name": "tokenCount",
+          "type": "u32",
+          "value": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+        }
+      ]
+    },
+    "params_ffn_stage": {
+      "name": "params",
+      "struct": [
+        { "name": "activationAlpha", "type": "f32", "value": "attrs.activation_alpha" },
+        { "name": "activationBeta", "type": "f32", "value": "attrs.activation_beta" },
+        { "name": "tokenOffset", "type": "u32", "value": "repeat.chunk * hiddenChunkTokens" }
+      ]
+    },
+    "fc3_experts_weights": { "arg": "fc3T", "elementType": "f32" },
+    "fc3_experts_bias": { "arg": "fc3BiasT", "elementType": "f32" },
+    "fc1_experts_bias": { "arg": "fc1BiasT", "elementType": "f32" },
+    "hidden_act_f32": {
+      "scratch": "hiddenAct",
+      "name": "hidden_act",
+      "buffer": "read-only-storage",
+      "elementType": "f32"
+    },
+    "route_mix_f32": { "scratch": "routeMix", "name": "route_mix", "buffer": "read-only-storage", "elementType": "f32" },
+    "fc2_experts_weights": { "arg": "fc2T", "elementType": "f32" },
+    "output": { "arg": "outputT", "elementType": "f32" },
+    "params_mix_stage": {
+      "name": "params",
+      "struct": [
+        { "name": "tokenOffset", "type": "u32", "value": "repeat.chunk * hiddenChunkTokens" },
+        {
+          "name": "tokenCount",
+          "type": "u32",
+          "value": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+        }
+      ]
+    },
+    "params_token_offset": {
+      "name": "params",
+      "struct": [{ "name": "tokenOffset", "type": "u32", "value": "repeat.chunk * hiddenChunkTokens" }]
+    },
+    "fc2_experts_bias": { "arg": "fc2BiasT", "elementType": "f32" },
+    "input_input_t": { "arg": "inputT", "name": "input", "elementType": "$groupElem" },
+    "slot_list_u32": { "scratch": "slotList", "name": "slot_list", "buffer": "read-only-storage", "elementType": "u32" },
+    "tile_meta_u32": { "scratch": "tileMeta", "name": "tile_meta", "buffer": "read-only-storage", "elementType": "u32" },
+    "slot_list": { "scratch": "slotList", "elementType": "u32" },
+    "tile_meta": { "scratch": "tileMeta", "elementType": "u32" },
+    "fc1_experts_weights_fc1_t": { "arg": "fc1T", "name": "fc1_experts_weights", "elementType": "$groupElem" },
+    "fc3_experts_weights_fc3_t": { "arg": "fc3T", "name": "fc3_experts_weights", "elementType": "$groupElem" },
+    "hidden_act_group_elem": {
+      "scratch": "hiddenAct",
+      "name": "hidden_act",
+      "buffer": "read-only-storage",
+      "elementType": "$groupElem"
+    },
+    "fc2_experts_weights_fc2_t": { "arg": "fc2T", "name": "fc2_experts_weights", "elementType": "$groupElem" },
+    "slot_out": { "scratch": "slotOut", "elementType": "f32" },
+    "slot_out_f32": { "scratch": "slotOut", "name": "slot_out", "buffer": "read-only-storage", "elementType": "f32" }
+  },
+  "variants": [
+    {
+      "id": "split_routed_fc1plain_fc3none_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3none_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3none_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3none_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3none_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3none_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3none_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3none_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1plain_fc3none_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3none_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3none_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3none_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3none_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3none_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3none_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3none_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1plain_fc3plain_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3plain_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3plain_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3plain_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3plain_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3plain_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3plain_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3plain_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1plain_fc3plain_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3plain_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3plain_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3plain_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3plain_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3plain_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3plain_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3plain_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1plain_fc3biased_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3biased_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3biased_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3biased_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3biased_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3biased_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3biased_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3biased_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1plain_fc3biased_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1plain_fc3biased_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1plain_fc3biased_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1plain_fc3biased_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1plain_fc3biased_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1plain_fc3biased_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1plain_fc3biased_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1plain_fc3biased_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3none_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3none_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3none_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3none_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3none_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3none_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3none_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3none_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3none_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3none_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3none_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3none_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3none_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3none_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3none_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3none_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3plain_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3plain_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3plain_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3plain_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3plain_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3plain_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3plain_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3plain_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3plain_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3plain_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3plain_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3plain_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3plain_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3plain_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3plain_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3plain_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3biased_fc2plain",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3biased_fc2plain\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3biased_fc2plain",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3biased_fc2plain\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3biased_fc2plain",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3biased_fc2plain\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3biased_fc2plain",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3biased_fc2plain\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "split_routed_fc1bias_fc3biased_fc2bias",
+      "priority": 10,
+      "when": ["splitContract", "portSet == \"fc1bias_fc3biased_fc2bias\""],
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-stage.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params__uniform"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK * interSize), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-stage.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemv_routed_fc1bias_fc3biased_fc2bias",
+      "priority": 20,
+      "when": ["decodeContract", "portSet == \"fc1bias_fc3biased_fc2bias\""],
+      "derive": { "decodeLanes": "tunables.decodeLanes" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStage",
+              "shader": "moe-ffn-gemv.wgsl.jinja",
+              "bindings": ["input", "route_expert_u32", "fc1_experts_weights", "fc1_experts_bias", "fc3_experts_weights", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": {
+                "x": "ceilDiv(interSize, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * topK"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStage",
+              "shader": "moe-output-gemv.wgsl.jinja",
+              "bindings": ["hidden_act_f32", "route_expert_u32", "route_mix_f32", "fc2_experts_weights", "fc2_experts_bias", "output", "params_token_offset"],
+              "dispatch": {
+                "x": "ceilDiv(hiddenDim, decodeRows)",
+                "y": "min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens)"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sgmat_grouped_routed_fc1bias_fc3biased_fc2bias",
+      "priority": 32,
+      "when": ["groupedSgmatOk", "portSet == \"fc1bias_fc3biased_fc2bias\"", "wave32Effective"],
+      "derive": { "groupElem": "\"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_token_offset"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, tileCols)" },
+              "derive": {
+                "matrixStage": "\"ffn\"",
+                "tileCols": "sgmatFfnCols",
+                "matrixActivationAlpha": "attrs.activation_alpha",
+                "matrixActivationBeta": "attrs.activation_beta"
+              }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-grouped-sgmat.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, tileCols)" },
+              "derive": { "matrixStage": "\"output\"", "tileCols": "sgmatOutputCols" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "demoteWhen": ["not isSwiglu and not present.fc3T and groupMaxTiles * ceilDiv(interSize, 64) < tunables.matrixMinWorkgroups"]
+    },
+    {
+      "id": "grouped_routed_fc1bias_fc3biased_fc2bias",
+      "priority": 30,
+      "when": ["groupedContract", "portSet == \"fc1bias_fc3biased_fc2bias\""],
+      "derive": { "groupVec4": "groupedVec4Ok", "groupElem": "\"vec4<f32>\" if groupedVec4Ok else \"f32\"" },
+      "intermediates": [
+        { "id": "routeExpert", "dtype": "uint32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "routeMix", "dtype": "float32", "shape": "[max(1, tokenCount * topK)]" },
+        { "id": "hiddenAct", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * interSize)]" },
+        { "id": "slotList", "dtype": "uint32", "shape": "[max(1, groupSlots)]" },
+        { "id": "tileMeta", "dtype": "uint32", "shape": "[1 + 3 * groupMaxTiles]" },
+        { "id": "slotOut", "dtype": "float32", "shape": "[max(1, hiddenChunkTokens * topK * hiddenDim)]" }
+      ],
+      "passes": [
+        {
+          "id": "route_stage",
+          "name": "MoE.RouteStage",
+          "shader": "moe-route-stage.wgsl.jinja",
+          "bindings": ["router_probs", "route_expert", "route_mix", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((tokenCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "token_chunks",
+          "repeat": { "count": "hiddenChunkCount", "index": "chunk" },
+          "passes": [
+            {
+              "id": "group_stage",
+              "name": "MoE.GroupStage",
+              "shader": "expert-group-slots.wgsl.jinja",
+              "bindings": ["route_expert_u32", "slot_list", "tile_meta", "params_mix_stage"],
+              "dispatch": { "x": 1 }
+            },
+            {
+              "id": "ffn_stage",
+              "name": "MoE.FfnStageGrouped",
+              "shader": "moe-ffn-grouped.wgsl.jinja",
+              "bindings": ["input_input_t", "slot_list_u32", "tile_meta_u32", "fc1_experts_weights_fc1_t", "fc1_experts_bias", "fc3_experts_weights_fc3_t", "fc3_experts_bias", "hidden_act", "params_ffn_stage"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(interSize, groupTileN)" }
+            },
+            {
+              "id": "output_stage",
+              "name": "MoE.OutputStageGrouped",
+              "shader": "moe-output-grouped.wgsl.jinja",
+              "bindings": ["hidden_act_group_elem", "slot_list_u32", "tile_meta_u32", "fc2_experts_weights_fc2_t", "fc2_experts_bias", "slot_out"],
+              "dispatch": { "x": "groupMaxTiles", "y": "ceilDiv(hiddenDim, groupTileN)" }
+            },
+            {
+              "id": "mix_stage",
+              "name": "MoE.MixStage",
+              "shader": "expert-slot-mix.wgsl.jinja",
+              "bindings": ["slot_out_f32", "route_mix_f32", "output", "params_mix_stage"],
+              "dispatch": {
+                "x": "min(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "y": "ceilDiv(ceilDiv((min(hiddenChunkTokens, tokenCount - repeat.chunk * hiddenChunkTokens) * hiddenDim), (workgroupSize)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

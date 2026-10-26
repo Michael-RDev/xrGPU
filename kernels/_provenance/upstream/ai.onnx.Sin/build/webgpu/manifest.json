@@ -1,0 +1,61 @@
+{
+  "domain": "ai.onnx",
+  "name": "Sin",
+  "sinceVersion": 7,
+  "inputs": { "x": { "onnx": "input", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "output", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Sin.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"sin\"",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": ["x", "y", "params_unary"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "when": ["numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Sin",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "op": "\"sin\"", "itemsPerInvocation": 4 },
+          "bindings": ["x_scalar", "y_scalar", "params_2_unary"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "x": { "buffer": "read-only-storage", "elementType": "$vectorScalar" },
+    "y": { "buffer": "storage", "elementType": "$vectorScalar" },
+    "params_unary": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }], "name": "params" },
+    "x_scalar": { "buffer": "read-only-storage", "name": "x", "elementType": "$scalar" },
+    "y_scalar": { "buffer": "storage", "name": "y", "elementType": "$scalar" },
+    "params_2_unary": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "domain": "ai.onnx",
+  "name": "MaxUnpool",
+  "sinceVersion": 22,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "indices": { "onnx": "I", "dtype": "I", "storage": "uint32", "narrowing": "checked" },
+    "output_shape": { "dtype": "I", "rank": 1, "optional": true, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.x" } },
+  "attributes": { "kernel_shape": {}, "strides": {}, "pads": {} },
+  "attributeConstraints": { "kernel_shape": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"], "I": ["int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "spatialRank": "ranks.x - 2 if ranks.x >= 2 else 0",
+    "maxUnpoolShapeOk": "ranks.x >= 3 and ranks.indices == ranks.x and sameShape(shapes.indices, shapes.x) and ranks.output == ranks.x and (not present.output_shape or (ranks.output_shape == 1 and dim(shapes.output_shape, 0) == ranks.x))",
+    "maxUnpoolAttributesOk": "(attrs.kernel_shape | length) == spatialRank and (attrs.strides is undefined or (attrs.strides | length) == spatialRank) and (attrs.pads is undefined or (attrs.pads | length) == 2 * spatialRank)",
+    "maxUnpoolContract": "maxUnpoolShapeOk and maxUnpoolAttributesOk and dtypes.I == \"u32\" and f16Ok(dtypes.T)",
+    "scalar": "dtypes.T",
+    "outputVec4": "numel(shapes.output) % 4 == 0",
+    "outputElement": "(\"vec4<\" ~ dtypes.T ~ \">\") if outputVec4 else dtypes.T",
+    "winnerElement": "\"vec4<u32>\" if outputVec4 else \"u32\""
+  },
+  "bindings": {
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] },
+    "params_elect": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.x)" },
+        { "name": "outCount", "type": "u32", "value": "numel(shapes.output)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "empty",
+      "when": ["maxUnpoolContract", "numel(shapes.x) == 0"],
+      "passes": [
+        {
+          "id": "zerofill",
+          "name": "MaxUnpool.ZeroFill",
+          "shader": "maxunpool-zerofill.wgsl.jinja",
+          "derive": { "vec4": "outputVec4", "fillType": "scalar" },
+          "bindings": [{ "arg": "output", "elementType": "$outputElement" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "when": ["maxUnpoolContract", "numel(shapes.x) > 0"],
+      "intermediates": [{ "id": "winner", "dtype": "uint32", "shape": "[numel(shapes.output)]" }],
+      "passes": [
+        {
+          "id": "winnerclear",
+          "name": "MaxUnpool.WinnerClear",
+          "shader": "maxunpool-zerofill.wgsl.jinja",
+          "derive": { "vec4": "outputVec4", "fillType": "\"u32\"" },
+          "bindings": [{ "scratch": "winner", "name": "output", "elementType": "$winnerElement" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "elect",
+          "name": "MaxUnpool.Elect",
+          "shader": "maxunpool-elect.wgsl.jinja",
+          "bindings": ["indices", { "name": "winner", "elementType": "atomic<u32>" }, "params_elect"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gather",
+          "name": "MaxUnpool.Gather",
+          "shader": "maxunpool-gather.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "elementType": "$scalar" },
+            { "scratch": "winner", "name": "winner", "buffer": "read-only-storage", "elementType": "u32" },
+            { "arg": "output", "elementType": "$outputElement" },
+            "params"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

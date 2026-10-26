@@ -1,0 +1,96 @@
+{
+  "domain": "ai.onnx",
+  "name": "EyeLike",
+  "sinceVersion": 22,
+  "inputs": { "input": { "dtype": "T1", "rank": 2 } },
+  "outputs": { "output": { "dtype": "T2", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "k": { "default": 0 }, "dtype": {} },
+  "typeConstraints": {
+    "T1": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool"],
+    "T2": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "reportedNonWave32Adapter": "not wave32Adapter and (has(device.adapterInfo, \"subgroupMinSize\") or has(device.adapterInfo, \"subgroupMaxSize\"))",
+    "dtypeContract": "(has(attrs, \"dtype\") and attrs.dtype == onnxDtypeCode(logicalDtypes.T2)) or (not has(attrs, \"dtype\") and logicalDtypes.T2 == logicalDtypes.T1)",
+    "packedClearPreferred": "numel(shapes.output) % 4 == 0 or not (reportedNonWave32Adapter and device.features.has(\"subgroups\"))",
+    "outScalar": "dtypes.T2",
+    "diagonalK": "max(min(attrs.k, dim(shapes.output, 1)), 0 - dim(shapes.output, 0))"
+  },
+  "when": ["dtypeContract", "ranks.input == 2", "ranks.output == 2", "dim(shapes.output, 0) == dim(shapes.input, 0)", "dim(shapes.output, 1) == dim(shapes.input, 1)", "f16Ok(tensorDtypes.output)"],
+  "variants": [
+    {
+      "id": "rank2_vec4",
+      "priority": 20,
+      "when": ["dim(shapes.output, 1) > 0", "packedClearPreferred"],
+      "derive": {
+        "tailSafe": "numel(shapes.output) % 4 != 0",
+        "outVector": "\"vec4<\" ~ dtypes.T2 ~ \">\"",
+        "clearElement": "dtypes.T2 if numel(shapes.output) % 4 != 0 else (\"vec4<\" ~ dtypes.T2 ~ \">\")",
+        "diagonalRows": "max(0, min(dim(shapes.output, 0), dim(shapes.output, 1) - diagonalK) - max(0, 0 - diagonalK))"
+      },
+      "passes": [
+        {
+          "id": "clear",
+          "name": "EyeLike.ClearVec4",
+          "shader": "eyelike-clear-vec4.wgsl.jinja",
+          "derive": { "count4": "ceilDiv(numel(shapes.output), 4)", "count": "numel(shapes.output)" },
+          "bindings": [{ "arg": "output", "elementType": "$clearElement" }],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "diagonal",
+          "name": "EyeLike.Diagonal",
+          "shader": "eyelike-diagonal.wgsl.jinja",
+          "bindings": [
+            "output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "dim(shapes.output, 0)" },
+                { "name": "cols", "type": "u32", "value": "dim(shapes.output, 1)" },
+                { "name": "k", "type": "i32", "value": "diagonalK" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(1, diagonalRows)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(1, diagonalRows)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank2",
+      "passes": [
+        {
+          "id": "main",
+          "name": "EyeLike",
+          "shader": "eyelike.wgsl.jinja",
+          "bindings": [
+            "output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.output)" },
+                { "name": "cols", "type": "u32", "value": "dim(shapes.output, 1)" },
+                { "name": "k", "type": "i32", "value": "diagonalK" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

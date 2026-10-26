@@ -1,0 +1,115 @@
+{
+  "domain": "ai.onnx",
+  "name": "Mod",
+  "sinceVersion": 13,
+  "inputs": { "a": { "onnx": "A", "dtype": "T" }, "b": { "onnx": "B", "dtype": "T" } },
+  "outputs": {
+    "c": { "onnx": "C", "dtype": "T", "rank": "max(ranks.a, ranks.b)", "shape": "broadcastShape(shapes.a, shapes.b)" }
+  },
+  "attributes": { "fmod": { "default": 0 } },
+  "attributeConstraints": { "fmod": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32", "int16", "int8", "uint8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "floatFmodContract": "attrs.fmod != 0 or not (dtypes.T == \"f32\" or dtypes.T == \"f16\")",
+    "scalar": "dtypes.T",
+    "isU32": "dtypes.T == \"u32\"",
+    "isI32": "dtypes.T == \"i32\"",
+    "fmod": "attrs.fmod != 0",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+  },
+  "when": ["f16Ok(dtypes.T)", "floatFmodContract"],
+  "bindings": {
+    "a": { "elementType": "$vectorScalar" },
+    "c": { "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c) / 4" }] }
+  },
+  "variants": [
+    {
+      "id": "last_axis_broadcast_vec4",
+      "priority": 25,
+      "when": ["ranks.c >= 1", "sameShape(shapes.a, shapes.c)", "ranks.b == 1", "dim(shapes.b, 0) == dim(shapes.c, ranks.c - 1)", "numel(shapes.c) > 0", "numel(shapes.c) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Mod.LastAxisBroadcastVec4",
+          "shader": "mod-vec4.wgsl.jinja",
+          "derive": { "perAxisB": true, "axisDimSpec": "dim(shapes.b, 0)" },
+          "bindings": ["a", "b", "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_b_vec4",
+      "priority": 30,
+      "when": ["sameShape(shapes.a, shapes.c)", "numel(shapes.b) == 1", "numel(shapes.c) > 0", "numel(shapes.c) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Mod.ScalarBVec4",
+          "shader": "mod-vec4.wgsl.jinja",
+          "derive": { "scalarB": true },
+          "bindings": ["a", { "arg": "b", "elementType": "$scalar", "length": 1 }, "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4",
+      "priority": 26,
+      "when": ["sameShape(shapes.a, shapes.c)", "sameShape(shapes.b, shapes.c)", "numel(shapes.c) > 0", "numel(shapes.c) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Mod.Vec4",
+          "shader": "mod-vec4.wgsl.jinja",
+          "bindings": ["a", { "arg": "b", "elementType": "$vectorScalar" }, "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast",
+      "when": ["ranks.a >= 0", "ranks.b >= 0", "ranks.c >= 0", "ranks.a <= ranks.c", "ranks.b <= ranks.c"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Mod",
+          "shader": "mod.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c"
+          },
+          "bindings": [
+            { "arg": "a" },
+            "b",
+            { "arg": "c" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.c)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

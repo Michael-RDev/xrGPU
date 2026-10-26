@@ -1,0 +1,73 @@
+{
+  "domain": "ai.onnx",
+  "name": "BitwiseOr",
+  "sinceVersion": 18,
+  "inputs": { "a": { "onnx": "A", "dtype": "T" }, "b": { "onnx": "B", "dtype": "T" } },
+  "outputs": {
+    "c": { "onnx": "C", "dtype": "T", "rank": "max(ranks.a, ranks.b)", "shape": "broadcastShape(shapes.a, shapes.b)" }
+  },
+  "typeConstraints": { "T": ["uint32", "int32", "int16", "uint8", "int8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "same_shape_vec4",
+      "priority": 20,
+      "when": ["tensorDtypes.a == tensorDtypes.b", "tensorDtypes.a == tensorDtypes.c", "sameShape(shapes.a, shapes.c)", "sameShape(shapes.b, shapes.c)", "numel(shapes.c) > 0", "numel(shapes.c) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitwiseOr.Vec4",
+          "shader": "bitwise-binary-vec4.wgsl.jinja",
+          "derive": {
+            "cDtype": "tensorDtypes.c",
+            "vec4PerThread": "4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1"
+          },
+          "bindings": ["a", "b", "c_bitwise", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c) / 4, 4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c) / 4, 4 if numel(shapes.c) * dtypeBytes(tensorDtypes.c) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast",
+      "when": ["tensorDtypes.a == tensorDtypes.b", "tensorDtypes.a == tensorDtypes.c", "ranks.a <= ranks.c", "ranks.b <= ranks.c"],
+      "derive": { "logicalDtype": "tensorDtypes.c" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitwiseOr",
+          "shader": "bitwise-binary-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a_2_bitwise", "b_2_bitwise", "c_2_bitwise", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "a": { "elementType": "$vectorScalar" },
+    "b": { "elementType": "$vectorScalar" },
+    "c_bitwise": { "elementType": "$vectorScalar", "name": "c" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c) / 4" }] },
+    "a_2_bitwise": { "name": "a", "elementType": "$T" },
+    "b_2_bitwise": { "name": "b", "elementType": "$T" },
+    "c_2_bitwise": { "name": "c", "elementType": "$T" },
+    "params_count": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.c)" }] }
+  }
+}

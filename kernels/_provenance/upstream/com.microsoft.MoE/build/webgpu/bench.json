@@ -1,0 +1,1112 @@
+{
+  "tunableSpace": {
+    "workgroupSize": [64, 128],
+    "decodeLanes": [32],
+    "groupThreads": [8, 16],
+    "groupRegM": [1, 2, 4],
+    "groupRegN": [1, 2, 4],
+    "groupTileK": [8, 16, 32]
+  },
+  "cases": [
+    {
+      "name": "moe-f32-t64-h256-e8-k2-i256-swiglu",
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1,
+        "activation_alpha": 1.702
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [64, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [64, 256] } }
+    },
+    {
+      "name": "moe-f32-swiglu-t1-h1024-e8-k2-i512-decode",
+      "preset": "smoke",
+      "vars": { "tokens": 1, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [1, 1024] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * 4" }] },
+      "provenance": {
+        "notes": "The bandwidth metric counts one float32 read of the selected experts' three gated-MLP weight matrices."
+      }
+    },
+    {
+      "name": "moe-f32-relu-t1-h1024-e8-k1-i1024-decode-relu",
+      "preset": "stress",
+      "vars": { "tokens": 1, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 1 },
+      "attrs": { "k": 1, "activation_type": "relu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [1, 1024] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 2 * args.hidden * args.inter * 4" }] },
+      "provenance": {
+        "notes": "The bandwidth metric counts one float32 read of the selected expert's two ReLU-MLP weight matrices."
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t8-h1024-e8-k2-i512-decode-batch8",
+      "preset": "stress",
+      "vars": { "tokens": 8, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [8, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.25, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [8, 1024] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * 4" }] },
+      "provenance": {
+        "notes": "The bandwidth metric counts one float32 read of the selected experts' three gated-MLP weight matrices."
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t256-h1024-e8-k2-i512-prefill",
+      "preset": "stress",
+      "vars": { "tokens": 256, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [256, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.49, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [256, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t32-h1024-e8-k2-i512-prefill-small",
+      "preset": "stress",
+      "vars": { "tokens": 32, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [32, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [32, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.49, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [32, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t64-h1024-e8-k2-i512-prefill-small",
+      "preset": "stress",
+      "vars": { "tokens": 64, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [64, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.49, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [64, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t96-h1024-e8-k2-i512-prefill-small",
+      "preset": "stress",
+      "vars": { "tokens": 96, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.49, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t128-h1024-e8-k2-i512-prefill-small",
+      "preset": "stress",
+      "vars": { "tokens": 128, "hidden": 1024, "experts": 8, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [128, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.49, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [128, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t48-h1024-e8-k2-i1024-prefill-band",
+      "preset": "stress",
+      "vars": { "tokens": 48, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [8, 2048, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [8, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-swiglu-t96-h1024-e16-k2-i512-prefill-band",
+      "preset": "stress",
+      "vars": { "tokens": 96, "hidden": 1024, "experts": 16, "inter": 512, "topK": 2 },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.53, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [16, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.23, "scale": 0.05 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [16, 1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.41, "scale": 0.05 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 1024] } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-qwen3-moe-decode-t1-h2048-e32-k8-i768",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-MoE geometry uses hidden size 2,048, intermediate size 768, top-k 8, and 32 instantiated experts to keep each weight tensor below 512 MB. The bandwidth metric counts the selected experts' three float32 weight matrices."
+      },
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 32, "inter": 768, "topK": 8 },
+      "attrs": { "k": 8, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 3011, "scale": 0.5 },
+        "routerT": { "shape": [1, 32], "dtype": "float32", "dist": "normal", "seed": 3012, "scale": 0.7 },
+        "fc1T": { "shape": [32, 1536, 2048], "dtype": "float32", "dist": "normal", "seed": 3013, "scale": 0.05 },
+        "fc2T": { "shape": [32, 2048, 768], "dtype": "float32", "dist": "normal", "seed": 3014, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * 4" }] }
+    },
+    {
+      "name": "moe-f32-qwen3-moe-prefill-t256-h2048-e32-k8-i768",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-MoE class defaults at a 256-token prefill chunk; 2048 routed slots put every expert over the grouped schedule's slot floor."
+      },
+      "vars": { "tokens": 256, "hidden": 2048, "experts": 32, "inter": 768, "topK": 8 },
+      "attrs": { "k": 8, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [256, 2048], "dtype": "float32", "dist": "normal", "seed": 3021, "scale": 0.5 },
+        "routerT": { "shape": [256, 32], "dtype": "float32", "dist": "normal", "seed": 3022, "scale": 0.7 },
+        "fc1T": { "shape": [32, 1536, 2048], "dtype": "float32", "dist": "normal", "seed": 3023, "scale": 0.05 },
+        "fc2T": { "shape": [32, 2048, 768], "dtype": "float32", "dist": "normal", "seed": 3024, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [256, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-olmoe-decode-t1-h2048-e16-k8-i2048",
+      "preset": "model",
+      "provenance": {
+        "notes": "OLMoE geometry uses hidden and intermediate sizes of 2,048, top-k 8, and 16 instantiated experts. The bandwidth metric counts the selected experts' three float32 weight matrices."
+      },
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 16, "inter": 2048, "topK": 8 },
+      "attrs": { "k": 8, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 3031, "scale": 0.5 },
+        "routerT": { "shape": [1, 16], "dtype": "float32", "dist": "normal", "seed": 3032, "scale": 0.7 },
+        "fc1T": { "shape": [16, 4096, 2048], "dtype": "float32", "dist": "normal", "seed": 3033, "scale": 0.05 },
+        "fc2T": { "shape": [16, 2048, 2048], "dtype": "float32", "dist": "normal", "seed": 3034, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * 4" }] }
+    },
+    {
+      "name": "moe-f32-olmoe-prefill-t128-h2048-e16-k8-i2048",
+      "preset": "model",
+      "provenance": { "notes": "OLMoE class defaults at a 128-token prefill chunk." },
+      "vars": { "tokens": 128, "hidden": 2048, "experts": 16, "inter": 2048, "topK": 8 },
+      "attrs": { "k": 8, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [128, 2048], "dtype": "float32", "dist": "normal", "seed": 3041, "scale": 0.5 },
+        "routerT": { "shape": [128, 16], "dtype": "float32", "dist": "normal", "seed": 3042, "scale": 0.7 },
+        "fc1T": { "shape": [16, 4096, 2048], "dtype": "float32", "dist": "normal", "seed": 3043, "scale": 0.05 },
+        "fc2T": { "shape": [16, 2048, 2048], "dtype": "float32", "dist": "normal", "seed": 3044, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [128, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "moe-f32-qwen2-moe-decode-t1-h2048-e20-k4-i1408",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen2-MoE geometry uses hidden size 2,048, intermediate size 1,408, top-k 4, and 20 instantiated experts. The bandwidth metric counts the selected experts' three float32 weight matrices."
+      },
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 20, "inter": 1408, "topK": 4 },
+      "attrs": { "k": 4, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 3051, "scale": 0.5 },
+        "routerT": { "shape": [1, 20], "dtype": "float32", "dist": "normal", "seed": 3052, "scale": 0.7 },
+        "fc1T": { "shape": [20, 2816, 2048], "dtype": "float32", "dist": "normal", "seed": 3053, "scale": 0.05 },
+        "fc2T": { "shape": [20, 2048, 1408], "dtype": "float32", "dist": "normal", "seed": 3054, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * 4" }] }
+    },
+    {
+      "name": "moe-f32-qwen2-moe-prefill-t256-h2048-e20-k4-i1408",
+      "preset": "model",
+      "provenance": { "notes": "Qwen2-MoE class defaults at a 256-token prefill chunk." },
+      "vars": { "tokens": 256, "hidden": 2048, "experts": 20, "inter": 1408, "topK": 4 },
+      "attrs": { "k": 4, "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "shape": [256, 2048], "dtype": "float32", "dist": "normal", "seed": 3061, "scale": 0.5 },
+        "routerT": { "shape": [256, 20], "dtype": "float32", "dist": "normal", "seed": 3062, "scale": 0.7 },
+        "fc1T": { "shape": [20, 2816, 2048], "dtype": "float32", "dist": "normal", "seed": 3063, "scale": 0.05 },
+        "fc2T": { "shape": [20, 2048, 1408], "dtype": "float32", "dist": "normal", "seed": 3064, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [256, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "boundary-matrix_silu_gate_fc3_bias_only",
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.25, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3none_fc2plain_relu",
+      "attrs": { "k": 2, "activation_type": "relu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.29, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.3, "cosStep": 0.24, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.12, "cosStep": 0.36, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.14, "cosStep": 0.26, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3none_fc2bias_swiglu2",
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.107, "cosStep": 0.281, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.317, "cosStep": 0.231, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.137, "cosStep": 0.351, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.157, "cosStep": 0.251, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.321, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3none_fc2plain_swiglu1",
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.124, "cosStep": 0.272, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.334, "cosStep": 0.222, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.154, "cosStep": 0.342, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.234, "cosStep": 0.422, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.174, "cosStep": 0.242, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3none_fc2bias_swiglu2",
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.141, "cosStep": 0.263, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.351, "cosStep": 0.213, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.171, "cosStep": 0.333, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.191, "cosStep": 0.233, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_partial_tiles_gelu",
+      "attrs": { "activation_type": "gelu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.173, "cosStep": 0.229, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [32, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.163, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.199, "cosStep": 0.271, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.241, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [32, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3plain_fc2plain_swiglu0",
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.158, "cosStep": 0.254, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.368, "cosStep": 0.204, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.188, "cosStep": 0.324, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.208, "cosStep": 0.224, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.228, "cosStep": 0.364, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 48, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3plain_fc2bias_swiglu0",
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.175, "cosStep": 0.245, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.385, "cosStep": 0.195, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.205, "cosStep": 0.315, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.225, "cosStep": 0.215, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.345, "cosStep": 0.285, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.245, "cosStep": 0.355, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3biased_fc2plain_swiglu0",
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.192, "cosStep": 0.236, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.402, "cosStep": 0.186, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.222, "cosStep": 0.306, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.242, "cosStep": 0.206, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.262, "cosStep": 0.346, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.322, "cosStep": 0.176, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1plain_fc3biased_fc2bias_swiglu0",
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.227, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.419, "cosStep": 0.177, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.239, "cosStep": 0.297, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.259, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.379, "cosStep": 0.267, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.279, "cosStep": 0.337, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.339, "cosStep": 0.167, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3plain_fc2plain_swiglu0",
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.226, "cosStep": 0.218, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.436, "cosStep": 0.168, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.256, "cosStep": 0.288, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.336, "cosStep": 0.368, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.276, "cosStep": 0.188, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.296, "cosStep": 0.328, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3plain_fc2bias_swiglu0",
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.243, "cosStep": 0.209, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.453, "cosStep": 0.159, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.273, "cosStep": 0.279, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.353, "cosStep": 0.359, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.293, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.413, "cosStep": 0.249, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.313, "cosStep": 0.319, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3biased_fc2plain_swiglu0",
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.26, "cosStep": 0.2, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.15, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.27, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.35, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.17, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.31, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.39, "cosStep": 0.14, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_fc1bias_fc3biased_fc2bias_swiglu0",
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.191, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.487, "cosStep": 0.141, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.307, "cosStep": 0.261, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.387, "cosStep": 0.341, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.327, "cosStep": 0.161, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.447, "cosStep": 0.231, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.301, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.407, "cosStep": 0.131, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_identity_no_fc3",
+      "attrs": { "k": 2, "activation_type": "identity", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.181, "cosStep": 0.217, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.391, "cosStep": 0.127, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.211, "cosStep": 0.287, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.231, "cosStep": 0.187, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 128] } },
+      "preset": "model"
+    },
+    {
+      "name": "boundary-matrix_unaligned_hidden_inter",
+      "attrs": { "activation_type": "silu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.163, "cosStep": 0.239, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.337, "cosStep": 0.173, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.281, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.261, "cosStep": 0.423, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.189, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.321, "cosStep": 0.313, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.227, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.283, "cosStep": 0.359, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 48, 64] } },
+      "preset": "model"
+    }
+  ]
+}

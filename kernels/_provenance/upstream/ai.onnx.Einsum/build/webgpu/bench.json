@@ -1,0 +1,262 @@
+{
+  "cases": [
+    {
+      "name": "matmul_128",
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.01, "cosStep": 0.02 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.04 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 128] } }
+    },
+    {
+      "name": "gemma4-mlp-gate-prefill-ij-jk",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 512, "K": 1536, "N": 6144 },
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [512, 1536], "dist": "normal", "seed": 390, "scale": 0.2 },
+        "b": { "dtype": "float32", "shape": [1536, 6144], "dist": "normal", "seed": 391, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 6144] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "llama-attn-scores-prefill-bij-bjk",
+      "preset": "model",
+      "vars": { "dtype": "float32", "B": 32, "M": 512, "K": 128, "N": 512 },
+      "attrs": { "equation": "bij,bjk->bik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 512, 128], "dist": "normal", "seed": 392, "scale": 0.2 },
+        "b": { "dtype": "float32", "shape": [32, 128, 512], "dist": "normal", "seed": 393, "scale": 0.2 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 512, 512] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.B * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "einsum-inner-prod-i-i-f32-k16m",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "K": 16777216 },
+      "attrs": { "equation": "i,i" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [16777216], "dist": "normal", "seed": 540, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [16777216], "dist": "normal", "seed": 541, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "2 * args.K * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "reduce_all_2d_single_lane_ij_to_scalar_f32_4m",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 2048, "N": 2048 },
+      "attrs": { "equation": "ij->" },
+      "inputs": { "a": { "dtype": "float32", "shape": [2048, 2048], "dist": "normal", "seed": 720, "scale": 0.02 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.M * args.N * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "reduce_cols_cliff_ij_to_j_tallthin_f32",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 1048576, "N": 8 },
+      "attrs": { "equation": "ij->j" },
+      "inputs": { "a": { "dtype": "float32", "shape": [1048576, 8], "dist": "normal", "seed": 721, "scale": 0.02 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [8] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.M * args.N * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "reduce-cols-ij-to-j-f32-m262144-n16-moe-token-aggregate",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 262144, "N": 16 },
+      "attrs": { "equation": "ij->j" },
+      "inputs": { "a": { "dtype": "float32", "shape": [262144, 16], "dist": "normal", "seed": 726, "scale": 0.02 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16] } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.M * args.N * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "matmul_decode_gemv_m1_scalar_ij_jk_f32",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "M": 1, "K": 8192, "N": 2048 },
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 8192], "dist": "normal", "seed": 722, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [8192, 2048], "dist": "normal", "seed": 723, "scale": 0.02 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2048] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "adapter-decode-gemv-m1-k8193-n4100-pathology",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 1, "K": 8193, "N": 4100 },
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 8193], "dist": "normal", "seed": 724, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [8193, 4100], "dist": "normal", "seed": 725, "scale": 0.02 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4100] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.M * args.K + args.K * args.N + args.M * args.N) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "batched-full-reduce-b8-j2048-i2048-pathology",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "Large batched full reduction where ellipsis_ji_scalar_per_batch assigns each batch result to one serial invocation."
+      },
+      "vars": { "dtype": "float32", "B": 8, "J": 2048, "I": 2048 },
+      "attrs": { "equation": "...ji->..." },
+      "inputs": { "a": { "dtype": "float32", "shape": [8, 2048, 2048], "dist": "normal", "seed": 810, "scale": 0.02 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [8] } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.B * args.J * args.I * dtypeBytes(args.dtype)" }] }
+    },
+    {
+      "name": "bilinear-scalar-i-ij-j-4096-pathology",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "Realistic x^T A y contraction where nd_i_ij_j_scalar assigns both contracted loops to one output invocation."
+      },
+      "vars": { "dtype": "float32", "I": 4096, "J": 4096 },
+      "attrs": { "equation": "i,ij,j->" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4096], "dist": "normal", "seed": 811, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [4096, 4096], "dist": "normal", "seed": 812, "scale": 0.02 },
+        "c": { "dtype": "float32", "shape": [4096], "dist": "normal", "seed": 813, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [] } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.I * args.J + args.I + args.J) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "tensor-contract-abc-bcd-ad-a64-b64-c64-d256-pathology",
+      "preset": "model",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "Compact model-scale two-axis contraction that exercises the abc_bcd_ad route."
+      },
+      "vars": { "dtype": "float32", "A": 64, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [64, 64, 64], "dist": "normal", "seed": 814, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 815, "scale": 0.02 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    },
+    {
+      "name": "einsum-band-ij-jk-m8-k1536-n6144-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "M": 8, "K": 1536, "N": 6144 },
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [8, 1536], "dist": "normal", "seed": 940, "scale": 0.2 },
+        "b": { "dtype": "float32", "shape": [1536, 6144], "dist": "normal", "seed": 941, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 6144] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "einsum-band-ij-jk-m8-k1536-n6144-f16",
+      "preset": "model",
+      "vars": { "dtype": "float16", "M": 8, "K": 1536, "N": 6144 },
+      "attrs": { "equation": "ij,jk->ik" },
+      "inputs": {
+        "a": { "dtype": "float16", "shape": [8, 1536], "dist": "normal", "seed": 942, "scale": 0.2 },
+        "b": { "dtype": "float16", "shape": [1536, 6144], "dist": "normal", "seed": 943, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 6144] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "einsum-specdec-scores-bij-bjk-b32-m4-k128-n512-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "B": 32, "M": 4, "K": 128, "N": 512 },
+      "attrs": { "equation": "bij,bjk->bik" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 4, 128], "dist": "normal", "seed": 944, "scale": 0.1 },
+        "b": { "dtype": "float32", "shape": [32, 128, 512], "dist": "normal", "seed": 945, "scale": 0.1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 4, 512] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.B * args.M * args.K * args.N" }] }
+    },
+    {
+      "name": "einsum-contract-abc-bcd-a8-b64-c64-d256-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "A": 8, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [8, 64, 64], "dist": "normal", "seed": 946, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 947, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    },
+    {
+      "name": "einsum-contract-abc-bcd-a16-b64-c64-d256-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "A": 16, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [16, 64, 64], "dist": "normal", "seed": 948, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 950, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    },
+    {
+      "name": "einsum-contract-abc-bcd-a32-b64-c64-d256-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "A": 32, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 64, 64], "dist": "normal", "seed": 949, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 951, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    },
+    {
+      "name": "einsum-contract-abc-bcd-a128-b64-c64-d256-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "A": 128, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [128, 64, 64], "dist": "normal", "seed": 952, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 953, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    },
+    {
+      "name": "einsum-contract-abc-bcd-a256-b64-c64-d256-f32",
+      "preset": "model",
+      "vars": { "dtype": "float32", "A": 256, "B": 64, "C": 64, "D": 256 },
+      "attrs": { "equation": "abc,bcd->ad" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [256, 64, 64], "dist": "normal", "seed": 954, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [64, 64, 256], "dist": "normal", "seed": 955, "scale": 0.05 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256, 256] } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.A * args.B * args.C * args.D" }] }
+    }
+  ]
+}

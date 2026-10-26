@@ -1,0 +1,251 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_gelu_input_x": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902],
+    "vec4_f32_erf_extremes_input_x": [-1, 0, 1, 100, -100, 1000, -1000, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity", 2, -2, 0.5]
+  },
+  "cases": [
+    {
+      "name": "exact_erf",
+      "attrs": { "approximate": "none" },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [37], "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [37], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "tanh_approx",
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [37], "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.19 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [37], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_exact_scalar",
+      "attrs": { "approximate": "none" },
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.5] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "tanh_approx_large_inputs_no_nan",
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [50.0, 100.0, 200.0, -100.0, -200.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "exact_f32_subnormal_linear_region_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu",
+        "notes": "Near zero, Gelu is approximately x/2; subnormal inputs should remain finite rather than flushing to zero."
+      },
+      "attrs": { "approximate": "none" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-38, -1e-38] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 2e-45,
+          "data": {
+            "kind": "values",
+            "values": [4.99997305055738e-41, -4.99997305055738e-41, 4.999999675228202e-39, -4.999999675228202e-39]
+          }
+        }
+      }
+    },
+    {
+      "name": "tanh_f32_subnormal_linear_region_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu",
+        "notes": "On the scalar tanh-approximation path, near-zero Gelu must preserve subnormal x/2 outputs."
+      },
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-38] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [4.99997305055738e-41, -4.99997305055738e-41, 4.999999675228202e-39] }
+        }
+      }
+    },
+    {
+      "name": "ort_exact_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu",
+        "notes": "Exact Gelu mode over ORT's shared activation vector."
+      },
+      "attrs": { "approximate": "none" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [13],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [13], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_tanh_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu",
+        "notes": "Tanh-approximate Gelu mode over ORT's shared activation vector."
+      },
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [13],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [13], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_fp16_tanh_extreme_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu_fp16_tanh"
+      },
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 0.002 } }
+    },
+    {
+      "name": "ort_fp16_erf_extreme_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Gelu_fp16_erf"
+      },
+      "attrs": { "approximate": "none" },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 0.002 } }
+    },
+    {
+      "name": "onnx_backend_gelu_default_1",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gelu_default_1" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_gelu_default_2",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gelu_default_2" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_gelu_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_gelu_tanh_1",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gelu_tanh_1" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.0001 } },
+      "attrs": { "approximate": "tanh" }
+    },
+    {
+      "name": "onnx_backend_gelu_tanh_2",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gelu_tanh_2" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_gelu_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.0001 } },
+      "attrs": { "approximate": "tanh" }
+    },
+    {
+      "name": "vec4_f16_lanes",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [16],
+          "data": {
+            "kind": "values",
+            "values": [-6.0, -4.0, -3.0, -2.0, -1.5, -1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 6.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "vec4_f32_erf_extremes",
+      "attrs": { "approximate": "none" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/vec4_f32_erf_extremes_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vec4_f32_tanh_extremes",
+      "attrs": { "approximate": "tanh" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/vec4_f32_erf_extremes_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "approximate": "none" },
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    }
+  ]
+}

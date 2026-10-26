@@ -1,0 +1,172 @@
+{
+  "domain": "ai.onnx",
+  "name": "Upsample",
+  "sinceVersion": 9,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" }, "scales": { "dtype": "S", "rank": 1 } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x" } },
+  "attributes": { "mode": { "default": "nearest" } },
+  "attributeConstraints": { "mode": { "values": ["nearest", "linear"] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int8", "uint8"], "S": ["float32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "scalar": "dtypes.T",
+    "coordinateMode": "\"asymmetric\"",
+    "modeSpec": "attrs.mode",
+    "xShape": "shapes.x",
+    "yShape": "shapes.y"
+  },
+  "when": ["f16Ok(dtypes.T)"],
+  "bindings": {
+    "y": { "elementType": "$outputElement" },
+    "scales": { "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "C", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "nearest_integer_scale_vec4",
+      "priority": 21,
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "numel(shapes.y) > 0", "attrs.mode == \"nearest\"", "(dim(shapes.y, 2) == dim(shapes.x, 2) * 2 or dim(shapes.y, 2) == dim(shapes.x, 2) * 3 or dim(shapes.y, 2) == dim(shapes.x, 2) * 4)", "(dim(shapes.y, 3) == dim(shapes.x, 3) * 2 or dim(shapes.y, 3) == dim(shapes.x, 3) * 3 or dim(shapes.y, 3) == dim(shapes.x, 3) * 4)", "dim(shapes.y, 3) % 4 == 0"],
+      "demoteWhen": ["variableSubgroup16To32 and dtypes.T == \"f16\""],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.NearestIntegerScaleVec4",
+          "shader": "resize-nearest-integer-scale.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nearest_integer_scale",
+      "priority": 20,
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "numel(shapes.y) > 0", "attrs.mode == \"nearest\"", "(dim(shapes.y, 2) == dim(shapes.x, 2) * 2 or dim(shapes.y, 2) == dim(shapes.x, 2) * 3 or dim(shapes.y, 2) == dim(shapes.x, 2) * 4)", "(dim(shapes.y, 3) == dim(shapes.x, 3) * 2 or dim(shapes.y, 3) == dim(shapes.x, 3) * 3 or dim(shapes.y, 3) == dim(shapes.x, 3) * 4)"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.NearestIntegerScale",
+          "shader": "resize-nearest-integer-scale.wgsl.jinja",
+          "derive": { "vec4": false },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_2x_stencil_vec4",
+      "priority": 20,
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "dim(shapes.y, 2) == dim(shapes.x, 2) * 2", "dim(shapes.y, 3) == dim(shapes.x, 3) * 2", "dim(shapes.y, 3) % 4 == 0"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.Linear2xStencilVec4",
+          "shader": "resize-linear-2x-stencil.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "scales", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_2x_stencil",
+      "priority": 19,
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "dim(shapes.y, 2) == dim(shapes.x, 2) * 2", "dim(shapes.y, 3) == dim(shapes.x, 3) * 2"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.Linear2xStencil",
+          "shader": "resize-linear-2x-stencil.wgsl.jinja",
+          "bindings": ["x", "scales", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4_vec4",
+      "priority": 1,
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "dim(shapes.y, 3) % 4 == 0"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.Vec4",
+          "shader": "resize-coord-transform.wgsl.jinja",
+          "derive": { "vec4": true, "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+          "bindings": ["x", "scales", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4",
+      "when": ["ranks.x == 4", "ranks.y == 4", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample",
+          "shader": "resize-coord-transform.wgsl.jinja",
+          "bindings": ["x", "scales", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_rank_n",
+      "priority": 0,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "(ranks.x != 4 or dim(shapes.x, 0) != dim(shapes.y, 0) or dim(shapes.x, 1) != dim(shapes.y, 1))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Upsample.Generic",
+          "shader": "resize-generic.wgsl.jinja",
+          "bindings": ["x", "scales", { "arg": "y" }],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "domain": "ai.onnx",
+  "name": "If",
+  "conformance": "internal-lowering",
+  "sinceVersion": 25,
+  "inputs": { "cond": { "dtype": "B" }, "then_value": { "dtype": "T" }, "else_value": { "dtype": "T" } },
+  "outputs": { "y": { "dtype": "T" } },
+  "typeConstraints": { "T": ["float32"], "B": ["uint32", "bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "lowered_select",
+      "when": ["ranks.cond <= 1", "numel(shapes.cond) == 1", "numel(shapes.then_value) == numel(shapes.y)", "numel(shapes.else_value) == numel(shapes.y)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "If",
+          "shader": "if-select.wgsl.jinja",
+          "bindings": [
+            { "arg": "cond", "elementType": "u32", "length": 1 },
+            { "arg": "then_value", "elementType": "f32" },
+            { "arg": "else_value", "elementType": "f32" },
+            { "arg": "y", "elementType": "f32" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

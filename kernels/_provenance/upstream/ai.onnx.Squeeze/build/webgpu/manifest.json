@@ -1,0 +1,68 @@
+{
+  "domain": "ai.onnx",
+  "name": "Squeeze",
+  "sinceVersion": 13,
+  "inputs": {
+    "data": { "dtype": "T" },
+    "axes": { "dtype": "S", "rank": 1, "optional": true, "storage": "int32", "narrowing": "checked" }
+  },
+  "outputs": { "squeezed": { "dtype": "T" } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "uint32", "int16", "uint8", "int8", "bool", "int64"],
+    "S": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "axesContract": "not present.axes or ranks.axes == 1" },
+  "when": ["axesContract", "numel(shapes.data) == numel(shapes.squeezed)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "src": { "arg": "data", "elementType": "$vectorScalar" },
+    "dst": { "arg": "squeezed", "elementType": "$vectorScalar" },
+    "x": { "arg": "data", "elementType": "$scalar" },
+    "y": { "arg": "squeezed", "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "copy_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "numel(shapes.data) > 0", "numel(shapes.data) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Squeeze.CopyVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.squeezed) / 4" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.squeezed) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Squeeze",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.squeezed)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.squeezed)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "x", "output": "y" }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "domain": "ai.onnx",
+  "name": "CastLike",
+  "sinceVersion": 25,
+  "inputs": { "x": { "onnx": "input", "dtype": "T1" }, "target": { "onnx": "target_type", "dtype": "T2" } },
+  "outputs": { "y": { "onnx": "output", "dtype": "T2", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "round_mode": { "default": "up" }, "saturate": { "default": 1 } },
+  "attributeConstraints": { "round_mode": { "values": ["up"] }, "saturate": { "values": [1] } },
+  "typeConstraints": {
+    "T1": ["float32", "float16", "uint32", "int32", "uint8", "int8", "bool"],
+    "T2": ["float32", "float16", "uint32", "int32", "uint8", "int8", "bool"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 }, "VEC4_TAIL_MIN_ELEMENTS": { "default": 4096 } },
+  "derive": {
+    "wrapNarrowInt": "(tensorDtypes.x == \"float32\" or tensorDtypes.x == \"float16\") and (tensorDtypes.y == \"int8\" or tensorDtypes.y == \"uint8\")",
+    "wrapSigned": "tensorDtypes.y == \"int8\"",
+    "vectorScalar": "\"vec4<\" ~ (\"f16\" if tensorDtypes.x == \"float16\" else (\"f32\" if tensorDtypes.x == \"float32\" else (\"i32\" if tensorDtypes.x == \"int32\" or tensorDtypes.x == \"int8\" else \"u32\"))) ~ \">\"",
+    "outVec": "\"vec4<\" ~ (\"f16\" if tensorDtypes.y == \"float16\" else (\"f32\" if tensorDtypes.y == \"float32\" else (\"i32\" if tensorDtypes.y == \"int32\" or tensorDtypes.y == \"int8\" else \"u32\"))) ~ \">\"",
+    "inScalar": "\"f16\" if tensorDtypes.x == \"float16\" else (\"f32\" if tensorDtypes.x == \"float32\" else (\"i32\" if tensorDtypes.x == \"int32\" or tensorDtypes.x == \"int8\" else \"u32\"))",
+    "outScalar": "\"f16\" if tensorDtypes.y == \"float16\" else (\"f32\" if tensorDtypes.y == \"float32\" else (\"i32\" if tensorDtypes.y == \"int32\" or tensorDtypes.y == \"int8\" else \"u32\"))"
+  },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "ranks.y == ranks.x", "f16Ok(dtypes.T1) and f16Ok(dtypes.T2)"],
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$outVec" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "floor(numel(shapes.y) / 4)" }] },
+    "x_tail": { "name": "x", "elementType": "$inScalar" },
+    "y_tail": { "name": "y", "elementType": "$outScalar" },
+    "params_tail": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+  },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "tensorDtypes.y != \"bool\""],
+      "derive": {
+        "scalar": "\"f16\" if tensorDtypes.x == \"float16\" else (\"f32\" if tensorDtypes.x == \"float32\" else (\"i32\" if tensorDtypes.x == \"int32\" or tensorDtypes.x == \"int8\" else \"u32\"))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CastLike.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail",
+      "priority": 10,
+      "when": ["numel(shapes.x) >= tunables.VEC4_TAIL_MIN_ELEMENTS", "numel(shapes.x) % 4 != 0", "tensorDtypes.y != \"bool\""],
+      "derive": {
+        "scalar": "\"f16\" if tensorDtypes.x == \"float16\" else (\"f32\" if tensorDtypes.x == \"float32\" else (\"i32\" if tensorDtypes.x == \"int32\" or tensorDtypes.x == \"int8\" else \"u32\"))"
+      },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "CastLike.Vec4Bulk",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "CastLike.ScalarTail",
+          "shader": "cast-scalar-x4.wgsl.jinja",
+          "derive": { "tailOnly": true },
+          "bindings": ["x_tail", "y_tail", "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "derive": { "toBool": "tensorDtypes.y == \"bool\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CastLike",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": ["x_tail", "y_tail", "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

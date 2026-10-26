@@ -1,0 +1,324 @@
+{
+  "cases": [
+    {
+      "name": "linear_gqa_no_state_nondefault_chunk",
+      "provenance": {
+        "source": "onnx/reference/ops/op_linear_attention.py",
+        "notes": "Standard grouped-query attention with odd key width and a non-default correctness-neutral chunk_size checks the recurrence without past state."
+      },
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "linear", "chunk_size": 17 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 3, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 3, 8], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 2, 3, 2], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "linear_mqa_mixed_f16_state",
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 1, "update_rule": "linear", "scale": 0.5 },
+      "requires": { "features": ["shader-f16"] },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 2, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.37 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.43 }
+        },
+        "pastStateT": {
+          "dtype": "float16",
+          "shape": [1, 1, 4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.21, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 2, 12], "tolerance": 0.0002 },
+        "presentStateT": { "dtype": "float16", "shape": [1, 1, 4, 3], "tolerance": 0.003 }
+      }
+    },
+    {
+      "name": "gated_per_head_decay_no_state",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 2, "update_rule": "gated", "scale": 0.4 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.27 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.12, "cosStep": 0.35 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.08, "cosStep": 0.39 }
+        },
+        "decayT": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [-0.1, -0.2, -0.05, -0.15] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 2, 4], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 2, 4, 2], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "gated_per_key_decay_f16_with_f32_state",
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "gated" },
+      "requires": { "features": ["shader-f16"] },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 2, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.33, "scale": 0.3 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.1, "cosStep": 0.25, "scale": 0.3 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.3 }
+        },
+        "pastStateT": { "dtype": "float32", "shape": [1, 2, 4, 2], "data": { "kind": "constant", "value": 0.1 } },
+        "decayT": {
+          "dtype": "float16",
+          "shape": [1, 2, 8],
+          "data": { "kind": "linspace", "start": -0.25, "end": -0.02 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 2, 8], "tolerance": 0.006 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 2, 4, 2], "tolerance": 0.001 }
+      }
+    },
+    {
+      "name": "delta_broadcast_beta_no_state",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 1, "update_rule": "delta", "scale": 0.6 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [2, 2, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.16, "cosStep": 0.22 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.34 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.06, "cosStep": 0.38 }
+        },
+        "betaT": {
+          "dtype": "float32",
+          "shape": [2, 2, 1],
+          "data": { "kind": "values", "values": [0.8, 0.6, 0.7, 0.9] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 2, 4], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [2, 1, 3, 2], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "delta_vec4_no_state",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 1, "update_rule": "delta", "scale": 0.6 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.16, "cosStep": 0.22 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.34 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.06, "cosStep": 0.38 }
+        },
+        "betaT": { "dtype": "float32", "shape": [1, 2, 1], "data": { "kind": "values", "values": [0.8, 0.6] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 2, 8], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "delta_per_head_beta_f16_state",
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "delta", "scale": 0.5 },
+      "requires": { "features": ["shader-f16"] },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 2, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.18, "cosStep": 0.28, "scale": 0.2 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.14, "cosStep": 0.32, "scale": 0.2 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.1, "cosStep": 0.36, "scale": 0.2 }
+        },
+        "pastStateT": { "dtype": "float16", "shape": [1, 2, 4, 2], "data": { "kind": "constant", "value": 0.125 } },
+        "betaT": {
+          "dtype": "float16",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [0.75, 0.5, 0.625, 0.875] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 2, 8], "tolerance": 0.003 },
+        "presentStateT": { "dtype": "float16", "shape": [1, 2, 4, 2], "tolerance": 0.003 }
+      }
+    },
+    {
+      "name": "default_gated_delta_no_state",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 1 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41 }
+        },
+        "decayT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "linspace", "start": -0.2, "end": -0.01 }
+        },
+        "betaT": { "dtype": "float32", "shape": [1, 2, 1], "data": { "kind": "values", "values": [0.8, 0.6] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 2, 6], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 1, 4, 3], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "gated_delta_gqa_with_state",
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "gated_delta", "scale": 0.7, "chunk_size": -7 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 3, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.37 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.43 }
+        },
+        "pastStateT": {
+          "dtype": "float32",
+          "shape": [1, 2, 4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.21, "scale": 0.2 }
+        },
+        "decayT": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "linspace", "start": -0.2, "end": -0.03 }
+        },
+        "betaT": { "dtype": "float32", "shape": [1, 3, 2], "data": { "kind": "linspace", "start": 0.45, "end": 0.9 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 3, 12], "tolerance": 0.0001 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 2, 4, 3], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "linear_zero_sequence_carries_state",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 1, "update_rule": "linear" },
+      "inputs": {
+        "queryT": { "dtype": "float32", "shape": [1, 0, 6], "data": { "kind": "values", "values": [] } },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 3], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 2], "data": { "kind": "values", "values": [] } },
+        "pastStateT": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 2],
+          "data": { "kind": "values", "values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 0, 4], "data": { "kind": "values", "values": [] } },
+        "presentStateT": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 2],
+          "data": { "kind": "values", "values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6] }
+        }
+      }
+    },
+    {
+      "name": "linear_wide_vec4_head",
+      "attrs": { "q_num_heads": 2, "kv_num_heads": 1, "update_rule": "linear", "scale": 0.04 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.027, "scale": 0.05 }
+        },
+        "valueT": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.25] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.0002 },
+        "presentStateT": { "dtype": "float32", "shape": [1, 1, 512, 1], "tolerance": 0.0001 }
+      }
+    }
+  ]
+}

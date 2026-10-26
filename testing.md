@@ -271,11 +271,68 @@ Mark an unavailable test as blocked with its missing integration/runner identifi
 
 ## 11. Standalone native catalog: remaining test gates
 
-See [native operators](operators/README.md) and the
-[extended typed API](operators/extended/README.md). This library executes C++ and
+See [native operators](kernels/_shared/README.md) and the
+[extended typed API](kernels/_shared/extended/README.md). This library executes C++ and
 Vulkan/SPIR-V without a browser runtime. Unsupported standalone operator requests
 must fail explicitly without numerical CPU fallback; the model Session fallback
 policy above is a different validation track.
+
+The active native source authority is [`kernels/catalog.json`](kernels/catalog.json).
+The 221 direct operator folders contain native descriptors and GLSL entrypoints;
+`kernels/_shared/` contains shared C++/shader code, while `kernels/_provenance/`
+retains unchanged upstream reference bytes. Run `.venv/bin/python -m kernels.catalog`
+to validate descriptor digests, provenance, all shader dependencies and generated
+registry consistency. Native entries are not model Session replacements; the
+three existing model override contracts remain a separate kind and fingerprint.
+
+The saved all-v3 baseline below predates this source-layout migration and remains
+immutable. The fresh all-v4 package and direct checks are recorded separately.
+New snapshots use `kernels._shared.*` and include an explicit `operators.*`
+compatibility adapter. Select the tools actually delivered in the package when
+setting `PYTHONPATH`, and use `python -B` to keep its inventory unchanged.
+
+### Native layout migration validation — 2026-10-26
+
+The migrated package is
+[`native-kernels-all-v4`](artifacts/packages/native-kernels-all-v4/manifest.json),
+SHA-256 `82291e879d9aa5db9c8fb2ae129e7aaebd79deae270815e237e61daec127b605`.
+It has 221 operators, 315 freshly compiled and SPIR-V-validated shaders, both
+Android ARM64 libraries, and 2,646 inventoried files. All 315 shader binaries,
+21 C++ runtime/planner/header files, both public API headers, and 1,108 frozen
+provenance files match all-v3 exactly. Previous packages still verify unchanged.
+
+| Direct final-package software check | Passed | Failed |
+| --- | ---: | ---: |
+| Legacy operator/type representatives | 117 | 0 |
+| Tensor representatives | 90 | 0 |
+| Spatial representatives | 57 | 0 |
+| Attention/recurrent/quantized representatives | 36 | 0 |
+| Tensor edge cases | 54 | 0 |
+| API/storage/dynamic-capacity checks | 12 | 0 |
+
+The first four rows cover all **221 identities in 300 executions**; the total is
+**366 passing executions**. Native software Vulkan runners were built from the
+exact package without recompiling its shaders. The
+[migration ledger](artifacts/conformance/native-kernels-all-v4/migration.json)
+binds reports, package/source/runner/shader identities, prior releases and scope.
+Package inventories verified unchanged after execution. No browser process or
+JavaScript runtime participates; the optional software test loader/ICD is not
+shipped in Android artifacts.
+
+Catalog/provenance, discovery, model fingerprint isolation and optional Hub
+export regression checks pass. A full run recorded 392 passes and four failures;
+all four received passing focused follow-ups after stale migration tests were
+updated. The additional destination/generated-header packaging suite passes
+12/12 with external compilation tools mocked; this is separate from numerical
+evidence. It reproduced the release-path bug before the fix. The Hub protocol
+suite passes 33/33 and covers 221 operator exports plus the aggregate.
+
+**Remaining gates:** complete 13,919-case conformance, recorded Unique/provider
+and unsupported-route gaps, physical Quest 3 correctness/capabilities, performance
+and sustained XR behavior. No device was connected for this validation. The
+existing all-v3 failure/unsupported/reference-conflict evidence below remains
+applicable; the migration does not close those gaps or enroll all operators in
+model Session or xrBench's current three-operator fixture lane.
 
 ### Recorded native baseline — 2026-10-26
 
@@ -431,17 +488,21 @@ not prove all 221 operators are selectable or executable in xrBench.
 
 ### Rerun and evidence requirements
 
+- [ ] Validate the native catalog and check its generated registries; reject bad
+  paths, symlinks, corrupt descriptors and provenance, incomplete pass inventories,
+  and registry drift. Native catalog/provenance edits must not change the separate
+  model override discovery set or its Session eligibility fingerprint.
 - [ ] For the next revision, run working-tree host regressions covering native
   operators, half/unary routines, package provenance, Int64/storage conversion,
   quantized caches, spatial/complex references and frozen fixture validation.
-  Run the planner/framework tests with `python -m operators.build --plan-only`.
+  Run the planner/framework tests with `python -m kernels._shared.build --plan-only`.
 - [ ] Build and validate every mapped SPIR-V dependency and both Android arm64
   libraries from an immutable source inventory. A runner built from the live
   checkout cannot qualify a different packaged snapshot.
-- [ ] Rerun `operators.verify_local` and the extended tensor/spatial/complex
+- [ ] Rerun `kernels._shared.verify_local` and the extended tensor/spatial/complex
   representatives, core/dynamic-capacity, GQA, SparseAttention and Unique suites
   against the delivered bytes. Broaden frozen coverage with `verify_frozen`,
-  `verify_spatial_published` and `operators.verify_upstream`; inspect unsupported
+  `verify_spatial_published` and `kernels._shared.verify_upstream`; inspect unsupported
   and reference-conflict counts as well as the process exit code.
 - [ ] Execute packaged Python references from outside the checkout with
   `PYTHONPATH=PACKAGE/source`, `PYTHONDONTWRITEBYTECODE=1` and `python -B`. Use a

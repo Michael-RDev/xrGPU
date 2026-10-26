@@ -1,0 +1,612 @@
+{
+  "fixtureArrays": {
+    "ort_three_dims_input_x": [1.0856307, 0.99734545, 0.2829785, 1.5062947, 0.5786002, 1.6514366, 2.4266791, 0.42891264, 1.2659363, 0.8667404, 0.6788862, 0.09470897, 1.4913896, 0.638902, 0.44398195, 0.43435127, 2.20593, 2.1867862, 1.004054, 0.3861864, 0.7373686, 1.4907321, 0.9358339, 1.175829, 1.2538806, 0.6377515, 0.9071052, 1.4286807, 0.14006872, 0.8617549, 0.25561938, 2.798589, 1.7715331, 0.69987726, 0.92746246, 0.17363568, 0.002845916, 0.6882227, 0.87953633, 0.28362733, 0.8053665, 1.7276695, 0.3908998, 0.57380587, 0.33858904, 0.011830495, 2.3923652, 0.41291216, 0.978736, 2.2381434, 1.2940853, 1.0387882, 1.7437122, 0.79806274, 0.02968323, 1.0693159, 0.8907064, 1.7548862, 1.4956441, 1.0693927],
+    "onnx_backend_hardmax_input_x": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902],
+    "onnx_backend_example_4x4_input_x": [3, 0, 1, 2, 2, 5, 1, 0, 0, 1, 3, 2, 0, 1, 2, 3]
+  },
+  "cases": [
+    {
+      "name": "f32_positive_subnormal_beats_zero_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.Simple",
+        "notes": "A positive subnormal is strictly greater than zero; Hardmax should put the one-hot at that element rather than tie-breaking on a flushed zero."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_positive_subnormal_beats_zero_axis0_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.Simple",
+        "notes": "Along axis 0, a positive subnormal is strictly greater than zero and must receive the one-hot value."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_positive_subnormal_beats_zero_last_axis_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.Simple",
+        "notes": "On the vec4 last-axis path, a positive subnormal is strictly greater than every zero-valued lane."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 1e-40, 0.0, -1e-40] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 1.0, 0.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "f32_positive_subnormal_beats_zero_last_axis_subgroup_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.LargeNumber",
+        "notes": "A 1,025-wide final axis cycles zero, a positive subnormal, zero, and a negative subnormal; the first positive subnormal, at index one, must win the maximum."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1025],
+          "data": { "kind": "cycle", "values": [0.0, 1e-40, 0.0, -1e-40] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1025], "tolerance": 0 } }
+    },
+    {
+      "name": "dispatch_cliff_axis_last_dim1",
+      "attrs": { "axis": -1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [16776961, 1], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16776961, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "simple_last_axis",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.Simple"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3] } }
+    },
+    {
+      "name": "onnx_backend_example_4x4",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_example",
+        "test": "test_hardmax_example"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_example_4x4_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_one_hot_tie_first",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_one_hot",
+        "test": "test_hardmax_one_hot"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [3.0, 3.0, 3.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "large_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.LargeNumber"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 2.0, 3.0, 10000.0, 10001.0, 10002.0, 10003.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4] } }
+    },
+    {
+      "name": "ort_compact_axis0_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsAxis0",
+        "notes": "Compact axis-0 variant covering the same non-last-axis behavior without the full ORT random tensor."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2],
+          "data": { "kind": "values", "values": [1.0, 5.0, 9.0, 4.0, 7.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "axis1_rank3",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 9.0, 7.0, 4.0, 5.0, 6.0, 3.0, 2.0, 8.0, 1.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2] } }
+    },
+    {
+      "name": "negative_axis",
+      "attrs": { "axis": -2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 9.0, 7.0, 4.0, 5.0, 6.0, 3.0, 2.0, 8.0, 1.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2] } }
+    },
+    {
+      "name": "ties_choose_first",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 3.0, 3.0, 2.0, 5.0, 5.0, 1.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4] } }
+    },
+    {
+      "name": "ort_axis1_nan_rows",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.Simple",
+        "notes": "Compatibility NaN behavior on the last axis: a leading NaN or all-NaN row produces all zeros, while a NaN after a finite incumbent does not replace the selected maximum."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": {
+            "kind": "values",
+            "values": ["NaN", 1.0, 2.0, 0.0, 1.0, "NaN", 2.0, 0.0, 1.0, 2.0, "NaN", 0.0, "NaN", "NaN", "NaN", "NaN"]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_rank3_axis1_nan_columns",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsAxis1_opset13",
+        "notes": "Compatibility NaN behavior on a non-last axis: leading-NaN and all-NaN reduced columns produce all zeros, while later NaNs after a finite value are ignored."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": ["NaN", 1.0, 1.0, "NaN", 2.0, 2.0, 1.0, "NaN", 2.0, "NaN", "NaN", "NaN"]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "float16_axis0",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [3, 2],
+          "data": { "kind": "values", "values": [1.0, 5.0, 4.0, 2.0, 3.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "rank4_axis2_ties_choose_first",
+      "attrs": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 9.0, 3.0, 9.0, 3.0, 8.0, 5.0, 0.0, 5.0, 1.0, 4.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "float16_ties_choose_first",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 3.0, 3.0, 2.0, 5.0, 5.0, 1.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "last_axis_64_tie_first_f32",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 64],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 100.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 100.0, 38.0, 39.0, 40.0, 41.0, 42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 56.0, 57.0, 58.0, 59.0, 60.0, 61.0, 62.0, 63.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "last_axis_128_f16",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 128], "tolerance": 0 } }
+    },
+    {
+      "name": "last_axis_1025_f32",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1025],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1025], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_three_dims_axis1_opset13",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsAxis1_opset13"
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_three_dims_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_three_dims_default_axis_opset13",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsDefaultAxis_opset13"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_three_dims_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_three_dims_axis2_opset13",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsAxis2_opset13"
+      },
+      "attrs": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_three_dims_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_three_dims_negative_axis_last",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/hardmax_test.cc",
+        "test": "HardmaxOperator.ThreeDimsNegAxis2",
+        "notes": "Axis=-1 maps to the last dimension; this matches opset-13 last-axis semantics."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_three_dims_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_axis_0",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_axis_0" },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_hardmax_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_axis_1",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_axis_1" },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_hardmax_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_axis_2",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_axis_2" },
+      "attrs": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_hardmax_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_default_axis",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_default_axis" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_hardmax_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_negative_axis",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_negative_axis" },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_hardmax_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_example" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_example_4x4_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "onnx_backend_hardmax_one_hot",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_hardmax_one_hot" },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [3.0, 3.0, 3.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "rank7_last_axis",
+      "provenance": {
+        "source": "ONNX spec: Hardmax permits arbitrary rank; ONNX Runtime's CPU provider coerces dims [0,axis) to rows and [axis,end) to cols with no rank cap.",
+        "notes": "Rank-7 last-axis coverage for the generalized last_axis_vec4 path. The result is one-hot along the final axis."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 1, 1, 1, 4],
+          "data": { "kind": "values", "values": [3.0, 1.0, 4.0, 2.0, 5.0, 9.0, 1.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 1, 1, 1, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "rank7_axis0",
+      "provenance": {
+        "source": "ONNX spec: Hardmax permits arbitrary rank; ONNX Runtime's CPU provider reduces over the requested axis at any rank.",
+        "notes": "Rank-7 non-last-axis coverage for the generic axis path. ORT and WebGPU reduce over axis 0 per inner column."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 1, 1, 1, 1, 1, 2],
+          "data": { "kind": "values", "values": [1.0, 5.0, 9.0, 4.0, 7.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 1, 1, 1, 1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_last_axis_subgroup_1025",
+      "provenance": {
+        "source": "constructed fixture",
+        "notes": "Float16 Hardmax over a 1,025-value final axis of distinct, strictly increasing values places the one-hot output at the final index."
+      },
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1025], "data": { "kind": "linspace", "start": 0.0, "end": 1025.0 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 1025], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_axis1_rank3",
+      "provenance": {
+        "source": "constructed fixture",
+        "notes": "Rank-three float16 Hardmax over axis one with distinct per-column values to avoid ties."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 9.0, 7.0, 4.0, 5.0, 6.0, 3.0, 2.0, 8.0, 1.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "vec4_lone_finite_among_neg_inf",
+      "attrs": { "axis": -1 },
+      "provenance": {
+        "source": "constructed fixture",
+        "notes": "Only index six of an eight-value row is finite (3.0); every other value is negative infinity, so the one-hot output must land at index six."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": {
+            "kind": "values",
+            "values": ["-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", 3.0, "-Infinity"]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "subgroup_cross_slot_lowest_index_tie_1025",
+      "attrs": { "axis": -1 },
+      "provenance": {
+        "source": "constructed fixture",
+        "notes": "A 1,025-value row alternates zero and one. The first maximum is index one, despite ties across the full row, so the one-hot output must land there."
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 1025], "data": { "kind": "cycle", "values": [0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1025], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_subgroup_all_equal_tie_index0_1025",
+      "attrs": { "axis": -1 },
+      "provenance": {
+        "source": "constructed fixture",
+        "notes": "A 1,025-wide float16 row has equal values throughout; the first maximum is index zero, so the one-hot result must be at index zero."
+      },
+      "inputs": { "x": { "dtype": "float16", "shape": [1, 1025], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 1025], "tolerance": 0 } }
+    },
+    {
+      "name": "axis_tree_axis0_1024x2",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1024, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1024, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "rank8_last_axis",
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 1, 1, 1, 2, 4],
+          "data": {
+            "kind": "values",
+            "values": [3.0, 1.0, 4.0, 2.0, 5.0, 9.0, 1.0, 6.0, 2.0, 7.0, 1.0, 8.0, 0.5, 0.25, 3.5, 1.25]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 1, 1, 1, 1, 2, 4], "tolerance": 0 } }
+    }
+  ]
+}

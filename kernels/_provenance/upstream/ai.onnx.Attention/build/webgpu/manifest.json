@@ -1,0 +1,2792 @@
+{
+  "domain": "ai.onnx",
+  "name": "Attention",
+  "sinceVersion": 24,
+  "inputs": {
+    "q": { "onnx": "Q", "dtype": "T" },
+    "k": { "onnx": "K", "dtype": "T" },
+    "v": { "onnx": "V", "dtype": "T" },
+    "attn_mask": { "dtype": "M", "optional": true },
+    "past_key": { "dtype": "T", "rank": 4, "optional": true },
+    "past_value": { "dtype": "T", "rank": 4, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": "ranks.q",
+      "shape": "shapes.q if ranks.q == 3 else [dim(shapes.q, 0), dim(shapes.q, 1), dim(shapes.q, 2), dim(shapes.v, 3)]"
+    },
+    "present_key": {
+      "dtype": "T",
+      "rank": 4,
+      "optional": true,
+      "shape": ["dim(shapes.q, 0)", "dim(shapes.k, 1)", "kvSeqTotal", "dim(shapes.k, 3)"]
+    },
+    "present_value": {
+      "dtype": "T",
+      "rank": 4,
+      "optional": true,
+      "shape": ["dim(shapes.q, 0)", "dim(shapes.k, 1)", "kvSeqTotal", "dim(shapes.v, 3)"]
+    }
+  },
+  "attributes": {
+    "is_causal": { "default": 0 },
+    "qk_matmul_output_mode": { "default": 0 },
+    "softcap": { "default": 0 },
+    "scale": {},
+    "q_num_heads": {},
+    "kv_num_heads": {},
+    "softmax_precision": {}
+  },
+  "attributeConstraints": {
+    "is_causal": { "values": [0, 1] },
+    "qk_matmul_output_mode": { "values": [0] },
+    "softmax_precision": { "values": [1] }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["float32", "float16", "bool"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "FLASH_MAX_TILE_K": { "default": 16 },
+    "FLASH_CLUSTER_WG_SMALL": { "default": 64 },
+    "FLASH_CLUSTER_WG_LARGE": { "default": 128 },
+    "DECODE_MAX_SPLITS": { "default": 16 },
+    "DECODE_KEYS_PER_SPLIT": { "default": 256 },
+    "MATERIALIZED_INNER_TILE": { "default": 16 },
+    "MATERIALIZED_INNER_TILE_LARGE": { "default": 32 },
+    "MATERIALIZED_QUERY_TILE": { "default": 64 },
+    "MATERIALIZED_QUERY_TILE_LARGE": { "default": 112 },
+    "MATERIALIZED_KEY_TILE": { "default": 64 },
+    "MATERIALIZED_VALUE_TILE": { "default": 64 },
+    "MATERIALIZED_VALUE_TILE_D128": { "default": 128 },
+    "MATERIALIZED_WORKGROUP_DIM": { "default": 16 },
+    "MATERIALIZED_SOFTMAX_WORKGROUP_SIZE": { "default": 128 },
+    "MATERIALIZED_SGMAT_QUERY_TILE": { "default": 64 },
+    "MATERIALIZED_SGMAT_KEY_TILE": { "default": 64 },
+    "MATERIALIZED_SGMAT_INNER_TILE": { "default": 32 },
+    "MATERIALIZED_SGMAT_SUBGROUP_TILE_ROWS": { "default": 16 },
+    "MATERIALIZED_SGMAT_SCORE_SUBGROUP_TILE_COLS": { "default": 32 },
+    "MATERIALIZED_SGMAT_APPLY_SUBGROUP_TILE_COLS": { "default": 32 },
+    "MATERIALIZED_SGMAT_APPLY_SUBGROUP_TILE_COLS_D128": { "default": 32 },
+    "MATERIALIZED_SGMAT_PRIVATE_ROW_STATS": { "default": 1 },
+    "MATERIALIZED_CACHED_SOFTMAX_WORKGROUP_SIZE": { "default": 128 },
+    "MATERIALIZED_CACHED_SOFTMAX_MAX_VECS_PER_LANE": { "default": 4 },
+    "TWO_PASS_SOFTMAX_WORKGROUP_SIZE": { "default": 128 },
+    "TWO_PASS_APPLY_INNER_TILE": { "default": 16 },
+    "TWO_PASS_APPLY_QUERY_TILE": { "default": 64 },
+    "TWO_PASS_APPLY_VALUE_TILE": { "default": 64 },
+    "TWO_PASS_APPLY_WORKGROUP_DIM": { "default": 16 },
+    "ONLINE_QUERY_TILE": { "default": 32 },
+    "ONLINE_VALUE_CAP": { "default": 256 },
+    "SPLITK_TARGET_WORKGROUPS": { "default": 1024 },
+    "SPLITK_MAX_QUERIES": { "default": 7 },
+    "MASKED_SPLITK_MAX_QUERIES": { "default": 16 },
+    "CLUSTER_SPLITKV_MAX_QUERIES": { "default": 512 },
+    "CLUSTER_SPLITKV_MIN_KEYS": { "default": 1024 },
+    "CLUSTER_SPLITKV_MAX_TILES": { "default": 96 },
+    "CLUSTER_SPLITKV_TILE_Q": { "default": 16 },
+    "CLUSTER_SPLITKV_LPQ": { "default": 8 },
+    "CLUSTER_SPLITKV_MAX_TILES_NOSG": { "default": 96 },
+    "CLUSTER_NARROW_LANES_MIN_KEY_WORK": { "default": 65536 },
+    "RANK3_QUERY_PACK_MIN_TILES": { "default": 128 },
+    "RANK3_PORTABLE_WIDE_LANES_MAX_TILES": { "default": 64 },
+    "RANK3_PORTABLE_MAX_VECS_PER_LANE": { "default": 16 },
+    "MATERIALIZED_SUBGROUP_MHA_MIN_HEAD_DIM": { "default": 96 },
+    "RANK3_FLASH_MAX_VECS_PER_LANE": { "default": 16 },
+    "MATERIALIZED_F16_FLASH_MIN_VECS_PER_LANE": { "default": 8 },
+    "MATERIALIZED_F16_SGMAT_FLASH_MIN_QUERY_GROUPS": { "default": 320 },
+    "MATERIALIZED_F16_GEMM_FLASH_MIN_QUERY_GROUPS": { "default": 192 },
+    "MATERIALIZED_F16_PORTABLE_CLUSTER_FLASH_MIN_QUERY_GROUPS": { "default": 128 },
+    "MATERIALIZED_F16_CLUSTER_MIN_QUERY_GROUPS_PER_VEC": { "default": 8 },
+    "MATERIALIZED_SGMAT_HEAD_CHUNK": { "default": 0 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "subgroupsWave32": "device.features.has(\"subgroups\") and wave32Adapter",
+    "narrowSubgroupRange": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "wave32SubgroupsUsable": "subgroupsWave32 or pinSubgroupSize32",
+    "attentionScaleParam": "attrs.scale if has(attrs, \"scale\") else 0",
+    "scaleIsExplicitZero": "has(attrs, \"scale\") and attrs.scale == 0",
+    "qNumHeadsParam": "attrs.q_num_heads if has(attrs, \"q_num_heads\") else 0",
+    "kvNumHeadsParam": "attrs.kv_num_heads if has(attrs, \"kv_num_heads\") else 0",
+    "materializedQHeads": "qNumHeadsParam if ranks.q == 3 else dim(shapes.q, 1)",
+    "materializedKvHeads": "kvNumHeadsParam if ranks.k == 3 else dim(shapes.k, 1)",
+    "materializedQSeq": "dim(shapes.q, 1) if ranks.q == 3 else dim(shapes.q, 2)",
+    "materializedKvSeq": "dim(shapes.k, 1) if ranks.k == 3 else dim(shapes.k, 2)",
+    "materializedHeadDim": "dim(shapes.q, 2) / max(1, qNumHeadsParam) if ranks.q == 3 else dim(shapes.q, 3)",
+    "materializedValueHeadDim": "dim(shapes.v, 2) / max(1, kvNumHeadsParam) if ranks.v == 3 else dim(shapes.v, 3)",
+    "materializedLayout": "\"bsh\" if ranks.q == 3 else \"bhsd\"",
+    "rank3Eligible": "ranks.q == 3 and ranks.k == 3 and ranks.v == 3 and ranks.y == 3 and f16Ok(dtypes.T) and qNumHeadsParam > 0 and kvNumHeadsParam > 0 and dim(shapes.q, 2) % qNumHeadsParam == 0 and dim(shapes.k, 2) % kvNumHeadsParam == 0 and dim(shapes.v, 2) % kvNumHeadsParam == 0 and dim(shapes.q, 0) == dim(shapes.k, 0) and dim(shapes.q, 0) == dim(shapes.v, 0) and dim(shapes.k, 1) == dim(shapes.v, 1) and dim(shapes.q, 2) / qNumHeadsParam == dim(shapes.k, 2) / kvNumHeadsParam and dim(shapes.v, 2) / kvNumHeadsParam == dim(shapes.q, 2) / qNumHeadsParam and dim(shapes.y, 0) == dim(shapes.q, 0) and dim(shapes.y, 1) == dim(shapes.q, 1) and dim(shapes.y, 2) == dim(shapes.q, 2) and not present.past_key and not present.past_value",
+    "attnScoreFlops": "(2 * dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq * materializedHeadDim) if ((ranks.q == 4 and ranks.k == 4 and ranks.v == 4) or rank3Eligible) else 0",
+    "attnApplyFlops": "(2 * dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq * materializedValueHeadDim) if ((ranks.q == 4 and ranks.k == 4 and ranks.v == 4) or rank3Eligible) else 0",
+    "attnFlops": "attnScoreFlops + attnApplyFlops",
+    "attnSoftmaxBytes": "(2 * dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq * dtypeBytes(tensorDtypes.q)) if ((ranks.q == 4 and ranks.k == 4 and ranks.v == 4) or rank3Eligible) else 0",
+    "rank4QkvShapesOk": "ranks.q == 4 and ranks.k == 4 and ranks.v == 4 and ranks.y == 4 and dim(shapes.q, 0) == dim(shapes.k, 0) and dim(shapes.q, 0) == dim(shapes.v, 0) and dim(shapes.k, 1) == dim(shapes.v, 1) and dim(shapes.q, 1) % dim(shapes.k, 1) == 0 and dim(shapes.k, 2) == dim(shapes.v, 2) and dim(shapes.q, 3) == dim(shapes.k, 3) and dim(shapes.y, 0) == dim(shapes.q, 0) and dim(shapes.y, 1) == dim(shapes.q, 1) and dim(shapes.y, 2) == dim(shapes.q, 2) and dim(shapes.y, 3) == dim(shapes.v, 3)",
+    "qkvContractOk": "rank4QkvShapesOk and not present.past_key and not present.past_value and not present.present_key and not present.present_value",
+    "kvCacheShapesOk": "present.past_key and present.past_value and ranks.past_key == 4 and ranks.past_value == 4 and dim(shapes.past_key, 0) == dim(shapes.q, 0) and dim(shapes.past_value, 0) == dim(shapes.q, 0) and dim(shapes.past_key, 1) == dim(shapes.k, 1) and dim(shapes.past_value, 1) == dim(shapes.k, 1) and dim(shapes.past_key, 2) == dim(shapes.past_value, 2) and dim(shapes.past_key, 3) == dim(shapes.k, 3) and dim(shapes.past_value, 3) == dim(shapes.v, 3)",
+    "pastSeq": "dim(shapes.past_key, 2) if present.past_key else 0",
+    "kvSeqTotal": "pastSeq + dim(shapes.k, 2)",
+    "cacheKeyElements": "dim(shapes.q, 0) * dim(shapes.k, 1) * kvSeqTotal * dim(shapes.k, 3)",
+    "cacheValueElements": "dim(shapes.q, 0) * dim(shapes.k, 1) * kvSeqTotal * dim(shapes.v, 3)",
+    "presentKeyShapeOk": "not present.present_key or (ranks.present_key == 4 and sameShape(shapes.present_key, [dim(shapes.q, 0), dim(shapes.k, 1), kvSeqTotal, dim(shapes.k, 3)]))",
+    "presentValueShapeOk": "not present.present_value or (ranks.present_value == 4 and sameShape(shapes.present_value, [dim(shapes.q, 0), dim(shapes.k, 1), kvSeqTotal, dim(shapes.v, 3)]))",
+    "presentShapesOk": "presentKeyShapeOk and presentValueShapeOk",
+    "kvCacheQkvOk": "rank4QkvShapesOk",
+    "q32BroadcastSubgroupLanes": "32 if wave32SubgroupsUsable else 0",
+    "q32BroadcastF32HeadVectors": "dim(shapes.q, 3) / 4 if dim(shapes.q, 3) % 4 == 0 else 0",
+    "q32BroadcastF32RegisterGeometry": "wave32SubgroupsUsable and q32BroadcastF32HeadVectors == q32BroadcastSubgroupLanes",
+    "subgroupClusterRegisterGeometry": "dtypes.T == \"f16\" or (dim(shapes.q, 3) % 4 == 0 and dim(shapes.q, 3) / 4 <= q32BroadcastSubgroupLanes)",
+    "fixedSubgroupGeometry": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == device.adapterInfo.subgroupMaxSize",
+    "rank4Eligible": "qkvContractOk and f16Ok(dtypes.T)",
+    "materializedContractOk": "rank4Eligible or (rank3Eligible and not present.present_key and not present.present_value and qNumHeadsParam % max(1, kvNumHeadsParam) == 0)",
+    "workgroupSizeFits": "tunables.WORKGROUP_SIZE > 0 and pow2ceil(tunables.WORKGROUP_SIZE) == tunables.WORKGROUP_SIZE and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "maskDtypeOk": "present.attn_mask and (tensorDtypes.attn_mask == \"bool\" or tensorDtypes.attn_mask == tensorDtypes.q)",
+    "hasMask": "present.attn_mask",
+    "maskIsBool": "tensorDtypes.attn_mask == \"bool\"",
+    "maskScalar": "\"u32\" if tensorDtypes.attn_mask == \"bool\" else (\"f16\" if tensorDtypes.attn_mask == \"float16\" else \"f32\")",
+    "maskRank4Ok": "maskDtypeOk and ranks.attn_mask == 4 and (dim(shapes.attn_mask, 0) == dim(shapes.q, 0) or dim(shapes.attn_mask, 0) == 1) and (dim(shapes.attn_mask, 1) == dim(shapes.q, 1) or dim(shapes.attn_mask, 1) == 1) and dim(shapes.attn_mask, 2) == dim(shapes.q, 2) and dim(shapes.attn_mask, 3) == dim(shapes.k, 2)",
+    "maskRank2Ok": "maskDtypeOk and ranks.attn_mask == 2 and dim(shapes.attn_mask, 0) == dim(shapes.q, 2) and dim(shapes.attn_mask, 1) == dim(shapes.k, 2)",
+    "maskRank3Ok": "maskDtypeOk and ranks.attn_mask == 3 and (dim(shapes.attn_mask, 0) == dim(shapes.q, 0) or dim(shapes.attn_mask, 0) == 1) and dim(shapes.attn_mask, 1) == dim(shapes.q, 2) and dim(shapes.attn_mask, 2) == dim(shapes.k, 2)",
+    "cacheMaskRank4Ok": "maskDtypeOk and ranks.attn_mask == 4 and (dim(shapes.attn_mask, 0) == dim(shapes.q, 0) or dim(shapes.attn_mask, 0) == 1) and (dim(shapes.attn_mask, 1) == dim(shapes.q, 1) or dim(shapes.attn_mask, 1) == 1) and dim(shapes.attn_mask, 2) == dim(shapes.q, 2) and dim(shapes.attn_mask, 3) == kvSeqTotal",
+    "cacheMaskRank2Ok": "maskDtypeOk and ranks.attn_mask == 2 and dim(shapes.attn_mask, 0) == dim(shapes.q, 2) and dim(shapes.attn_mask, 1) == kvSeqTotal",
+    "cacheMaskRank3Ok": "maskDtypeOk and ranks.attn_mask == 3 and (dim(shapes.attn_mask, 0) == dim(shapes.q, 0) or dim(shapes.attn_mask, 0) == 1) and dim(shapes.attn_mask, 1) == dim(shapes.q, 2) and dim(shapes.attn_mask, 2) == kvSeqTotal",
+    "cacheMaskOk": "cacheMaskRank4Ok or cacheMaskRank3Ok or cacheMaskRank2Ok",
+    "decodeSplitCount": "min(tunables.DECODE_MAX_SPLITS, ceilDiv(dim(shapes.k, 2), tunables.DECODE_KEYS_PER_SPLIT))",
+    "shortQuerySplitCount": "max(1, min(tunables.DECODE_MAX_SPLITS, ceilDiv(tunables.SPLITK_TARGET_WORKGROUPS, dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2)), ceilDiv(dim(shapes.k, 2), tunables.DECODE_KEYS_PER_SPLIT)))",
+    "rank4DispatchFits": "dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 2) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "equalValueHead": "dim(shapes.v, 3) == dim(shapes.q, 3)",
+    "flashHeadOk": "equalValueHead and dim(shapes.q, 3) % 4 == 0 and dim(shapes.q, 3) >= 32 and dim(shapes.q, 3) <= 256",
+    "decodePartialOutBytes": "dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount * dim(shapes.q, 3) * 4",
+    "decodeStatsBytes": "2 * dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount * 4",
+    "shortQueryPartialOutBytes": "dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * shortQuerySplitCount * dim(shapes.q, 3) * 4",
+    "shortQueryStatsBytes": "2 * dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * shortQuerySplitCount * 4",
+    "decodeScratchFits": "decodePartialOutBytes <= device.limits.maxStorageBufferBindingSize and decodePartialOutBytes <= device.limits.maxBufferSize and decodeStatsBytes <= device.limits.maxStorageBufferBindingSize and decodeStatsBytes <= device.limits.maxBufferSize",
+    "shortQueryScratchFits": "shortQueryPartialOutBytes <= device.limits.maxStorageBufferBindingSize and shortQueryPartialOutBytes <= device.limits.maxBufferSize and shortQueryStatsBytes <= device.limits.maxStorageBufferBindingSize and shortQueryStatsBytes <= device.limits.maxBufferSize and dim(shapes.q, 2) * shortQuerySplitCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "decodeSplitKOk": "rank4Eligible and not present.attn_mask and attrs.is_causal == 0 and dim(shapes.q, 2) == 1 and dim(shapes.k, 2) >= 1024 and flashHeadOk and rank4DispatchFits and decodeScratchFits",
+    "shortQuerySplitKOk": "rank4Eligible and not present.attn_mask and attrs.is_causal == 0 and dim(shapes.q, 2) >= 2 and dim(shapes.q, 2) <= tunables.SPLITK_MAX_QUERIES and dim(shapes.k, 2) >= 1024 and flashHeadOk and rank4DispatchFits and shortQueryScratchFits",
+    "maskedDecodeSplitKOk": "rank4Eligible and (maskRank4Ok or maskRank3Ok or maskRank2Ok) and attrs.is_causal == 0 and dim(shapes.q, 2) == 1 and dim(shapes.k, 2) >= 1024 and flashHeadOk and rank4DispatchFits and decodeScratchFits",
+    "materializedInputBuffersFit": "numel(shapes.q) * dtypeBytes(tensorDtypes.q) <= device.limits.maxStorageBufferBindingSize and numel(shapes.q) * dtypeBytes(tensorDtypes.q) <= device.limits.maxBufferSize and numel(shapes.k) * dtypeBytes(tensorDtypes.q) <= device.limits.maxStorageBufferBindingSize and numel(shapes.k) * dtypeBytes(tensorDtypes.q) <= device.limits.maxBufferSize and numel(shapes.v) * dtypeBytes(tensorDtypes.q) <= device.limits.maxStorageBufferBindingSize and numel(shapes.v) * dtypeBytes(tensorDtypes.q) <= device.limits.maxBufferSize and numel(shapes.y) * dtypeBytes(tensorDtypes.q) <= device.limits.maxStorageBufferBindingSize and numel(shapes.y) * dtypeBytes(tensorDtypes.q) <= device.limits.maxBufferSize",
+    "materializedScoreBytes": "dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq * 4",
+    "materializedScoreFits": "materializedScoreBytes <= device.limits.maxStorageBufferBindingSize and materializedScoreBytes <= device.limits.maxBufferSize",
+    "materializedWorkgroupSize": "tunables.MATERIALIZED_WORKGROUP_DIM * tunables.MATERIALIZED_WORKGROUP_DIM",
+    "materializedApplyTileN": "tunables.MATERIALIZED_VALUE_TILE_D128 if materializedHeadDim == 128 else tunables.MATERIALIZED_VALUE_TILE",
+    "materializedIntelAdapter": "has(device.adapterInfo, \"vendor\") and device.adapterInfo.vendor == \"intel\"",
+    "materializedIntelPortableTile": "materializedIntelAdapter and ranks.q == 3 and ranks.k == 3 and ranks.v == 3 and not device.features.has(\"subgroups\")",
+    "materializedIntelWave32Tile": "materializedIntelAdapter and ranks.q == 4 and ranks.k == 4 and ranks.v == 4 and device.features.has(\"shader-f16\") and wave32Effective",
+    "materializedLargeQueryTile": "min(2 * tunables.MATERIALIZED_QUERY_TILE, device.limits.maxComputeInvocationsPerWorkgroup) if materializedIntelPortableTile or materializedIntelWave32Tile else tunables.MATERIALIZED_QUERY_TILE_LARGE",
+    "materializedLargeTileFits": "materializedHeadDim < 128 and (materializedLargeQueryTile * tunables.MATERIALIZED_INNER_TILE_LARGE + tunables.MATERIALIZED_KEY_TILE * (tunables.MATERIALIZED_INNER_TILE_LARGE + 4) + materializedWorkgroupSize) * 4 <= device.limits.maxComputeWorkgroupStorageSize and (materializedLargeQueryTile * tunables.MATERIALIZED_INNER_TILE_LARGE + tunables.MATERIALIZED_INNER_TILE_LARGE * materializedApplyTileN + materializedLargeQueryTile + tunables.MATERIALIZED_INNER_TILE_LARGE) * 4 <= device.limits.maxComputeWorkgroupStorageSize and materializedLargeQueryTile % tunables.MATERIALIZED_WORKGROUP_DIM == 0 and (materializedLargeQueryTile * tunables.MATERIALIZED_INNER_TILE_LARGE) % materializedWorkgroupSize == 0 and (tunables.MATERIALIZED_KEY_TILE * tunables.MATERIALIZED_INNER_TILE_LARGE) % materializedWorkgroupSize == 0 and (tunables.MATERIALIZED_INNER_TILE_LARGE * materializedApplyTileN) % materializedWorkgroupSize == 0",
+    "materializedQueryTile": "materializedLargeQueryTile if materializedLargeTileFits else tunables.MATERIALIZED_QUERY_TILE",
+    "materializedInnerTile": "tunables.MATERIALIZED_INNER_TILE_LARGE if materializedLargeTileFits else tunables.MATERIALIZED_INNER_TILE",
+    "materializedScoreStorageBytes": "(materializedQueryTile * materializedInnerTile + tunables.MATERIALIZED_KEY_TILE * (materializedInnerTile + 4) + materializedWorkgroupSize) * 4",
+    "materializedApplyStorageBytes": "(materializedQueryTile * materializedInnerTile + materializedInnerTile * materializedApplyTileN + materializedQueryTile + materializedInnerTile) * 4",
+    "materializedTileGeometryOk": "pow2ceil(tunables.MATERIALIZED_WORKGROUP_DIM) == tunables.MATERIALIZED_WORKGROUP_DIM and (materializedInnerTile % 4 == 0 and (materializedApplyTileN / tunables.MATERIALIZED_WORKGROUP_DIM) % 4 == 0 and materializedInnerTile > 0 and tunables.MATERIALIZED_WORKGROUP_DIM > 0 and tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE > 0 and pow2ceil(tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE) == tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE and materializedQueryTile <= materializedWorkgroupSize and materializedQueryTile % tunables.MATERIALIZED_WORKGROUP_DIM == 0 and tunables.MATERIALIZED_KEY_TILE % tunables.MATERIALIZED_WORKGROUP_DIM == 0 and materializedApplyTileN % tunables.MATERIALIZED_WORKGROUP_DIM == 0 and materializedQueryTile * materializedInnerTile >= materializedWorkgroupSize and tunables.MATERIALIZED_KEY_TILE * materializedInnerTile >= materializedWorkgroupSize and materializedInnerTile * materializedApplyTileN >= materializedWorkgroupSize and (materializedQueryTile * materializedInnerTile) % materializedWorkgroupSize == 0 and (tunables.MATERIALIZED_KEY_TILE * materializedInnerTile) % materializedWorkgroupSize == 0 and (materializedInnerTile * materializedApplyTileN) % materializedWorkgroupSize == 0)",
+    "materializedDeviceOk": "materializedTileGeometryOk and materializedWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.MATERIALIZED_WORKGROUP_DIM <= device.limits.maxComputeWorkgroupSizeX and tunables.MATERIALIZED_WORKGROUP_DIM <= device.limits.maxComputeWorkgroupSizeY and tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE <= deviceWorkgroupCap and materializedScoreStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and materializedApplyStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "materializedGemmStatSlots": "ceilDiv(materializedKvSeq, tunables.MATERIALIZED_KEY_TILE)",
+    "materializedGemmScorePartialElements": "dim(shapes.q, 0) * materializedQHeads * materializedGemmStatSlots * materializedQSeq * 2",
+    "materializedRowStatsWg": "min(tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "materializedF32Covered": "materializedContractOk and (dtypes.T == \"f32\" or (dtypes.T == \"f16\" and device.features.has(\"shader-f16\"))) and not present.attn_mask and attrs.is_causal == 0 and attrs.softcap == 0 and materializedValueHeadDim == materializedHeadDim and materializedHeadDim > 0 and (ranks.q == 3 or materializedHeadDim <= 128) and (ranks.q == 3 or materializedHeadDim % 4 == 0) and materializedQSeq >= 512 and materializedKvSeq >= 512 and dim(shapes.q, 0) * materializedQHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(materializedQSeq, materializedQueryTile) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(materializedKvSeq, tunables.MATERIALIZED_KEY_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and materializedScoreFits and materializedDeviceOk and materializedGemmScorePartialElements * 4 <= device.limits.maxStorageBufferBindingSize and materializedGemmScorePartialElements * 4 <= device.limits.maxBufferSize and materializedRowStatsWg > 0 and materializedInputBuffersFit and ceilDiv(materializedValueHeadDim, materializedApplyTileN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "materializedSgmatQueryTile": "tunables.MATERIALIZED_SGMAT_QUERY_TILE",
+    "materializedSgmatKeyTile": "tunables.MATERIALIZED_SGMAT_KEY_TILE",
+    "materializedSgmatInnerTile": "tunables.MATERIALIZED_SGMAT_INNER_TILE",
+    "materializedSgmatSubgroupTileRows": "tunables.MATERIALIZED_SGMAT_SUBGROUP_TILE_ROWS",
+    "materializedSgmatScoreSubgroupTileCols": "tunables.MATERIALIZED_SGMAT_SCORE_SUBGROUP_TILE_COLS",
+    "materializedSgmatApplySubgroupTileCols": "tunables.MATERIALIZED_SGMAT_APPLY_SUBGROUP_TILE_COLS_D128 if materializedHeadDim >= 128 else tunables.MATERIALIZED_SGMAT_APPLY_SUBGROUP_TILE_COLS",
+    "materializedSgmatSubgroupRows": "floor(materializedSgmatQueryTile / materializedSgmatSubgroupTileRows)",
+    "materializedSgmatScoreSubgroupCols": "floor(materializedSgmatKeyTile / materializedSgmatScoreSubgroupTileCols)",
+    "materializedSgmatApplySubgroupCols": "floor(materializedSgmatKeyTile / materializedSgmatApplySubgroupTileCols)",
+    "materializedSgmatWorkgroupSize": "materializedSgmatSubgroupRows * max(materializedSgmatScoreSubgroupCols, materializedSgmatApplySubgroupCols) * 32",
+    "materializedSgmatCompactStorageBytes": "(materializedSgmatQueryTile + materializedSgmatKeyTile) * materializedSgmatInnerTile * 4",
+    "materializedSgmatPrivateRowStats": "tunables.MATERIALIZED_SGMAT_PRIVATE_ROW_STATS == 1 and materializedHeadDim < 128 and materializedSgmatQueryTile == 64 and materializedSgmatKeyTile == 64 and materializedSgmatInnerTile == 32 and materializedSgmatSubgroupTileRows == 16 and materializedSgmatApplySubgroupTileCols == 32 and materializedSgmatSubgroupRows * materializedSgmatApplySubgroupCols * 32 == 256",
+    "materializedSgmatScoreStorageBytes": "materializedSgmatCompactStorageBytes",
+    "materializedSgmatApplyStorageBytes": "materializedSgmatCompactStorageBytes + (0 if materializedSgmatPrivateRowStats else materializedSgmatQueryTile * 8)",
+    "materializedSgmatStorageBytes": "max(materializedSgmatScoreStorageBytes, materializedSgmatApplyStorageBytes)",
+    "materializedSgmatGeometryOk": "materializedSgmatSubgroupTileRows >= 8 and materializedSgmatSubgroupTileRows % 8 == 0 and materializedSgmatScoreSubgroupTileCols >= 8 and materializedSgmatScoreSubgroupTileCols % 8 == 0 and materializedSgmatApplySubgroupTileCols >= 8 and materializedSgmatApplySubgroupTileCols % 8 == 0 and materializedSgmatQueryTile >= materializedSgmatSubgroupTileRows and materializedSgmatQueryTile % materializedSgmatSubgroupTileRows == 0 and materializedSgmatKeyTile >= materializedSgmatScoreSubgroupTileCols and materializedSgmatKeyTile % materializedSgmatScoreSubgroupTileCols == 0 and materializedSgmatKeyTile >= materializedSgmatApplySubgroupTileCols and materializedSgmatKeyTile <= 64 and materializedSgmatKeyTile % materializedSgmatApplySubgroupTileCols == 0 and materializedSgmatInnerTile == 32 and materializedSgmatWorkgroupSize > 0",
+    "materializedSgmatStatSlots": "ceilDiv(materializedKvSeq, materializedSgmatKeyTile) * (materializedSgmatKeyTile / materializedSgmatScoreSubgroupTileCols)",
+    "materializedScorePartialElements": "dim(shapes.q, 0) * materializedQHeads * materializedSgmatStatSlots * materializedQSeq * 2",
+    "materializedSgmatBuffersFit": "materializedInputBuffersFit and materializedScoreFits and materializedScorePartialElements * 4 <= device.limits.maxStorageBufferBindingSize and materializedScorePartialElements * 4 <= device.limits.maxBufferSize",
+    "materializedSgmatResourcesFit": "materializedSgmatGeometryOk and materializedSgmatWorkgroupSize <= deviceWorkgroupCap and materializedSgmatStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "materializedSgmatDispatchFits": "ceilDiv(materializedKvSeq, materializedSgmatKeyTile) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(materializedQSeq, materializedSgmatQueryTile) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 0) * materializedQHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.q, 0) * materializedQHeads * materializedQSeq, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(materializedValueHeadDim, materializedSgmatKeyTile) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "materializedSgmatDirectScoreStore": "materializedQSeq % materializedSgmatQueryTile == 0 and materializedKvSeq % materializedSgmatKeyTile == 0",
+    "materializedSgmatDirectApplyStore": "materializedQSeq % materializedSgmatQueryTile == 0 and materializedValueHeadDim % materializedSgmatKeyTile == 0",
+    "materializedSgmatRuntimeDirectStore": "materializedQSeq >= 2 * materializedSgmatQueryTile and materializedKvSeq >= 2 * materializedSgmatKeyTile and materializedValueHeadDim >= materializedSgmatApplySubgroupTileCols",
+    "materializedSgmatCoreOk": "materializedContractOk and (dtypes.T == \"f32\" or (dtypes.T == \"f16\" and device.features.has(\"shader-f16\"))) and not present.attn_mask and attrs.softcap == 0 and materializedValueHeadDim == materializedHeadDim and materializedHeadDim > 0 and (ranks.q == 3 or materializedHeadDim <= 256) and materializedQSeq >= 512 and materializedKvSeq >= 512 and device.features.has(\"subgroups\") and wave32Effective and device.features.has(\"chromium-experimental-subgroup-matrix\") and materializedSgmatBuffersFit and materializedSgmatResourcesFit and materializedSgmatDispatchFits",
+    "materializedCachedSoftmaxWg": "min(tunables.MATERIALIZED_CACHED_SOFTMAX_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "materializedCachedSoftmaxVecsPerLane": "ceilDiv(ceilDiv(materializedKvSeq, 4), max(1, materializedCachedSoftmaxWg))",
+    "materializedCachedSoftmaxStorageBytes": "materializedCachedSoftmaxWg * 8 + 8",
+    "materializedCachedSoftmaxResourcesFit": "materializedCachedSoftmaxWg > 0 and pow2ceil(materializedCachedSoftmaxWg) == materializedCachedSoftmaxWg and materializedCachedSoftmaxStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and tunables.MATERIALIZED_CACHED_SOFTMAX_MAX_VECS_PER_LANE > 0 and materializedCachedSoftmaxVecsPerLane <= tunables.MATERIALIZED_CACHED_SOFTMAX_MAX_VECS_PER_LANE",
+    "materializedCachedSoftmaxOk": "materializedKvSeq % 4 == 0 and materializedCachedSoftmaxResourcesFit",
+    "materializedSgmatSoftmaxStorageBytes": "tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE * 8 + 8",
+    "materializedSgmatSoftmaxResourcesFit": "tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE > 0 and pow2ceil(tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE) == tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE and tunables.MATERIALIZED_SOFTMAX_WORKGROUP_SIZE <= deviceWorkgroupCap and materializedSgmatSoftmaxStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "materializedSgmatSoftmaxOk": "materializedCachedSoftmaxOk or materializedSgmatSoftmaxResourcesFit",
+    "materializedSgmatOk": "materializedSgmatCoreOk and materializedSgmatSoftmaxOk",
+    "noMaskClusterNoSgCovered": "rank4Eligible and not present.attn_mask and dim(shapes.v, 3) == dim(shapes.q, 3) and dim(shapes.q, 3) % 8 == 0 and dim(shapes.q, 3) >= 64 and dim(shapes.q, 3) <= 256 and dim(shapes.q, 2) >= 32 and dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 2) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "narrowQ32ClusterPreferred": "narrowSubgroupRange and noMaskClusterNoSgCovered and dim(shapes.q, 3) % 32 == 0",
+    "noMaskClusterSgCovered": "noMaskClusterNoSgCovered and subgroupsWave32",
+    "q32SharedCovered": "rank4Eligible and device.features.has(\"shader-f16\") and dtypes.T == \"f16\" and not present.attn_mask and dim(shapes.v, 3) == dim(shapes.q, 3) and dim(shapes.q, 3) % 4 == 0 and dim(shapes.q, 3) >= 64 and dim(shapes.q, 3) <= 256 and dim(shapes.q, 2) >= 31 and dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.q, 2), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and (dim(shapes.q, 3) / 4) * 32 * 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "q32SubgroupCovered": "rank4Eligible and wave32SubgroupsUsable and not present.attn_mask and dim(shapes.v, 3) == dim(shapes.q, 3) and dim(shapes.q, 2) >= 31 and dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.q, 2), 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ((device.features.has(\"shader-f16\") and dtypes.T == \"f16\" and dim(shapes.q, 3) % 4 == 0 and dim(shapes.q, 3) >= 64 and dim(shapes.q, 3) <= 256) or (dtypes.T == \"f32\" and attrs.is_causal == 0 and q32BroadcastF32RegisterGeometry))",
+    "onlineTiledStorageBytes": "dim(shapes.v, 3) * tunables.ONLINE_QUERY_TILE * 4",
+    "onlineTiledDeviceOk": "tunables.ONLINE_QUERY_TILE > 0 and tunables.ONLINE_QUERY_TILE <= deviceWorkgroupCap and onlineTiledStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "rank4OnlineStorageBytes": "tunables.WORKGROUP_SIZE * 4 + tunables.ONLINE_VALUE_CAP * 4 + 16",
+    "rank4OnlineDeviceOk": "workgroupSizeFits and rank4OnlineStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "noMaskFlashCovered": "decodeSplitKOk or (rank4Eligible and not present.attn_mask and dim(shapes.v, 3) == dim(shapes.q, 3) and dim(shapes.q, 3) % 4 == 0 and dim(shapes.q, 3) >= 32 and dim(shapes.q, 3) <= 256 and dim(shapes.q, 1) * dim(shapes.q, 2) >= 256 and dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 2) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+    "clusterTileKWg64": "max(1, min(tunables.FLASH_MAX_TILE_K, floor(device.limits.maxComputeWorkgroupStorageSize / (dim(shapes.q, 3) * (8 if dtypes.T != \"f16\" else 4) + tunables.FLASH_CLUSTER_WG_SMALL * 4))))",
+    "clusterTileKWg128": "max(1, min(tunables.FLASH_MAX_TILE_K, floor(device.limits.maxComputeWorkgroupStorageSize / (dim(shapes.q, 3) * (8 if dtypes.T != \"f16\" else 4) + tunables.FLASH_CLUSTER_WG_LARGE * 4))))",
+    "twoPassScoreBytes": "materializedScoreBytes",
+    "twoPassDenomBytes": "dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * 4",
+    "twoPassApplyWorkgroupSize": "tunables.TWO_PASS_APPLY_WORKGROUP_DIM * tunables.TWO_PASS_APPLY_WORKGROUP_DIM",
+    "twoPassApplyStorageBytes": "tunables.TWO_PASS_APPLY_QUERY_TILE * tunables.TWO_PASS_APPLY_INNER_TILE * 4 + tunables.TWO_PASS_APPLY_INNER_TILE * tunables.TWO_PASS_APPLY_VALUE_TILE * (2 if dtypes.T == \"f16\" else 4)",
+    "twoPassTileGeometryOk": "tunables.TWO_PASS_APPLY_INNER_TILE > 0 and tunables.TWO_PASS_APPLY_WORKGROUP_DIM > 0 and tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE > 0 and pow2ceil(tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE) == tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE and tunables.TWO_PASS_APPLY_QUERY_TILE % tunables.TWO_PASS_APPLY_WORKGROUP_DIM == 0 and tunables.TWO_PASS_APPLY_VALUE_TILE % tunables.TWO_PASS_APPLY_WORKGROUP_DIM == 0 and tunables.TWO_PASS_APPLY_QUERY_TILE * tunables.TWO_PASS_APPLY_INNER_TILE >= twoPassApplyWorkgroupSize and tunables.TWO_PASS_APPLY_INNER_TILE * tunables.TWO_PASS_APPLY_VALUE_TILE >= twoPassApplyWorkgroupSize and (tunables.TWO_PASS_APPLY_QUERY_TILE * tunables.TWO_PASS_APPLY_INNER_TILE) % twoPassApplyWorkgroupSize == 0 and (tunables.TWO_PASS_APPLY_INNER_TILE * tunables.TWO_PASS_APPLY_VALUE_TILE) % twoPassApplyWorkgroupSize == 0",
+    "twoPassDeviceOk": "twoPassTileGeometryOk and tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE <= deviceWorkgroupCap and twoPassApplyWorkgroupSize <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.TWO_PASS_APPLY_WORKGROUP_DIM <= device.limits.maxComputeWorkgroupSizeX and tunables.TWO_PASS_APPLY_WORKGROUP_DIM <= device.limits.maxComputeWorkgroupSizeY and twoPassApplyStorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "twoPassScoresFit": "twoPassScoreBytes <= device.limits.maxStorageBufferBindingSize and twoPassScoreBytes <= device.limits.maxBufferSize and twoPassDenomBytes <= device.limits.maxStorageBufferBindingSize and twoPassDenomBytes <= device.limits.maxBufferSize and twoPassDeviceOk",
+    "rank3WorkgroupSize": "min(tunables.WORKGROUP_SIZE, pow2ceil(max(1, dim(shapes.q, 2) / qNumHeadsParam)))",
+    "rank3StorageBytes": "rank3WorkgroupSize * 8 + max(1, dim(shapes.q, 2) / qNumHeadsParam) * 4 + 16",
+    "rank3FallbackFits": "rank3WorkgroupSize <= deviceWorkgroupCap and rank3StorageBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "clusterSplitKvWideLanes": "dim(shapes.q, 3) % 32 == 0 and dim(shapes.q, 3) >= 128",
+    "clusterNoSgBlocks": "ceilDiv(dim(shapes.q, 2), 16) * dim(shapes.q, 1) * dim(shapes.q, 0)",
+    "clusterNoSgKeyWork": "clusterNoSgBlocks * dim(shapes.k, 2)",
+    "clusterNarrowLanesWorthIt": "dim(shapes.q, 3) <= 64 and clusterNoSgKeyWork >= tunables.CLUSTER_NARROW_LANES_MIN_KEY_WORK",
+    "clusterSplitKvTiles": "ceilDiv(dim(shapes.q, 2), 16) * dim(shapes.q, 1) * dim(shapes.q, 0)",
+    "clusterSplitKvCount": "max(2, min(tunables.DECODE_MAX_SPLITS, ceilDiv(tunables.SPLITK_TARGET_WORKGROUPS, clusterSplitKvTiles), ceilDiv(dim(shapes.k, 2), tunables.DECODE_KEYS_PER_SPLIT)))",
+    "clusterSplitKvPartialOutBytes": "4 * dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * clusterSplitKvCount * dim(shapes.q, 3)",
+    "clusterSplitKvStatsBytes": "8 * dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * clusterSplitKvCount",
+    "clusterSplitKvOk": "rank4Eligible and not present.attn_mask and attrs.is_causal == 0 and equalValueHead and dim(shapes.q, 2) > tunables.SPLITK_MAX_QUERIES and dim(shapes.q, 2) <= tunables.CLUSTER_SPLITKV_MAX_QUERIES and dim(shapes.k, 2) >= tunables.CLUSTER_SPLITKV_MIN_KEYS and rank4DispatchFits and ceilDiv(dim(shapes.q, 2), 16) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 0) * clusterSplitKvCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and clusterSplitKvPartialOutBytes <= device.limits.maxStorageBufferBindingSize and clusterSplitKvPartialOutBytes <= device.limits.maxBufferSize and clusterSplitKvStatsBytes <= device.limits.maxStorageBufferBindingSize and clusterSplitKvStatsBytes <= device.limits.maxBufferSize",
+    "materializedRowStatsElements": "dim(shapes.q, 0) * materializedQHeads * materializedQSeq * 2",
+    "attnSgmatRowStatsBytes": "materializedScorePartialElements * 4 + materializedRowStatsElements * 4",
+    "attnGemmRowStatsBytes": "materializedGemmScorePartialElements * 4 + materializedRowStatsElements * 4",
+    "clusterSplitKvMaskOk": "rank4Eligible and (maskRank4Ok or maskRank2Ok) and attrs.is_causal == 0 and equalValueHead and dim(shapes.q, 2) > tunables.SPLITK_MAX_QUERIES and dim(shapes.q, 2) <= tunables.CLUSTER_SPLITKV_MAX_QUERIES and dim(shapes.k, 2) >= tunables.CLUSTER_SPLITKV_MIN_KEYS and rank4DispatchFits and ceilDiv(dim(shapes.q, 2), 16) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.q, 0) * clusterSplitKvCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and clusterSplitKvPartialOutBytes <= device.limits.maxStorageBufferBindingSize and clusterSplitKvPartialOutBytes <= device.limits.maxBufferSize and clusterSplitKvStatsBytes <= device.limits.maxStorageBufferBindingSize and clusterSplitKvStatsBytes <= device.limits.maxBufferSize",
+    "maskedShortQuerySplitKOk": "rank4Eligible and (maskRank4Ok or maskRank3Ok or maskRank2Ok) and attrs.is_causal == 0 and dim(shapes.q, 2) >= 2 and dim(shapes.q, 2) <= tunables.MASKED_SPLITK_MAX_QUERIES and dim(shapes.k, 2) >= 1024 and flashHeadOk and rank4DispatchFits and shortQueryScratchFits and not clusterSplitKvMaskOk",
+    "attentionScaleExpression": "\"0.0\" if scaleIsExplicitZero else \"select(inverseSqrt(f32(HEAD_DIM)), params.scale, params.scale != 0.0)\"",
+    "rank3FlashUsesF16": "tensorDtypes.q == \"float16\"",
+    "rank3FlashHeadDim": "dim(shapes.q, 2) / max(1, qNumHeadsParam)",
+    "rank3FlashHeadDimV4": "dim(shapes.q, 2) / max(1, qNumHeadsParam) / 4",
+    "rank3ActiveKeyFraction": "1 - max(0, min(dim(shapes.q, 1), dim(shapes.k, 1)) - 1) / (2 * max(1, dim(shapes.q, 1))) if attrs.is_causal else 1",
+    "rank3PortableQueryTiles": "dim(shapes.q, 0) * qNumHeadsParam * ceilDiv(dim(shapes.q, 1), 64)",
+    "rank3PortableWideLanes": "not device.features.has(\"subgroups\") and (rank3FlashHeadDimV4 / 2 > tunables.RANK3_PORTABLE_MAX_VECS_PER_LANE or rank3PortableQueryTiles * rank3ActiveKeyFraction < tunables.RANK3_PORTABLE_WIDE_LANES_MAX_TILES) and ceilDiv(dim(shapes.q, 1), 16) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank3FlashTileQ": "16 if device.features.has(\"subgroups\") or rank3PortableWideLanes else 64",
+    "rank3FlashLanesPerQuery": "8 if device.features.has(\"subgroups\") or rank3PortableWideLanes else 2",
+    "rank3FlashUseSubgroups": "device.features.has(\"subgroups\")",
+    "rank3QueryTiles": "dim(shapes.q, 0) * qNumHeadsParam * ceilDiv(dim(shapes.q, 1), rank3FlashTileQ)",
+    "rank3PreferredKeyTile": "((min(tunables.FLASH_MAX_TILE_K, 32) if rank3QueryTiles * rank3ActiveKeyFraction >= tunables.RANK3_QUERY_PACK_MIN_TILES else 32) if tensorDtypes.q != \"float16\" and rank3FlashHeadDim <= 128 else 8) if rank3FlashUseSubgroups else 8",
+    "rank3FlashBatchReduction": "rank3PortableWideLanes",
+    "rank3KeyTileBudget": "floor((device.limits.maxComputeWorkgroupStorageSize - (rank3FlashTileQ * rank3FlashLanesPerQuery * 4 if not rank3FlashUseSubgroups and not rank3FlashBatchReduction else 0)) / (rank3FlashHeadDim * (4 if rank3FlashUsesF16 else 8) + (rank3FlashTileQ * rank3FlashLanesPerQuery * 4 if rank3FlashBatchReduction else 0)))",
+    "rank3FlashTileK": "min(rank3PreferredKeyTile, max(1, rank3KeyTileBudget))",
+    "materializedStorageType": "dtypes.T",
+    "rank3FlashEligible": "(rank3Eligible) and (not present.attn_mask) and (attrs.softcap == 0) and (dim(shapes.q, 2) / qNumHeadsParam >= 64) and ((dim(shapes.q, 2) / qNumHeadsParam) % 32 == 0) and (dim(shapes.q, 1) >= 32) and (dim(shapes.k, 1) > 0) and (qNumHeadsParam % kvNumHeadsParam == 0) and (rank3FlashHeadDimV4 / rank3FlashLanesPerQuery <= tunables.RANK3_FLASH_MAX_VECS_PER_LANE) and (rank3KeyTileBudget >= 1) and (rank3FlashTileQ * rank3FlashLanesPerQuery <= deviceWorkgroupCap) and (ceilDiv(dim(shapes.q, 1), rank3FlashTileQ) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (qNumHeadsParam <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+    "rank4Q32BroadcastEligible": "(dim(shapes.k, 2) < tunables.CLUSTER_SPLITKV_MIN_KEYS) and (rank4Eligible) and (dtypes.T == \"f16\") and (not present.attn_mask) and (equalValueHead) and (dim(shapes.q, 3) % 4 == 0) and (dim(shapes.q, 3) % 64 == 0) and (dim(shapes.q, 3) >= 64) and (dim(shapes.q, 3) <= 256) and (dim(shapes.q, 2) >= 31) and (dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (ceilDiv(dim(shapes.q, 2), 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (wave32SubgroupsUsable) and device.features.has(\"shader-f16\") and device.features.has(\"subgroups\")",
+    "rank4Q32SharedEligible": "(dim(shapes.k, 2) < tunables.CLUSTER_SPLITKV_MIN_KEYS) and (rank4Eligible) and (dtypes.T == \"f16\") and (not present.attn_mask) and (equalValueHead) and (dim(shapes.q, 3) % 4 == 0) and (dim(shapes.q, 3) >= 64) and (dim(shapes.q, 3) <= 256) and (dim(shapes.q, 2) >= 31) and (dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and (ceilDiv(dim(shapes.q, 2), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) and ((dim(shapes.q, 3) / 4) * 32 * 16 <= device.limits.maxComputeWorkgroupStorageSize) and device.features.has(\"shader-f16\")",
+    "materializedRank4QueryGroups": "dim(shapes.q, 0) * materializedQHeads * ceilDiv(materializedQSeq, 32)",
+    "materializedRank4ClusterEligible": "rank4Eligible and dtypes.T == \"f16\" and device.features.has(\"shader-f16\") and not present.attn_mask and equalValueHead and materializedHeadDim >= 64 and materializedHeadDim <= 256 and materializedHeadDim % 16 == 0 and materializedQSeq >= 32 and rank4DispatchFits",
+    "materializedRank4ClusterLanes": "8 if materializedHeadDim % 32 == 0 else 4",
+    "materializedRank4ClusterPrivateVecs": "materializedHeadDim / (4 * materializedRank4ClusterLanes)"
+  },
+  "bindings": {
+    "query": { "arg": "q", "buffer": "read-only-storage", "elementType": "$materializedStorageType" },
+    "key": { "arg": "k", "buffer": "read-only-storage", "elementType": "$materializedStorageType" },
+    "scores": { "scratch": "materializedScores", "buffer": "storage", "elementType": "f32" },
+    "scorePartials": { "scratch": "materializedScorePartials", "buffer": "storage", "elementType": "f32" },
+    "params": {
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "materializedQSeq" },
+        { "name": "kvSeq", "type": "u32", "value": "materializedKvSeq" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" }
+      ]
+    },
+    "scorePartials_f32": {
+      "scratch": "materializedScorePartials",
+      "name": "scorePartials",
+      "buffer": "read-only-storage",
+      "elementType": "f32"
+    },
+    "rowStats": { "scratch": "materializedRowStats", "buffer": "storage", "elementType": "f32" },
+    "params_rows": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "rows", "type": "u32", "value": "dim(shapes.q, 0) * materializedQHeads * materializedQSeq" }]
+    },
+    "scores_f32": {
+      "scratch": "materializedScores",
+      "name": "scores",
+      "buffer": "read-only-storage",
+      "elementType": "f32"
+    },
+    "value": { "arg": "v", "buffer": "read-only-storage", "elementType": "$materializedStorageType" },
+    "output": { "arg": "y", "buffer": "storage", "elementType": "$materializedStorageType" },
+    "rowStats_f32": {
+      "scratch": "materializedRowStats",
+      "name": "rowStats",
+      "buffer": "read-only-storage",
+      "elementType": "f32"
+    },
+    "params_apply": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "materializedQSeq" },
+        { "name": "kvSeq", "type": "u32", "value": "materializedKvSeq" }
+      ]
+    },
+    "query_q": { "arg": "q", "name": "query", "buffer": "read-only-storage", "elementType": "$inputVec4" },
+    "key_k": { "arg": "k", "name": "key", "buffer": "read-only-storage", "elementType": "$inputVec4" },
+    "value_v": { "arg": "v", "name": "value", "buffer": "read-only-storage", "elementType": "$inputVec4" },
+    "output_y": { "arg": "y", "name": "output", "buffer": "storage", "elementType": "$inputVec4" },
+    "query_main": { "arg": "q", "name": "query", "buffer": "read-only-storage", "elementType": "$inputElement" },
+    "key_main": { "arg": "k", "name": "key", "buffer": "read-only-storage", "elementType": "$inputElement" },
+    "value_main": { "arg": "v", "name": "value", "buffer": "read-only-storage", "elementType": "$inputElement" },
+    "output_main": { "arg": "y", "name": "output", "buffer": "storage", "elementType": "$outputElement" },
+    "params_main": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal if attrs.is_causal else 0" }
+      ]
+    },
+    "src_new": { "arg": "k", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "src_past": { "arg": "past_key", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "dst": { "arg": "present_key", "buffer": "storage", "elementType": "$scalar" },
+    "params_count": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.present_key)" }]
+    },
+    "dst_f32": { "scratch": "cachedKey", "name": "dst", "buffer": "storage", "elementType": "f32" },
+    "params__uniform": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "count", "type": "u32", "value": "cacheKeyElements" }]
+    },
+    "src_new_v": { "arg": "v", "name": "src_new", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "src_past_scalar": {
+      "arg": "past_value",
+      "name": "src_past",
+      "buffer": "read-only-storage",
+      "elementType": "$scalar"
+    },
+    "dst_scalar": { "arg": "present_value", "name": "dst", "buffer": "storage", "elementType": "$scalar" },
+    "params_join_value": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.present_value)" }]
+    },
+    "dst_f32_write": { "scratch": "cachedValue", "name": "dst", "buffer": "storage", "elementType": "f32" },
+    "params_attn_kv_cache_concat": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "count", "type": "u32", "value": "cacheValueElements" }]
+    },
+    "q": { "buffer": "read-only-storage", "elementType": "$scalar" },
+    "k": { "arg": "present_key", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "v": { "arg": "present_value", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "y": { "buffer": "storage", "elementType": "$scalar" },
+    "params_rank4_kv_cache_online": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "kvSeqTotal" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" },
+        { "name": "causalOffset", "type": "u32", "value": "pastSeq" }
+      ]
+    },
+    "v_f32": { "scratch": "cachedValue", "name": "v", "buffer": "read-only-storage", "elementType": "f32" },
+    "k_f32": { "scratch": "cachedKey", "name": "k", "buffer": "read-only-storage", "elementType": "f32" },
+    "attn_mask": { "buffer": "read-only-storage", "elementType": "$maskScalar" },
+    "params_attention_rank4_online": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "kvSeqTotal" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" },
+        { "name": "causalOffset", "type": "u32", "value": "pastSeq" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if ((ranks.attn_mask == 2) or (ranks.attn_mask == 3 and dim(shapes.attn_mask, 0) == 1) or (ranks.attn_mask == 4 and dim(shapes.attn_mask, 0) == 1)) else (dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3))"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or ranks.attn_mask == 3 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else (dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 3))"
+        }
+      ]
+    },
+    "src": { "arg": "k", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "src_v": { "arg": "v", "name": "src", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "k_main": { "name": "k", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "v_main": { "name": "v", "buffer": "read-only-storage", "elementType": "$scalar" },
+    "params_rank4_no_mask": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" },
+        { "name": "causalOffset", "type": "u32", "value": "0" }
+      ]
+    },
+    "params_rank4_mask": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" },
+        { "name": "causalOffset", "type": "u32", "value": "0" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if ((ranks.attn_mask == 2) or (ranks.attn_mask == 3 and dim(shapes.attn_mask, 0) == 1) or (ranks.attn_mask == 4 and dim(shapes.attn_mask, 0) == 1)) else (dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3))"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or ranks.attn_mask == 3 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else (dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 3))"
+        }
+      ]
+    },
+    "params_attn_flash_online": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" }
+      ]
+    },
+    "params_flash_online_tiled_mask": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 0) == 1) else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else dim(shapes.attn_mask, 3)"
+        }
+      ]
+    },
+    "params_flash_q32_shared": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" }
+      ]
+    },
+    "params_attn_flash_prefill_cluster": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 0) == 1) else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else dim(shapes.attn_mask, 3)"
+        },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" }
+      ]
+    },
+    "q_softmax": { "name": "q", "buffer": "read-only-storage", "elementType": "$qkScalar" },
+    "k_softmax": { "name": "k", "buffer": "read-only-storage", "elementType": "$qkScalar" },
+    "weights": { "buffer": "storage", "elementType": "f32" },
+    "denomOut": { "buffer": "storage", "elementType": "f32" },
+    "params_softmax": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "queryCount", "type": "u32", "value": "dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" }
+      ]
+    },
+    "params_rank4_mask_2pass": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "queryCount", "type": "u32", "value": "dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2)" },
+        { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+        { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "headSize", "type": "u32", "value": "dim(shapes.q, 3)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        { "name": "softcap", "type": "f32", "value": "attrs.softcap" },
+        { "name": "isCausal", "type": "u32", "value": "attrs.is_causal" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if ((ranks.attn_mask == 2) or (ranks.attn_mask == 3 and dim(shapes.attn_mask, 0) == 1) or (ranks.attn_mask == 4 and dim(shapes.attn_mask, 0) == 1)) else (dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3))"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or ranks.attn_mask == 3 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else (dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 3))"
+        }
+      ]
+    },
+    "partial_out": { "scratch": "partialOut", "buffer": "storage", "elementType": "vec4<f32>" },
+    "partial_stats": { "scratch": "partialStats", "buffer": "storage", "elementType": "vec2<f32>" },
+    "params_kv_seq_scale": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" }
+      ]
+    },
+    "params_split_attention": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if ((ranks.attn_mask == 2) or (ranks.attn_mask == 3 and dim(shapes.attn_mask, 0) == 1) or (ranks.attn_mask == 4 and dim(shapes.attn_mask, 0) == 1)) else (dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3))"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or ranks.attn_mask == 3 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else (dim(shapes.attn_mask, 2) if ranks.attn_mask == 3 else dim(shapes.attn_mask, 3))"
+        }
+      ]
+    },
+    "partial_out_merge": {
+      "scratch": "partialOut",
+      "name": "partial_out",
+      "buffer": "read-only-storage",
+      "elementType": "vec4<f32>"
+    },
+    "partial_stats_merge": {
+      "scratch": "partialStats",
+      "name": "partial_stats",
+      "buffer": "read-only-storage",
+      "elementType": "vec2<f32>"
+    },
+    "params_flash_cluster_splitkv_mask": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+        { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+        { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+        {
+          "name": "maskBatchStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 0) == 1) else dim(shapes.attn_mask, 1) * dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskHeadStride",
+          "type": "u32",
+          "value": "0 if (ranks.attn_mask == 2 or dim(shapes.attn_mask, 1) == 1) else dim(shapes.attn_mask, 2) * dim(shapes.attn_mask, 3)"
+        },
+        {
+          "name": "maskSeqStride",
+          "type": "u32",
+          "value": "dim(shapes.attn_mask, 1) if ranks.attn_mask == 2 else dim(shapes.attn_mask, 3)"
+        }
+      ]
+    },
+    "params_rows_chunk": {
+      "name": "params",
+      "buffer": "uniform",
+      "struct": [{ "name": "rows", "type": "u32", "value": "dim(shapes.q, 0) * headChunkSize * materializedQSeq" }]
+    }
+  },
+  "variants": [
+    {
+      "id": "materialized_sgmat_head_chunk_f32",
+      "priority": 53,
+      "when": ["materializedSgmatOk", "ranks.q == 3 and dtypes.T == \"f32\" and attrs.is_causal == 0", "tunables.MATERIALIZED_SGMAT_HEAD_CHUNK > 0 and tunables.MATERIALIZED_SGMAT_HEAD_CHUNK < materializedQHeads", "materializedQHeads % tunables.MATERIALIZED_SGMAT_HEAD_CHUNK == 0"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "qNumHeads": "materializedQHeads",
+        "kvNumHeads": "materializedKvHeads",
+        "headDim": "materializedHeadDim",
+        "qHidden": "materializedQHeads * materializedHeadDim",
+        "materializedSgmatSubgroupTileCols": "materializedSgmatScoreSubgroupTileCols",
+        "statSlots": "materializedSgmatStatSlots",
+        "statQuerySeq": "materializedQSeq",
+        "storageF16": "dtypes.T == \"f16\"",
+        "headChunkSize": "tunables.MATERIALIZED_SGMAT_HEAD_CHUNK"
+      },
+      "intermediates": [
+        {
+          "id": "materializedScores",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * headChunkSize * materializedQSeq * materializedKvSeq]"
+        },
+        {
+          "id": "materializedRowStats",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * headChunkSize * materializedQSeq * 2]"
+        },
+        {
+          "id": "materializedScorePartials",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * headChunkSize * materializedSgmatStatSlots * materializedQSeq * 2]"
+        }
+      ],
+      "passes": [
+        {
+          "repeat": { "index": "headChunk", "count": "materializedQHeads / headChunkSize" },
+          "passes": [
+            {
+              "id": "scores",
+              "name": "Attention.MaterializedScoresSgmat",
+              "shader": "attn-materialized-sgmat-f32.wgsl.jinja",
+              "derive": {
+                "phase": "\"score\"",
+                "layout": "materializedLayout",
+                "emitRowStats": true,
+                "scoreDirectOperands": "materializedHeadDim % materializedSgmatInnerTile == 0",
+                "causalUpperLeft": "attrs.is_causal != 0",
+                "headChunkSize": "headChunkSize"
+              },
+              "bindings": [
+                "query",
+                "key",
+                "scores",
+                "scorePartials",
+                {
+                  "name": "params",
+                  "buffer": "uniform",
+                  "struct": [
+                    { "name": "qSeq", "type": "u32", "value": "materializedQSeq" },
+                    { "name": "kvSeq", "type": "u32", "value": "materializedKvSeq" },
+                    { "name": "scale", "type": "f32", "value": "attentionScaleParam" },
+                    { "name": "headBase", "type": "u32", "value": "repeat.headChunk * headChunkSize" }
+                  ]
+                }
+              ],
+              "dispatch": {
+                "x": "ceilDiv(materializedKvSeq, materializedSgmatKeyTile)",
+                "y": "ceilDiv(materializedQSeq, materializedSgmatQueryTile)",
+                "z": "dim(shapes.q, 0) * headChunkSize"
+              }
+            },
+            {
+              "id": "rowstats",
+              "name": "Attention.MaterializedRowStatsCombine",
+              "shader": "attn-materialized-rowstats-combine-f32.wgsl.jinja",
+              "bindings": ["scorePartials_f32", "rowStats", "params_rows_chunk"],
+              "dispatch": {
+                "x": "min(ceilDiv((dim(shapes.q, 0) * headChunkSize * materializedQSeq), (materializedRowStatsWg)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+                "y": 1,
+                "z": 1
+              }
+            },
+            {
+              "id": "apply",
+              "name": "Attention.MaterializedApplySgmat",
+              "shader": "attn-materialized-sgmat-f32.wgsl.jinja",
+              "derive": {
+                "materializedSgmatSubgroupTileCols": "materializedSgmatApplySubgroupTileCols",
+                "phase": "\"apply\"",
+                "layout": "materializedLayout",
+                "fusedSoftmax": true,
+                "causalUpperLeft": "attrs.is_causal != 0",
+                "headChunkSize": "headChunkSize"
+              },
+              "bindings": [
+                "scores_f32",
+                "value",
+                "output",
+                "rowStats_f32",
+                {
+                  "name": "params",
+                  "buffer": "uniform",
+                  "struct": [
+                    { "name": "qSeq", "type": "u32", "value": "materializedQSeq" },
+                    { "name": "kvSeq", "type": "u32", "value": "materializedKvSeq" },
+                    { "name": "headBase", "type": "u32", "value": "repeat.headChunk * headChunkSize" }
+                  ]
+                }
+              ],
+              "dispatch": {
+                "x": "ceilDiv(materializedValueHeadDim, materializedSgmatKeyTile)",
+                "y": "ceilDiv(materializedQSeq, materializedSgmatQueryTile)",
+                "z": "dim(shapes.q, 0) * headChunkSize"
+              }
+            }
+          ]
+        }
+      ],
+      "demoteWhen": ["dtypes.T == \"f16\" and rank3FlashEligible and materializedHeadDim <= materializedSgmatKeyTile", "rank4Q32BroadcastEligible and subgroupsWave32 and attrs.is_causal == 0 and materializedRank4QueryGroups >= tunables.MATERIALIZED_F16_SGMAT_FLASH_MIN_QUERY_GROUPS"]
+    },
+    {
+      "id": "materialized_sgmat_f32",
+      "priority": 52,
+      "when": ["materializedSgmatOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "qNumHeads": "materializedQHeads",
+        "kvNumHeads": "materializedKvHeads",
+        "headDim": "materializedHeadDim",
+        "qHidden": "materializedQHeads * materializedHeadDim",
+        "materializedSgmatSubgroupTileCols": "materializedSgmatScoreSubgroupTileCols",
+        "statSlots": "materializedSgmatStatSlots",
+        "statQuerySeq": "materializedQSeq",
+        "storageF16": "dtypes.T == \"f16\""
+      },
+      "intermediates": [
+        {
+          "id": "materializedScores",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq]"
+        },
+        { "id": "materializedRowStats", "dtype": "float32", "shape": "[materializedRowStatsElements]" },
+        { "id": "materializedScorePartials", "dtype": "float32", "shape": "[materializedScorePartialElements]" }
+      ],
+      "passes": [
+        {
+          "id": "scores",
+          "name": "Attention.MaterializedScoresSgmat",
+          "shader": "attn-materialized-sgmat-f32.wgsl.jinja",
+          "derive": {
+            "phase": "\"score\"",
+            "layout": "materializedLayout",
+            "emitRowStats": true,
+            "scoreDirectOperands": "materializedHeadDim % materializedSgmatInnerTile == 0",
+            "causalUpperLeft": "attrs.is_causal != 0"
+          },
+          "bindings": ["query", "key", "scores", "scorePartials", "params"],
+          "dispatch": {
+            "x": "ceilDiv(materializedKvSeq, materializedSgmatKeyTile)",
+            "y": "ceilDiv(materializedQSeq, materializedSgmatQueryTile)",
+            "z": "dim(shapes.q, 0) * materializedQHeads"
+          }
+        },
+        {
+          "id": "rowstats",
+          "name": "Attention.MaterializedRowStatsCombine",
+          "shader": "attn-materialized-rowstats-combine-f32.wgsl.jinja",
+          "bindings": ["scorePartials_f32", "rowStats", "params_rows"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.q, 0) * materializedQHeads * materializedQSeq), (materializedRowStatsWg)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "Attention.MaterializedApplySgmat",
+          "shader": "attn-materialized-sgmat-f32.wgsl.jinja",
+          "derive": {
+            "materializedSgmatSubgroupTileCols": "materializedSgmatApplySubgroupTileCols",
+            "phase": "\"apply\"",
+            "layout": "materializedLayout",
+            "fusedSoftmax": true,
+            "causalUpperLeft": "attrs.is_causal != 0"
+          },
+          "bindings": ["scores_f32", "value", "output", "rowStats_f32", "params_apply"],
+          "dispatch": {
+            "x": "ceilDiv(materializedValueHeadDim, materializedSgmatKeyTile)",
+            "y": "ceilDiv(materializedQSeq, materializedSgmatQueryTile)",
+            "z": "dim(shapes.q, 0) * materializedQHeads"
+          }
+        }
+      ],
+      "demoteWhen": ["dtypes.T == \"f16\" and rank3FlashEligible and materializedHeadDim <= materializedSgmatKeyTile", "rank4Q32BroadcastEligible and subgroupsWave32 and attrs.is_causal == 0 and materializedRank4QueryGroups >= tunables.MATERIALIZED_F16_SGMAT_FLASH_MIN_QUERY_GROUPS"]
+    },
+    {
+      "id": "materialized_gemm_f32",
+      "priority": 40,
+      "when": ["materializedF32Covered"],
+      "derive": {
+        "qNumHeads": "materializedQHeads",
+        "kvNumHeads": "materializedKvHeads",
+        "headDim": "materializedHeadDim",
+        "scalarAccumulators": true,
+        "materializedKeyTile": "tunables.MATERIALIZED_KEY_TILE",
+        "materializedWorkgroupDim": "tunables.MATERIALIZED_WORKGROUP_DIM",
+        "applyTileN": "materializedApplyTileN",
+        "hasBias": false,
+        "statSlots": "materializedGemmStatSlots",
+        "statQuerySeq": "materializedQSeq",
+        "storageF16": "dtypes.T == \"f16\""
+      },
+      "intermediates": [
+        {
+          "id": "materializedScores",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * materializedQHeads * materializedQSeq * materializedKvSeq]"
+        },
+        { "id": "materializedRowStats", "dtype": "float32", "shape": "[materializedRowStatsElements]" },
+        { "id": "materializedScorePartials", "dtype": "float32", "shape": "[materializedGemmScorePartialElements]" }
+      ],
+      "passes": [
+        {
+          "id": "scores",
+          "name": "Attention.MaterializedScores",
+          "shader": "attn-materialized-score-f32.wgsl.jinja",
+          "derive": { "layout": "materializedLayout", "emitRowStats": true },
+          "bindings": ["query", "key", "scores", "scorePartials", "params"],
+          "dispatch": {
+            "x": "ceilDiv(materializedKvSeq, materializedKeyTile)",
+            "y": "ceilDiv(materializedQSeq, materializedQueryTile)",
+            "z": "dim(shapes.q, 0) * materializedQHeads"
+          }
+        },
+        {
+          "id": "rowstats",
+          "name": "Attention.MaterializedRowStatsCombine",
+          "shader": "attn-materialized-rowstats-combine-f32.wgsl.jinja",
+          "derive": { "maxOnly": true },
+          "bindings": ["scorePartials_f32", "rowStats", "params_rows"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.q, 0) * materializedQHeads * materializedQSeq), (materializedRowStatsWg)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "Attention.MaterializedApply",
+          "shader": "attn-materialized-apply-f32.wgsl.jinja",
+          "derive": { "layout": "materializedLayout", "fusedSoftmax": true },
+          "bindings": ["scores_f32", "value", "output", "rowStats_f32", "params_apply"],
+          "dispatch": {
+            "x": "ceilDiv(materializedValueHeadDim, applyTileN)",
+            "y": "ceilDiv(materializedQSeq, materializedQueryTile)",
+            "z": "dim(shapes.q, 0) * materializedQHeads"
+          }
+        }
+      ],
+      "demoteWhen": ["ranks.q == 3 and device.features.has(\"subgroups\") and materializedQHeads == materializedKvHeads and materializedHeadDim >= 64 and materializedHeadDim % 32 == 0 and materializedHeadDim < tunables.MATERIALIZED_SUBGROUP_MHA_MIN_HEAD_DIM", "dtypes.T == \"f16\" and rank3FlashEligible and rank3FlashHeadDimV4 / rank3FlashLanesPerQuery < tunables.MATERIALIZED_F16_FLASH_MIN_VECS_PER_LANE", "dtypes.T == \"f16\" and rank3FlashEligible and not rank3FlashUseSubgroups and not rank3PortableWideLanes and rank3FlashHeadDimV4 / rank3FlashLanesPerQuery == tunables.MATERIALIZED_F16_FLASH_MIN_VECS_PER_LANE", "rank4Q32SharedEligible and materializedRank4QueryGroups >= tunables.MATERIALIZED_F16_GEMM_FLASH_MIN_QUERY_GROUPS", "materializedRank4ClusterEligible and materializedHeadDim % 64 != 0 and materializedRank4QueryGroups >= (tunables.MATERIALIZED_F16_CLUSTER_MIN_QUERY_GROUPS_PER_VEC * materializedRank4ClusterPrivateVecs if subgroupsWave32 else tunables.MATERIALIZED_F16_PORTABLE_CLUSTER_FLASH_MIN_QUERY_GROUPS)", "dtypes.T == \"f32\" and ranks.q == 4 and materializedHeadDim >= 64 and materializedHeadDim % 8 == 0 and materializedHeadDim % 16 != 0 and rank4DispatchFits and not (device.features.has(\"subgroups\") and not fixedSubgroupGeometry)", "dtypes.T == \"f32\" and ranks.q == 4 and not device.features.has(\"subgroups\") and materializedHeadDim >= 64 and materializedHeadDim % 16 == 0 and materializedHeadDim % 32 != 0 and rank4DispatchFits"]
+    },
+    {
+      "id": "flash_q32_broadcast_f32_d128",
+      "priority": 30,
+      "when": ["dim(shapes.k, 2) < tunables.CLUSTER_SPLITKV_MIN_KEYS", "rank4Eligible", "dtypes.T == \"f32\"", "attrs.is_causal == 0", "not present.attn_mask", "equalValueHead", "q32BroadcastF32RegisterGeometry", "dim(shapes.q, 2) >= 31", "dim(shapes.q, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "dim(shapes.q, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.q, 2), q32BroadcastSubgroupLanes) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "\"f32\"",
+        "usesF16": false,
+        "inputVec4": "\"vec4<f32>\"",
+        "hasCausal": false,
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "kStep": 64,
+        "qkGroups": 16
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashQ32BroadcastF32",
+          "shader": "attn-flash-q32-broadcast.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), 32)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_flash_tiled",
+      "priority": 20,
+      "when": ["rank3FlashEligible"],
+      "derive": {
+        "scalar": "\"f16\" if tensorDtypes.q == \"float16\" else \"f32\"",
+        "usesF16": "rank3FlashUsesF16",
+        "inputElement": "\"vec4<f16>\" if tensorDtypes.q == \"float16\" else \"vec4<f32>\"",
+        "outputElement": "\"vec4<f16>\" if tensorDtypes.q == \"float16\" else \"vec4<f32>\"",
+        "headDim": "rank3FlashHeadDim",
+        "headDimV4": "rank3FlashHeadDimV4",
+        "qHiddenV4": "dim(shapes.q, 2) / 4",
+        "kvHiddenV4": "dim(shapes.k, 2) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "hasWindow": false,
+        "qNumHeads": "qNumHeadsParam",
+        "kvNumHeads": "kvNumHeadsParam",
+        "TILE_Q": "rank3FlashTileQ",
+        "LPQ": "rank3FlashLanesPerQuery",
+        "useSubgroups": "rank3FlashUseSubgroups",
+        "batchNoSgReduction": "rank3FlashBatchReduction",
+        "TILE_K": "rank3FlashTileK"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.Rank3FlashTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bsh\"" },
+          "bindings": ["query_main", "key_main", "value_main", "output_main", "params_main"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 1), TILE_Q)", "y": "qNumHeadsParam", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_packed",
+      "priority": 5,
+      "when": ["rank3Eligible and rank3FallbackFits and not present.attn_mask and attrs.softcap == 0"],
+      "derive": {
+        "hasBias": false,
+        "hasCausal": true,
+        "hasKeyLimit": false,
+        "outputScalar": "\"f16\" if tensorDtypes.q == \"float16\" else \"f32\"",
+        "inputElement": "\"f16\" if tensorDtypes.q == \"float16\" else \"f32\"",
+        "outputElement": "\"f16\" if tensorDtypes.q == \"float16\" else \"f32\"",
+        "qNumHeads": "qNumHeadsParam",
+        "kvNumHeads": "kvNumHeadsParam",
+        "qHidden": "dim(shapes.q, 2)",
+        "kvHidden": "dim(shapes.k, 2)",
+        "headDim": "dim(shapes.q, 2) / qNumHeadsParam",
+        "workgroupSize": "rank3WorkgroupSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attn-online-scalar.wgsl.jinja",
+          "derive": { "layout": "\"bsh\"" },
+          "bindings": ["query_main", "key_main", "value_main", "output_main", "params_main"],
+          "dispatch": {
+            "x": "min(dim(shapes.q, 1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "qNumHeadsParam",
+            "z": "dim(shapes.q, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_online",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "present.present_key", "present.present_value", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinPresentKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new", "src_past", "dst", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinPresentValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_scalar", "params_join_value"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k", "v", "y", "params_rank4_kv_cache_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_online_key_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "present.present_key", "not present.present_value", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [{ "id": "cachedValue", "dtype": "float32", "shape": "[cacheValueElements]" }],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinPresentKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new", "src_past", "dst", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinCachedValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_f32_write", "params_attn_kv_cache_concat"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k", "v_f32", "y", "params_rank4_kv_cache_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_online_value_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "not present.present_key", "present.present_value", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [{ "id": "cachedKey", "dtype": "float32", "shape": "[cacheKeyElements]" }],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinCachedKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new", "src_past", "dst_f32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinPresentValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_scalar", "params_join_value"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_f32", "v", "y", "params_rank4_kv_cache_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_online_y_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "not present.present_key", "not present.present_value", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [
+        { "id": "cachedKey", "dtype": "float32", "shape": "[cacheKeyElements]" },
+        { "id": "cachedValue", "dtype": "float32", "shape": "[cacheValueElements]" }
+      ],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinCachedKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new", "src_past", "dst_f32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinCachedValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_f32_write", "params_attn_kv_cache_concat"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_f32", "v_f32", "y", "params_rank4_kv_cache_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_mask_online",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "present.present_key", "present.present_value", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinPresentKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new", "src_past", "dst", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinPresentValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_scalar", "params_join_value"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k", "v", "attn_mask", "y", "params_attention_rank4_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_mask_online_key_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "present.present_key", "not present.present_value", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [{ "id": "cachedValue", "dtype": "float32", "shape": "[cacheValueElements]" }],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinPresentKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new", "src_past", "dst", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_key)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinCachedValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_f32_write", "params_attn_kv_cache_concat"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k", "v_f32", "attn_mask", "y", "params_attention_rank4_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_mask_online_value_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "not present.present_key", "present.present_value", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [{ "id": "cachedKey", "dtype": "float32", "shape": "[cacheKeyElements]" }],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinCachedKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new", "src_past", "dst_f32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinPresentValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "dtypes.T" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_scalar", "params_join_value"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.present_value)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_f32", "v", "attn_mask", "y", "params_attention_rank4_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_kv_cache_mask_online_y_only",
+      "priority": 15,
+      "when": ["kvCacheShapesOk", "kvCacheQkvOk", "presentShapesOk", "not present.present_key", "not present.present_value", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "intermediates": [
+        { "id": "cachedKey", "dtype": "float32", "shape": "[cacheKeyElements]" },
+        { "id": "cachedValue", "dtype": "float32", "shape": "[cacheValueElements]" }
+      ],
+      "passes": [
+        {
+          "id": "joinKey",
+          "name": "Attention.JoinCachedKey",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.k, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new", "src_past", "dst_f32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheKeyElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "joinValue",
+          "name": "Attention.JoinCachedValue",
+          "shader": "attn-kv-cache-concat.wgsl.jinja",
+          "derive": { "newSeq": "dim(shapes.k, 2)", "headDim": "dim(shapes.v, 3)", "destinationScalar": "\"f32\"" },
+          "bindings": ["src_new_v", "src_past_scalar", "dst_f32_write", "params_attn_kv_cache_concat"],
+          "dispatch": {
+            "x": "min(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((cacheValueElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_f32", "v_f32", "attn_mask", "y", "params_attention_rank4_online"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_outputs_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "present.present_key", "present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyKey",
+          "name": "Attention.CopyPresentKey",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.k)" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.k)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "copyValue",
+          "name": "Attention.CopyPresentValue",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.v)" },
+          "bindings": ["src_v", "dst_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.v)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_outputs_mask_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "present.present_key", "present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyKey",
+          "name": "Attention.CopyPresentKey",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.k)" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.k)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "copyValue",
+          "name": "Attention.CopyPresentValue",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.v)" },
+          "bindings": ["src_v", "dst_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.v)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_key_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "present.present_key", "not present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyKey",
+          "name": "Attention.CopyPresentKey",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.k)" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.k)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_value_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "not present.present_key", "present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "not present.attn_mask", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyValue",
+          "name": "Attention.CopyPresentValue",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.v)" },
+          "bindings": ["src_v", "dst_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.v)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_key_mask_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "present.present_key", "not present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyKey",
+          "name": "Attention.CopyPresentKey",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.k)" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.k)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_present_value_mask_online",
+      "priority": 15,
+      "when": ["rank4QkvShapesOk", "not present.past_key", "not present.past_value", "not present.present_key", "present.present_value", "presentShapesOk", "f16Ok(dtypes.T)", "cacheMaskOk", "rank4OnlineDeviceOk", "dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "copyValue",
+          "name": "Attention.CopyPresentValue",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.v)" },
+          "bindings": ["src_v", "dst_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.v)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_nosg",
+      "priority": 18,
+      "when": ["rank4Eligible", "not (decodeSplitKOk or materializedF32Covered or noMaskClusterNoSgCovered or q32SharedCovered)", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % 4 == 0", "dim(shapes.q, 3) >= 32", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 1) * dim(shapes.q, 2) >= 256", "rank4DispatchFits"],
+      "requires": {},
+      "derive": {
+        "scalar": "dtypes.T",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "combineSubgroups": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiledNoSg",
+          "shader": "attn-flash-online.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_attn_flash_online"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_mask_nosg",
+      "priority": 18,
+      "when": ["rank4Eligible", "(maskRank4Ok or maskRank2Ok)", "attrs.is_causal == 0", "equalValueHead", "dim(shapes.q, 3) % 4 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 1) * dim(shapes.q, 2) >= 256", "rank4DispatchFits"],
+      "requires": {},
+      "derive": {
+        "scalar": "dtypes.T",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "combineSubgroups": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiledMaskNoSg",
+          "shader": "attn-flash-online.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "output_y", "params_flash_online_tiled_mask"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled",
+      "priority": 20,
+      "when": ["rank4Eligible", "fixedSubgroupGeometry", "not (decodeSplitKOk or materializedF32Covered or noMaskClusterSgCovered or q32SharedCovered or q32SubgroupCovered)", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % 4 == 0", "dim(shapes.q, 3) >= 32", "dim(shapes.q, 3) <= 256", "(dim(shapes.q, 1) * dim(shapes.q, 2) >= 256 or (dim(shapes.q, 2) == 1 and dim(shapes.k, 2) >= 512))", "rank4DispatchFits"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "combineSubgroups": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-online.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_attn_flash_online"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_mask",
+      "priority": 20,
+      "when": ["rank4Eligible", "fixedSubgroupGeometry", "(maskRank4Ok or maskRank2Ok)", "attrs.is_causal == 0", "equalValueHead", "dim(shapes.q, 3) % 4 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "(dim(shapes.q, 1) * dim(shapes.q, 2) >= 256 or (dim(shapes.q, 2) == 1 and dim(shapes.k, 2) >= 512))", "rank4DispatchFits"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "combineSubgroups": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiledMask",
+          "shader": "attn-flash-online.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "output_y", "params_flash_online_tiled_mask"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_cluster_nosg",
+      "priority": 19,
+      "when": ["rank4Eligible", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % 32 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits"],
+      "requires": {},
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "clusterTileKWg128",
+        "LPQ": "4 if clusterNarrowLanesWorthIt else 8",
+        "useSubgroups": false,
+        "batchNoSgReduction": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_mask_cluster_nosg",
+      "priority": 19,
+      "when": ["rank4Eligible", "(maskRank4Ok or maskRank2Ok)", "equalValueHead", "dim(shapes.q, 3) % 32 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits"],
+      "requires": {},
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "clusterTileKWg128",
+        "LPQ": "4 if clusterNarrowLanesWorthIt else 8",
+        "useSubgroups": false,
+        "batchNoSgReduction": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiledMask",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "output_y", "params_attn_flash_prefill_cluster"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_cluster",
+      "priority": 21,
+      "when": ["rank4Eligible", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % 32 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits", "subgroupsWave32", "subgroupClusterRegisterGeometry"],
+      "supersededBy": ["materialized_gemm_f32"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "32 if (dtypes.T != \"f16\" and dim(shapes.q, 3) <= 64) else 8",
+        "LPQ": 8
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_mask_cluster",
+      "priority": 21,
+      "when": ["rank4Eligible", "(maskRank4Ok or maskRank2Ok)", "equalValueHead", "dim(shapes.q, 3) % 32 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits", "subgroupsWave32"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "32 if (dtypes.T != \"f16\" and dim(shapes.q, 3) <= 64) else 8",
+        "LPQ": 8
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiledMask",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "output_y", "params_attn_flash_prefill_cluster"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank4_no_mask",
+      "when": ["rank4Eligible and workgroupSizeFits and not present.attn_mask and not noMaskFlashCovered"],
+      "supersededBy": ["rank4_no_mask_2pass", "rank4_no_mask_online"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_mask",
+      "priority": 10,
+      "when": ["rank4Eligible and workgroupSizeFits and (maskRank4Ok or maskRank3Ok or maskRank2Ok)"],
+      "supersededBy": ["rank4_mask_2pass", "flash_online_tiled_mask_cluster_nosg", "flash_online_tiled_mask_nosg", "rank4_mask_online"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_no_mask_tiled",
+      "priority": 18,
+      "when": ["rank4Eligible and onlineTiledDeviceOk and not present.attn_mask and not noMaskFlashCovered and dim(shapes.v, 3) <= 128 and dim(shapes.q, 3) <= 128 and (dim(shapes.q, 3) > 16 or dim(shapes.v, 3) > 16) and dim(shapes.q, 2) >= 32"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "dim(shapes.v, 3)", "blockM": "tunables.ONLINE_QUERY_TILE" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-tiled.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3) / dim(shapes.y, 2)) * ceil(dim(shapes.y, 2) / blockM) * blockM), (blockM)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3) / dim(shapes.y, 2)) * ceil(dim(shapes.y, 2) / blockM) * blockM), (blockM)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_mask_tiled",
+      "priority": 18,
+      "when": ["rank4Eligible and onlineTiledDeviceOk and (maskRank4Ok or maskRank3Ok or maskRank2Ok) and dim(shapes.v, 3) <= 128 and dim(shapes.q, 3) <= 128 and dim(shapes.q, 2) >= 32"],
+      "supersededBy": ["flash_online_tiled_mask_cluster_nosg", "flash_online_tiled_mask_nosg"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "dim(shapes.v, 3)", "blockM": "tunables.ONLINE_QUERY_TILE" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-tiled.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3) / dim(shapes.y, 2)) * ceil(dim(shapes.y, 2) / blockM) * blockM), (blockM)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3) / dim(shapes.y, 2)) * ceil(dim(shapes.y, 2) / blockM) * blockM), (blockM)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_no_mask_online",
+      "priority": 15,
+      "when": ["rank4Eligible and rank4OnlineDeviceOk and not present.attn_mask and not noMaskFlashCovered and dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "y", "params_rank4_no_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_mask_online",
+      "priority": 15,
+      "when": ["rank4Eligible and rank4OnlineDeviceOk and (maskRank4Ok or maskRank3Ok or maskRank2Ok) and dim(shapes.v, 3) <= tunables.ONLINE_VALUE_CAP"],
+      "supersededBy": ["flash_online_tiled_mask_cluster_nosg", "flash_online_tiled_mask_nosg"],
+      "derive": { "scalar": "dtypes.T", "vHeadCap": "tunables.ONLINE_VALUE_CAP" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention",
+          "shader": "attention-rank4-online.wgsl.jinja",
+          "bindings": ["q", "k_main", "v_main", "attn_mask", "y", "params_rank4_mask"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.y) / dim(shapes.y, 3)) * tunables.WORKGROUP_SIZE), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_no_mask_2pass",
+      "priority": 12,
+      "when": ["rank4Eligible and not present.attn_mask and dim(shapes.v, 3) > 256 and twoPassScoresFit"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "qkScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if dim(shapes.q, 3) % 4 == 0 else dtypes.T",
+        "qkVec4": "dim(shapes.q, 3) % 4 == 0",
+        "headWords": "dim(shapes.q, 3) / (4 if dim(shapes.q, 3) % 4 == 0 else 1)",
+        "softmaxWg": "tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE",
+        "applyInnerTile": "tunables.TWO_PASS_APPLY_INNER_TILE",
+        "applyQueryTile": "tunables.TWO_PASS_APPLY_QUERY_TILE",
+        "applyValueTile": "tunables.TWO_PASS_APPLY_VALUE_TILE",
+        "applyWorkgroupDim": "tunables.TWO_PASS_APPLY_WORKGROUP_DIM"
+      },
+      "intermediates": [
+        {
+          "id": "weights",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * dim(shapes.k, 2)]"
+        },
+        { "id": "denomOut", "dtype": "float32", "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2)]" }
+      ],
+      "passes": [
+        {
+          "id": "softmax",
+          "name": "Attention.Rank4Softmax",
+          "shader": "attention-rank4-softmax.wgsl.jinja",
+          "bindings": ["q_softmax", "k_softmax", "weights", "denomOut", "params_softmax"],
+          "dispatch": {
+            "x": "min(dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2), 65535)",
+            "y": "ceilDiv(dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "Attention.Rank4Apply",
+          "shader": "attention-rank4-apply-tiled.wgsl.jinja",
+          "bindings": [
+            "v_main",
+            { "name": "weights", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "denomOut", "buffer": "read-only-storage", "elementType": "f32" },
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+                { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+                { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+                { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+                { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), ceilDiv(dim(shapes.v, 3), tunables.TWO_PASS_APPLY_VALUE_TILE))",
+            "y": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), ceilDiv(dim(shapes.q, 2), tunables.TWO_PASS_APPLY_QUERY_TILE))",
+            "z": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), dim(shapes.q, 0) * dim(shapes.q, 1))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_mask_2pass",
+      "priority": 12,
+      "when": ["rank4Eligible and (maskRank4Ok or maskRank3Ok or maskRank2Ok) and dim(shapes.v, 3) > 256 and twoPassScoresFit"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "qkScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if dim(shapes.q, 3) % 4 == 0 else dtypes.T",
+        "qkVec4": "dim(shapes.q, 3) % 4 == 0",
+        "headWords": "dim(shapes.q, 3) / (4 if dim(shapes.q, 3) % 4 == 0 else 1)",
+        "softmaxWg": "tunables.TWO_PASS_SOFTMAX_WORKGROUP_SIZE",
+        "applyInnerTile": "tunables.TWO_PASS_APPLY_INNER_TILE",
+        "applyQueryTile": "tunables.TWO_PASS_APPLY_QUERY_TILE",
+        "applyValueTile": "tunables.TWO_PASS_APPLY_VALUE_TILE",
+        "applyWorkgroupDim": "tunables.TWO_PASS_APPLY_WORKGROUP_DIM"
+      },
+      "intermediates": [
+        {
+          "id": "weights",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2) * dim(shapes.k, 2)]"
+        },
+        { "id": "denomOut", "dtype": "float32", "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2)]" }
+      ],
+      "passes": [
+        {
+          "id": "softmax",
+          "name": "Attention.Rank4SoftmaxMask",
+          "shader": "attention-rank4-softmax.wgsl.jinja",
+          "bindings": ["q_softmax", "k_softmax", "attn_mask", "weights", "denomOut", "params_rank4_mask_2pass"],
+          "dispatch": {
+            "x": "min(dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2), 65535)",
+            "y": "ceilDiv(dim(shapes.q, 0) * dim(shapes.q, 1) * dim(shapes.q, 2), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "Attention.Rank4ApplyMask",
+          "shader": "attention-rank4-apply-tiled.wgsl.jinja",
+          "bindings": [
+            "v_main",
+            { "name": "weights", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "denomOut", "buffer": "read-only-storage", "elementType": "f32" },
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "qHeads", "type": "u32", "value": "dim(shapes.q, 1)" },
+                { "name": "kvHeads", "type": "u32", "value": "dim(shapes.k, 1)" },
+                { "name": "qSeq", "type": "u32", "value": "dim(shapes.q, 2)" },
+                { "name": "kvSeq", "type": "u32", "value": "dim(shapes.k, 2)" },
+                { "name": "vHeadSize", "type": "u32", "value": "dim(shapes.v, 3)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), ceilDiv(dim(shapes.v, 3), tunables.TWO_PASS_APPLY_VALUE_TILE))",
+            "y": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), ceilDiv(dim(shapes.q, 2), tunables.TWO_PASS_APPLY_QUERY_TILE))",
+            "z": "min(min(device.limits.maxComputeWorkgroupsPerDimension, 65535), dim(shapes.q, 0) * dim(shapes.q, 1))"
+          }
+        }
+      ]
+    },
+    {
+      "id": "flash_q32_broadcast",
+      "priority": 30,
+      "when": ["rank4Q32BroadcastEligible"],
+      "requires": { "features": ["subgroups", "shader-f16"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "precisePv": "attrs.is_causal == 1",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "kStep": 64,
+        "qkGroups": 16
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashQ32Broadcast",
+          "shader": "attn-flash-q32-broadcast.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), 32)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_q32_shared",
+      "priority": 29,
+      "when": ["rank4Q32SharedEligible"],
+      "demoteWhen": ["narrowQ32ClusterPreferred", "subgroupsWave32 and dim(shapes.q, 3) % 64 != 0", "attrs.is_causal == 1 and device.features.has(\"subgroups\") and not fixedSubgroupGeometry"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": true,
+        "precisePv": "attrs.is_causal == 1",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "kStep": 32,
+        "qkGroups": 8,
+        "qStep": 64
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashQ32Shared",
+          "shader": "attn-flash-q32-broadcast.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"", "useSubgroups": "false" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), qStep)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_decode_splitk_nosg",
+      "priority": 17,
+      "when": ["decodeSplitKOk"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "decodeSplitCount",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.DecodeSplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params_kv_seq_scale"],
+          "dispatch": { "x": "decodeSplitCount", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.DecodeSplitKMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": 1, "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_decode_splitk",
+      "priority": 25,
+      "when": ["decodeSplitKOk and not narrowSubgroupRange"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "decodeSplitCount",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.DecodeSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params_kv_seq_scale"],
+          "dispatch": { "x": "decodeSplitCount", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.DecodeSplitKMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": 1, "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_short_query_splitk_nosg",
+      "priority": 31,
+      "when": ["shortQuerySplitKOk"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "shortQuerySplitCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ShortQuerySplitKNoSg",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params_kv_seq_scale"],
+          "dispatch": {
+            "x": "dim(shapes.q, 2) * shortQuerySplitCount",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0)"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ShortQuerySplitKMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_short_query_splitk",
+      "priority": 32,
+      "when": ["shortQuerySplitKOk and not narrowSubgroupRange"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "shortQuerySplitCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ShortQuerySplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params_kv_seq_scale"],
+          "dispatch": {
+            "x": "dim(shapes.q, 2) * shortQuerySplitCount",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0)"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ShortQuerySplitKMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_masked_decode_splitk",
+      "priority": 35,
+      "when": ["maskedDecodeSplitKOk"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "decodeSplitCount",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 0) * dim(shapes.q, 1) * decodeSplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.MaskedDecodeSplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "partial_out", "partial_stats", "params_split_attention"],
+          "dispatch": { "x": "decodeSplitCount", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.MaskedDecodeSplitKMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": 1, "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_masked_short_query_splitk",
+      "priority": 37,
+      "when": ["maskedShortQuerySplitKOk"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "numSplits": "shortQuerySplitCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)",
+        "splitSoftcap": "attrs.softcap"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * shortQuerySplitCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.MaskedShortQuerySplitK",
+          "shader": "attn-flash-decode-splitk.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "partial_out", "partial_stats", "params_split_attention"],
+          "dispatch": {
+            "x": "dim(shapes.q, 2) * shortQuerySplitCount",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0)"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.MaskedShortQuerySplitKMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_cluster_lpq4_nosg",
+      "priority": 19,
+      "when": ["rank4Eligible", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % (4 * 4) == 0", "dim(shapes.q, 3) % (4 * 8) != 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": "16 if 4 == 4 else 64",
+        "TILE_K": "clusterTileKWg64 if 4 == 4 else clusterTileKWg128",
+        "LPQ": 4,
+        "useSubgroups": false,
+        "batchNoSgReduction": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_cluster_lpq2_nosg",
+      "priority": 19,
+      "when": ["rank4Eligible", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % (2 * 4) == 0", "dim(shapes.q, 3) % (2 * 8) != 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": "16 if 2 == 4 else 64",
+        "TILE_K": "clusterTileKWg64 if 2 == 4 else clusterTileKWg128",
+        "LPQ": 2,
+        "useSubgroups": false,
+        "batchNoSgReduction": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_online_tiled_cluster_lpq4",
+      "priority": 21,
+      "when": ["rank4Eligible", "not present.attn_mask", "equalValueHead", "dim(shapes.q, 3) % (4 * 4) == 0", "dim(shapes.q, 3) % (4 * 8) != 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "dim(shapes.q, 2) >= 32", "rank4DispatchFits", "subgroupsWave32"],
+      "supersededBy": ["materialized_gemm_f32"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": true,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "32 if (dtypes.T != \"f16\" and dim(shapes.q, 3) <= 64) else 8",
+        "LPQ": 4
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Attention.FlashOnlineTiled",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "output_y", "params_flash_q32_shared"],
+          "dispatch": { "x": "ceilDiv(dim(shapes.q, 2), TILE_Q)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_cluster_splitkv",
+      "priority": 33,
+      "when": ["clusterSplitKvOk", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES", "dim(shapes.q, 3) % (tunables.CLUSTER_SPLITKV_LPQ * 4) == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "subgroupsWave32"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": "tunables.CLUSTER_SPLITKV_TILE_Q",
+        "TILE_K": "32 if (dtypes.T != \"f16\" and dim(shapes.q, 3) <= 64) else 8",
+        "LPQ": "tunables.CLUSTER_SPLITKV_LPQ",
+        "splitKv": true,
+        "numSplits": "clusterSplitKvCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ClusterSplitKv",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.q, 2), 16)",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0) * clusterSplitKvCount"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ClusterSplitKvMerge",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_cluster_splitkv_nosg",
+      "priority": 31,
+      "when": ["clusterSplitKvOk", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES_NOSG", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES or not (device.features.has(\"subgroups\") and subgroupsWave32)", "dim(shapes.q, 3) % 16 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "batchNoSgReduction": true,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "clusterTileKWg128 if clusterSplitKvWideLanes else clusterTileKWg64",
+        "LPQ": "8 if clusterSplitKvWideLanes else 4",
+        "splitKv": true,
+        "numSplits": "clusterSplitKvCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ClusterSplitKvNoSg",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "partial_out", "partial_stats", "params"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.q, 2), 16)",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0) * clusterSplitKvCount"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ClusterSplitKvMergeNoSg",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_cluster_splitkv_mask",
+      "priority": 33,
+      "when": ["clusterSplitKvMaskOk", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES", "dim(shapes.q, 3) % (tunables.CLUSTER_SPLITKV_LPQ * 4) == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256", "subgroupsWave32"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": "tunables.CLUSTER_SPLITKV_TILE_Q",
+        "TILE_K": "32 if (dtypes.T != \"f16\" and dim(shapes.q, 3) <= 64) else 8",
+        "LPQ": "tunables.CLUSTER_SPLITKV_LPQ",
+        "splitKv": true,
+        "numSplits": "clusterSplitKvCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ClusterSplitKvMask",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "partial_out", "partial_stats", "params_flash_cluster_splitkv_mask"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.q, 2), 16)",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0) * clusterSplitKvCount"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ClusterSplitKvMergeMask",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "flash_cluster_splitkv_mask_nosg",
+      "priority": 31,
+      "when": ["clusterSplitKvMaskOk", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES_NOSG", "clusterSplitKvTiles <= tunables.CLUSTER_SPLITKV_MAX_TILES or not (device.features.has(\"subgroups\") and subgroupsWave32)", "dim(shapes.q, 3) % 16 == 0", "dim(shapes.q, 3) >= 64", "dim(shapes.q, 3) <= 256"],
+      "requires": {},
+      "derive": {
+        "useSubgroups": false,
+        "batchNoSgReduction": true,
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "inputVec4": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "headDim": "dim(shapes.q, 3)",
+        "headDimV4": "dim(shapes.q, 3) / 4",
+        "hasCausal": false,
+        "hasBias": false,
+        "qNumHeads": "dim(shapes.q, 1)",
+        "kvNumHeads": "dim(shapes.k, 1)",
+        "TILE_Q": 16,
+        "TILE_K": "clusterTileKWg128 if clusterSplitKvWideLanes else clusterTileKWg64",
+        "LPQ": "8 if clusterSplitKvWideLanes else 4",
+        "splitKv": true,
+        "numSplits": "clusterSplitKvCount",
+        "splitQueries": true,
+        "qSeq": "dim(shapes.q, 2)"
+      },
+      "intermediates": [
+        {
+          "id": "partialOut",
+          "dtype": "float32",
+          "shape": "[dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount * dim(shapes.q, 3)]"
+        },
+        {
+          "id": "partialStats",
+          "dtype": "float32",
+          "shape": "[2 * dim(shapes.q, 2) * dim(shapes.q, 0) * dim(shapes.q, 1) * clusterSplitKvCount]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "split_attention",
+          "name": "Attention.ClusterSplitKvNoSgMask",
+          "shader": "attn-flash-prefill-cluster.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["query_q", "key_k", "value_v", "attn_mask", "partial_out", "partial_stats", "params_flash_cluster_splitkv_mask"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.q, 2), 16)",
+            "y": "dim(shapes.q, 1)",
+            "z": "dim(shapes.q, 0) * clusterSplitKvCount"
+          }
+        },
+        {
+          "id": "merge",
+          "name": "Attention.ClusterSplitKvMergeNoSgMask",
+          "shader": "attn-flash-decode-splitk-merge.wgsl.jinja",
+          "derive": { "layout": "\"bhsd\"" },
+          "bindings": ["partial_out_merge", "partial_stats_merge", "output_y"],
+          "dispatch": { "x": "dim(shapes.q, 2)", "y": "dim(shapes.q, 1)", "z": "dim(shapes.q, 0)" }
+        }
+      ]
+    }
+  ]
+}

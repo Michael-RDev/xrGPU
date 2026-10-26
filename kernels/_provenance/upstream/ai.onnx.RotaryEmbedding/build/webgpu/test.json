@@ -1,0 +1,1187 @@
+{
+  "fixtureArrays": {
+    "position_id_cos_table": [1, 0.994, 0.9553, 0.9171, 0.8253, 0.7584, 0.6216, 0.5319, 0.3624, 0.2579, 0.0707, -0.0392, -0.2272, -0.3327, -0.5048, -0.5966, -0.7374, -0.8071, -0.9041, -0.9455, -0.99, -0.9995, -0.9875, -0.9642, -0.8968, -0.8428, -0.7259, -0.646, -0.4903, -0.3916, -0.2108, -0.1022],
+    "position_id_sin_table": [0, 0.1692, 0.2955, 0.4529, 0.5646, 0.6961, 0.7833, 0.8772, 0.932, 0.9799, 0.9975, 0.9951, 0.9738, 0.9214, 0.8632, 0.7654, 0.6755, 0.541, 0.4274, 0.2683, 0.1411, -0.0284, -0.1577, -0.3225, -0.4425, -0.5879, -0.6878, -0.8007, -0.8716, -0.942, -0.9775, -0.9991],
+    "pos_ids_rank3_pair_gather_input_x": [0, 0.6442, 0.9854, 0.8632, 0.335, -0.3508, -0.8716, -0.9825, -0.6313, 0.0168, 0.657, 0.9882, 0.8546, 0.3191, -0.3665, -0.8797, -0.9792, -0.6181, 0.0336, 0.6696, 0.9906, 0.8457, 0.3031, -0.3821, -0.8876, -0.9756, -0.6048, 0.0504, 0.682, 0.9928, 0.8367, 0.2871, -0.3976, -0.8952, -0.9718, -0.5914, 0.0672, 0.6942, 0.9946, 0.8273, 0.2709, -0.4129, -0.9026, -0.9677, -0.5777, 0.084, 0.7062, 0.9962]
+  },
+  "cases": [
+    {
+      "name": "f32_identity_angle_preserves_subnormal_pair_gpu_gap",
+      "attrs": { "num_heads": 1 },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU; this op's f32 multiply/FMA flushes the subnormal operand on GPU even at identity angle. Permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbedding",
+        "notes": "With cos=1 and sin=0, rotary embedding is an identity transform; positive and negative subnormal activations should survive."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1e-40, -1e-40] } },
+        "cos": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "sin": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_identity_angle_preserves_subnormal_rank4_pair_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormals to zero in the ALU; this op's f32 multiply/FMA flushes the subnormal operand on GPU even at identity angle. Permanent FTZ limitation."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbedding",
+        "notes": "A rank-4 identity-angle rotary embedding must preserve subnormal activations."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1, 2], "data": { "kind": "values", "values": [1e-40, -1e-40] } },
+        "cos": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "sin": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "dispatch_cliff_rank3_partial_rotary",
+      "attrs": { "rotary_embedding_dim": 2, "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4194241, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [4194241, 1, 1],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.37, "thetaStep": 0.2 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [4194241, 1, 1],
+          "data": { "kind": "rotarySin", "thetaStart": 0.37, "thetaStep": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4194241, 1, 4], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "batch2_seq3_head4",
+      "attrs": { "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.1, "thetaStep": 0.2 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "rotarySin", "thetaStart": 0.1, "thetaStep": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "seq1_head2_identity_angle_zero",
+      "attrs": { "num_heads": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [3.0, -4.0] } },
+        "cos": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "sin": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "batch1_seq2_head8_distinct_pairs",
+      "attrs": { "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 5.0, 6.0, 7.0, 8.0, -5.0, -6.0, -7.0, -8.0]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [1.0, 0.0, 0.5, -0.5, 0.0, 1.0, -0.5, 0.5] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [0.0, 1.0, 0.5, 0.5, 1.0, 0.0, 0.5, -0.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "backend_style_batch2_seq3_head8",
+      "attrs": { "num_heads": 1 },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/case/node/rotaryembedding.py",
+        "notes": "Standard rank-3, no-position-ids case with per-batch 3D cosine and sine caches."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.6, "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.07, "thetaStep": 0.11 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "rotarySin", "thetaStart": 0.07, "thetaStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_not_interleaved_no_position_ids_multi_head",
+      "attrs": { "num_heads": 3 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbeddingTest.RotaryEmbedding_NotInterleaved_NoPosIds_SmallData_LlamaMSFT",
+        "notes": "Preserves ORT's standard batch-1 rank-3 cos/sin cache shape."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 18],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.7529, -0.225, -0.4327, -1.5071, -0.4586, -0.8663, -0.2656, 0.1665, 0.7911, -0.932, -0.8579, -1.0574, -0.1188, -0.9078, 0.3452, -0.5713, -0.2351, -0.848, 0.5266, -1.2944, -0.0243, -0.2354, -0.7087, -0.9647, -0.0991, -0.2994, -0.065, -1.572, -1.3211]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 0.5403, 0.9989, 1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.8415, 0.0464, 0.0022] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 18], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "non_unit_cache_values_are_used_directly",
+      "attrs": { "num_heads": 1 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "notes": "The operator consumes supplied cos/sin cache values directly; they need not form unit rotations."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [2.0, -3.0, 5.0, -7.0, -11.0, 13.0, -17.0, 19.0, 23.0, -29.0, 31.0, -37.0]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.25, -0.5, 0.75, 0.125, -1.5, 2.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [-0.25, 0.5, 1.5, -0.75, 0.25, -1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "head12_non_power_of_two",
+      "attrs": { "num_heads": 1 },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "notes": "Covers an even head size that is not a power of two."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 12],
+          "data": { "kind": "fillFloat32", "scale": 0.4, "sinStep": 0.23, "cosStep": 0.19 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 2, 6],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.03, "thetaStep": 0.17 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 2, 6],
+          "data": { "kind": "rotarySin", "thetaStart": 0.03, "thetaStep": 0.17 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 12], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_interleaved_no_position_ids_multi_head",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbeddingTest.RotaryEmbedding_Interleaved_NoPosIds_SmallData_LlamaMSFT"
+      },
+      "attrs": { "interleaved": 1, "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -0.132, -0.2751, -0.235, 0.0937, -1.2188, 1.1676, -1.0574, -0.1188, -0.7396, -1.2425, -0.1752, 0.699, -0.811, 0.6737, -1.1233, -0.0919, -0.6861, 0.7202, 0.1963, 0.6142]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 0.5403, 0.9999, -0.4161, 0.9998] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.8415, 0.01, 0.9093, 0.02] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 8], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_interleaved_rank4_small_data",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbeddingTest.RotaryEmbedding_Interleaved_SmallData_LlamaMSFT_4D_Input",
+        "notes": "ORT uses sequential position_ids [0, 1, 2], represented directly by the rank-4 cache rows."
+      },
+      "attrs": { "interleaved": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, -1.0574, -0.1188, -0.811, 0.6737, -1.1233, -0.0919, -0.132, -0.2751, -0.235, 0.0937, -0.7396, -1.2425, -0.1752, 0.699, -0.6861, 0.7202, 0.1963, 0.6142]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 0.5403, 0.9999, -0.4161, 0.9998] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.8415, 0.01, 0.9093, 0.02] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 4],
+          "tolerance": 0.0001,
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.6411, -0.3948, -1.0561, -0.1294, -0.2751, -1.0178, -1.1212, -0.1143, -0.132, -0.2751, -0.235, 0.0937, 0.646, -1.2937, -0.1822, 0.6972, -0.3694, -0.9235, 0.184, 0.618]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_partial_rotary_dim_preserves_tail",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbeddingTest.RotaryEmbedding_CustomRotaryDim_SmallData_Phi"
+      },
+      "attrs": { "rotary_embedding_dim": 4, "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 6],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.7529, -0.225, -0.4327, -1.5071, -0.4586]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 0.5403] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.8415] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 6], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_partial_rotary_dim_preserves_tail_f16",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/rotary_embedding_op_test.cc",
+        "test": "RotaryEmbeddingTest.RotaryEmbedding_CustomRotaryDim_SmallData_Phi",
+        "notes": "Same Phi-style partial rotary-dimension case as ORT, exercising the fp16 path and confirming tail values stay unrotated."
+      },
+      "attrs": { "rotary_embedding_dim": 4, "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 6],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.7529, -0.225, -0.4327, -1.5071, -0.4586]
+          }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 0.5403] }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.8415] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 2, 6],
+          "tolerance": 0.002,
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.0427, -0.225, -0.8673, -1.5071, -0.4586]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_contrib_packed_batching_repeated_cache_rows",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/rotary_embedding_op_test.cc",
+        "test": "ContribOpRotaryEmbeddingTest.RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching",
+        "notes": "Materializes the indexed ORT case's gathered rows [0, 0, 1] into the standard per-batch rank-3 cache used when position_ids is omitted."
+      },
+      "attrs": { "rotary_embedding_dim": 4, "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 6],
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, -1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.7529, -0.225, -0.4327, -1.5071, -0.4586]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 0.5403] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.8415] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 3, 6],
+          "tolerance": 0.0001,
+          "data": {
+            "kind": "values",
+            "values": [-1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, -1.0408, 0.9166, -1.3042, -1.1097, -1.2188, 1.1676, 1.0076, -0.0427, -0.225, -0.8673, -1.5071, -0.4586]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_rank4_no_position_ids_batch_cache",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_rotary_embedding_no_position_ids",
+        "notes": "Compact deterministic data using the official no-position-id rank-4 cache layout."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.55, "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 0.5, 0.25, -0.75, -1.5, 2.0, 0.0, 1.0, 0.75, 0.125, -0.5, -1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, -0.25, 0.5, 1.5, -0.75, -1.0, 0.0, 0.25, -0.5, 0.5, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_rank4_no_position_ids_interleaved",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_rotary_embedding_no_position_ids_interleaved",
+        "notes": "Compact deterministic data using the official no-position-id rank-4 interleaved layout."
+      },
+      "attrs": { "interleaved": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 4],
+          "data": { "kind": "fillFloat32", "scale": 0.55, "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 0.5, 0.25, -0.75, -1.5, 2.0, 0.0, 1.0, 0.75, 0.125, -0.5, -1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, -0.25, 0.5, 1.5, -0.75, -1.0, 0.0, 0.25, -0.5, 0.5, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_rank4_no_position_ids_rotary_dim_tail",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_rotary_embedding_no_position_ids_rotary_dim",
+        "notes": "Compact deterministic data covering partial rotary dimension with unrotated tail values."
+      },
+      "attrs": { "rotary_embedding_dim": 4 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.45, "sinStep": 0.19, "cosStep": 0.11 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 0.5, 0.25, -0.75, -1.5, 2.0, 0.0, 1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, -0.25, 0.5, 1.5, -0.75, -1.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "num_heads": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 0], "data": { "kind": "values", "values": [] } },
+        "cos": { "dtype": "float32", "shape": [2, 3, 0], "data": { "kind": "values", "values": [] } },
+        "sin": { "dtype": "float32", "shape": [2, 3, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "interleaved_partial_rotary_dim_rank3",
+      "provenance": {
+        "notes": "Exercises the rank3_cache3 kernel's interleaved + partial-rotary branch: leading pairs rotate while the d>=rotary_embedding_dim tail is copied through unchanged."
+      },
+      "attrs": { "interleaved": 1, "rotary_embedding_dim": 4, "num_heads": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 8],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 0.5403, 0.9999] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.8415, 0.01] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 8], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "decode_q1_rank4_head80_multihead_f16",
+      "provenance": {
+        "notes": "A float16 decode step (sequence length 1) with 8 heads and a non-power-of-two head_dim of 80 checks rotary embedding at the single-token generation shape."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 8, 1, 80],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.13, "cosStep": 0.21 }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [1, 1, 40],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.05, "thetaStep": 0.07 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [1, 1, 40],
+          "data": { "kind": "rotarySin", "thetaStart": 0.05, "thetaStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 8, 1, 80], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_multihead_packed_head96_not_interleaved",
+      "attrs": { "num_heads": 4 },
+      "provenance": {
+        "notes": "f16 rank-3 packed multi-head layout (hidden = num_heads * head_size) with non-power-of-two head_dim 96, exercising the rank3_cache3 kernel's per-head indexing under fp16."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 3, 384],
+          "data": { "kind": "fillFloat32", "scale": 0.25, "sinStep": 0.11, "cosStep": 0.19 }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [1, 3, 48],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.04, "thetaStep": 0.09 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [1, 3, 48],
+          "data": { "kind": "rotarySin", "thetaStart": 0.04, "thetaStep": 0.09 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 3, 384], "tolerance": 0.02 } }
+    },
+    {
+      "name": "interleaved_partial_rotary_rank4_multibatch_cache_stride",
+      "attrs": { "interleaved": 1, "rotary_embedding_dim": 4 },
+      "provenance": {
+        "notes": "Exercises the rank-4 interleaved + partial-rotary path with a per-batch rank-3 cache and batch>1, verifying the leading rotated pairs, unchanged tail, and correct per-batch cache-row selection."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.45, "sinStep": 0.17, "cosStep": 0.23 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 0.5, 0.25, -0.75, -1.5, 2.0, 0.0, 1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [0.0, 1.0, -0.25, 0.5, 1.5, -0.75, -1.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "interleaved_partial_rotary_multihead_packed_rank3",
+      "attrs": { "interleaved": 1, "rotary_embedding_dim": 4, "num_heads": 4 },
+      "provenance": {
+        "notes": "Interleaved pairing + partial rotary_embedding_dim=4 + packed multi-head layout (hidden=64, num_heads=4 -> head_size=16). Verifies per-head rotation of the leading 4 lanes, unchanged tails, and correct per-head base indexing."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.11, "cosStep": 0.19 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 1.0, 0.5403, 0.9999, -0.4161, 0.9998] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.8415, 0.01, 0.9093, 0.02] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 64], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "dispatch_fold_rank4_pair_last_row_seq65540",
+      "provenance": {
+        "notes": "Shape [1,1,65540,512] requires 65,540 workgroups for paired rotation, so dispatch folds into two dimensions. The highest pair indices must still be written with the correct periodic values."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 65540, 512],
+          "data": { "kind": "cycle", "values": [0.5, -0.75, 1.25, -1.5] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [1, 65540, 256],
+          "data": { "kind": "cycle", "values": [0.5, 0.75, -0.25, 1.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [1, 65540, 256],
+          "data": { "kind": "cycle", "values": [0.25, -0.5, 0.75, 0.125] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 65540, 512], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "pos_ids_rank3_pair_gather",
+      "attrs": { "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/pos_ids_rank3_pair_gather_input_x" } }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [4, 5, 6, 0, 2, 9] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "When position_ids is supplied the cos/sin caches are 2D (max_position, half) tables gathered per (batch, token); without it the caches are addressed by the token index directly."
+      }
+    },
+    {
+      "name": "pos_ids_rank3_interleaved_partial",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 4, 12],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/pos_ids_rank3_pair_gather_input_x" } }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": { "dtype": "uint32", "shape": [1, 4], "data": { "kind": "values", "values": [9, 0, 9, 2] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 12], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "When position_ids is supplied the cos/sin caches are 2D (max_position, half) tables gathered per (batch, token); without it the caches are addressed by the token index directly."
+      },
+      "attrs": { "interleaved": 1, "rotary_embedding_dim": 4, "num_heads": 2 }
+    },
+    {
+      "name": "pos_ids_rank4_pair_gather",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 0.6442, 0.9854, 0.8632, 0.335, -0.3508, -0.8716, -0.9825, -0.6313, 0.0168, 0.657, 0.9882, 0.8546, 0.3191, -0.3665, -0.8797, -0.9792, -0.6181, 0.0336, 0.6696, 0.9906, 0.8457, 0.3031, -0.3821]
+          }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": { "dtype": "uint32", "shape": [1, 3], "data": { "kind": "values", "values": [7, 3, 11] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 3, 4], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "When position_ids is supplied the cos/sin caches are 2D (max_position, half) tables gathered per (batch, token); without it the caches are addressed by the token index directly."
+      }
+    },
+    {
+      "name": "pos_ids_rank3_decode_step",
+      "attrs": { "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 8],
+          "data": { "kind": "values", "values": [0.0, 0.6442, 0.9854, 0.8632, 0.335, -0.3508, -0.8716, -0.9825] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": { "dtype": "uint32", "shape": [1, 1], "data": { "kind": "values", "values": [5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 8], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "When position_ids is supplied the cos/sin caches are 2D (max_position, half) tables gathered per (batch, token); without it the caches are addressed by the token index directly."
+      }
+    },
+    {
+      "name": "position_ids_rank3_prefill_from_past_len",
+      "attrs": { "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.37, "scale": 0.7 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [5, 6, 7, 5, 6, 7] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "The standard [batch, sequence] position table selects cache rows 5, 6, and 7 for both batches, covering a prefill that begins after an existing cache prefix."
+      }
+    },
+    {
+      "name": "position_ids_rank4_decode_step_past_len",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.7 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_cos_table" } }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [16, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/position_id_sin_table" } }
+        },
+        "positionIds": { "dtype": "uint32", "shape": [1, 1], "data": { "kind": "values", "values": [9] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 4], "tolerance": 0.0001 } },
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/llm/rotary_embedding.cc",
+        "test": "RotaryEmbedding position_ids gather (opset-23 input 3)",
+        "notes": "A standard [1,1] position table selects cache row 9 for the single decode token; both heads use that row."
+      }
+    },
+    {
+      "name": "quad_interleaved_rank3_head16_multihead_f16",
+      "provenance": {
+        "notes": "Interleaved rotation on the quad route: head size 16 over 2 heads with f16 storage, so each invocation rotates four interleaved pairs read as two vec4s and writes them back in the same interleaving."
+      },
+      "attrs": { "interleaved": 1, "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 3, 32],
+          "data": { "kind": "fillFloat32", "scale": 0.3, "sinStep": 0.13, "cosStep": 0.21 }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [1, 3, 8],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.05, "thetaStep": 0.07 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [1, 3, 8],
+          "data": { "kind": "rotarySin", "thetaStart": 0.05, "thetaStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 3, 32], "tolerance": 0.002 } }
+    },
+    {
+      "name": "quad_partial_rotary_tail_rank4_head24_rd8",
+      "provenance": {
+        "notes": "Partial rotation on the quad route: rotary dim 8 of head size 24 leaves a 16-element tail that the remaining quad lanes copy as two vec4s each, with a batch-strided cache."
+      },
+      "attrs": { "rotary_embedding_dim": 8 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 24],
+          "data": { "kind": "fillFloat32", "scale": 0.45, "sinStep": 0.19, "cosStep": 0.11 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.31, "cosStep": 0.17 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.23, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 3, 24], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "quad_pos_ids_rank3_head16_gather",
+      "provenance": {
+        "notes": "Position-id gather on the quad route: 2D cache tables of half width 8 are gathered per (batch, token) as vec4 rows, head size 16 over 2 heads."
+      },
+      "attrs": { "num_heads": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 32],
+          "data": { "kind": "fillFloat32", "scale": 0.4, "sinStep": 0.17, "cosStep": 0.23 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [12, 8],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.27, "cosStep": 0.13 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [12, 8],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.19, "cosStep": 0.31 }
+        },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [4, 5, 11, 0, 2, 9] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 32], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "quad_pos_ids_rank4_interleaved_head8",
+      "provenance": {
+        "notes": "Position-id gather with interleaved rotation on the rank-4 quad route: head size 8 is exactly one quad per head, so the rotate lanes cover every element and the tail branch never runs."
+      },
+      "attrs": { "interleaved": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.4, "sinStep": 0.11, "cosStep": 0.29 }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [8, 4],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.33, "cosStep": 0.21 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [8, 4],
+          "data": { "kind": "fillFloat32", "scale": 1.0, "sinStep": 0.15, "cosStep": 0.37 }
+        },
+        "positionIds": { "dtype": "uint32", "shape": [1, 3], "data": { "kind": "values", "values": [7, 0, 3] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 3, 8], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "contiguous_output_float32_rank3_head100_rot94_indexedfalse",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "num_heads": 3, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 300],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 47],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float32", "shape": [2, 3, 47], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 300], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float32_rank4_head100_rot100_indexedfalse",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": {},
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 3, 100],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 3, 50],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float32", "shape": [2, 3, 50], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 3, 100], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float32_rank3_head100_rot92_indexedtrue",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "num_heads": 3, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 300],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 46],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float32", "shape": [5, 46], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0, 3, 1, 4, 2, 0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 300], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float32_rank4_head128_rot126_indexedtrue",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "rotary_embedding_dim": 126 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 3, 128],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 63],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float32", "shape": [5, 63], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0, 3, 1, 4, 2, 0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 3, 128], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_mixed_special_tail_float32",
+      "attrs": { "num_heads": 2, "rotary_embedding_dim": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 3, 8], "data": { "kind": "cycle", "values": [1.0, 2.0, "NaN", -0.0] } },
+        "cos": { "dtype": "float32", "shape": [1, 3, 1], "data": { "kind": "values", "values": [0.25, 0.5, 0.75] } },
+        "sin": { "dtype": "float32", "shape": [1, 3, 1], "data": { "kind": "values", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 8], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "contiguous_output_fold_float32_wg8",
+      "provenance": {
+        "notes": "The contiguous output grid crosses the dispatch fold with eight-invocation workgroups. Different input and cache periods expose incorrect row and cache offsets."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 126 },
+      "tunables": { "WORKGROUP_SIZE": 8 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 8193, 128],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [2, 8193, 63],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float32", "shape": [2, 8193, 63], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 8193, 128], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float16_rank3_head100_rot94_indexedfalse",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "num_heads": 3, "rotary_embedding_dim": 94 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 300],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [2, 3, 47],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float16", "shape": [2, 3, 47], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 300], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float16_rank4_head100_rot100_indexedfalse",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": {},
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 3, 100],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [2, 3, 50],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float16", "shape": [2, 3, 50], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 3, 100], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float16_rank3_head100_rot92_indexedtrue",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "num_heads": 3, "rotary_embedding_dim": 92 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 300],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 46],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float16", "shape": [5, 46], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0, 3, 1, 4, 2, 0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 300], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_float16_rank4_head128_rot126_indexedtrue",
+      "provenance": {
+        "notes": "Exercises contiguous output groups across an unaligned half-rotation, with varying dyadic inputs and cache values. Full rotations use the default rotation attribute."
+      },
+      "attrs": { "rotary_embedding_dim": 126 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 3, 128],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 63],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float16", "shape": [5, 63], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } },
+        "positionIds": {
+          "dtype": "uint32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0, 3, 1, 4, 2, 0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 3, 128], "tolerance": 0 } }
+    },
+    {
+      "name": "contiguous_output_mixed_special_tail_float16",
+      "attrs": { "num_heads": 2, "rotary_embedding_dim": 2 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 3, 8], "data": { "kind": "cycle", "values": [1.0, 2.0, "NaN", -0.0] } },
+        "cos": { "dtype": "float16", "shape": [1, 3, 1], "data": { "kind": "values", "values": [0.25, 0.5, 0.75] } },
+        "sin": { "dtype": "float16", "shape": [1, 3, 1], "data": { "kind": "values", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 3, 8], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "contiguous_output_fold_float16_wg8",
+      "provenance": {
+        "notes": "The contiguous output grid crosses the dispatch fold with eight-invocation workgroups. Different input and cache periods expose incorrect row and cache offsets."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 126 },
+      "tunables": { "WORKGROUP_SIZE": 8 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 8193, 128],
+          "data": { "kind": "cycle", "values": [0.125, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, -0.125, -0.5, -1.0, -2.0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [2, 8193, 63],
+          "data": { "kind": "cycle", "values": [0.25, 0.5, 0.75, 1.0, -0.25, -0.5, -0.75, 0.125, 0.375, 0.625, 0.875] }
+        },
+        "sin": { "dtype": "float16", "shape": [2, 8193, 63], "data": { "kind": "cycle", "values": [-0.5, 0.25, 0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 8193, 128], "tolerance": 0 } }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+#include <xrgpu/extended_operators.h>
+#include "../framework.h"
+#include "../half_host.h"
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <cmath>
+using Json=nlohmann::json;
+namespace ex=xrgpu::operators::extended;
+using xrgpu::operators::Tensor;using xrgpu::operators::DType;using xrgpu::operators::dtype_bytes;using xrgpu::operators::dtype_name;using xrgpu::operators::parse_dtype;
+namespace fs=std::filesystem;
+static double number(const Json& j){if(j.is_string()){auto text=j.get<std::string>();size_t used=0;double value=std::stod(text,&used);if(used!=text.size())throw std::invalid_argument("Invalid numeric literal");return value;}if(j.is_boolean())return j.get<bool>()?1:0;return j.get<double>();}
+static void flatten(const Json& a,std::vector<Json>& values){if(a.is_array())for(const auto& x:a)flatten(x,values);else values.push_back(a);}
+static Tensor tensor(const Json& j,const fs::path& base,bool payload,const std::string& fallback=""){
+ Tensor t;t.name=j.value("name",fallback);t.dtype=parse_dtype(j.at("dtype").get<std::string>());if(j.contains("storage_dtype"))t.storage_dtype=parse_dtype(j.at("storage_dtype").get<std::string>());t.shape=j.at("shape").get<std::vector<int64_t>>();t.layout=j.value("layout",std::string("contiguous"));if(!payload)return t;auto storage=t.storage_dtype==DType::Unspecified?t.dtype:t.storage_dtype;auto count=ex::detail::numel(t);auto bytes=dtype_bytes(storage);if(count*bytes>268435456)throw std::invalid_argument("JSON tensor exceeds 256MiB");
+ if(j.contains("file")){fs::path p=j["file"].get<std::string>();if(p.is_relative())p=base/p;std::ifstream in(p,std::ios::binary|std::ios::ate);if(!in||in.tellg()!=std::streamoff(count*bytes))throw std::invalid_argument("Tensor file byte count mismatch: "+p.string());t.data.resize(count*bytes);in.seekg(0);if(!t.data.empty())in.read(reinterpret_cast<char*>(t.data.data()),t.data.size());if(!in)throw std::invalid_argument("Tensor file read failed");return t;}
+ std::vector<Json> values;if(j.contains("values"))flatten(j["values"],values);else if(j.contains("data"))flatten(j["data"],values);if(values.size()!=count)throw std::invalid_argument("Literal tensor value count mismatch");t.data.resize(count*bytes);
+ for(size_t i=0;i<values.size();++i){uint64_t bits=0;if(storage==DType::Float32){float x=float(number(values[i]));uint32_t b;std::memcpy(&b,&x,4);bits=b;}else if(storage==DType::Float16)bits=ex::detail::half_host::double_to_half(number(values[i]));else if(storage==DType::Bool)bits=number(values[i])!=0;else if(values[i].is_number_unsigned())bits=values[i].get<uint64_t>();else if(values[i].is_number_integer())bits=uint64_t(values[i].get<int64_t>());else bits=uint64_t(int64_t(number(values[i])));std::memcpy(t.data.data()+i*bytes,&bits,bytes);}
+ return t;
+}
+static ex::Attributes attributes(const Json& j,const fs::path& base){ex::Attributes a;if(j.is_null())return a;if(!j.is_object())throw std::invalid_argument("Attributes/args require objects");for(auto it=j.begin();it!=j.end();++it){auto n=it.key();const auto& v=it.value();if(v.is_boolean())a.integers[n]=v.get<bool>()?1:0;else if(v.is_number_integer()||v.is_number_unsigned())a.integers[n]=v.get<int64_t>();else if(v.is_number_float())a.numbers[n]=v.get<double>();else if(v.is_string())a.strings[n]=v.get<std::string>();else if(v.is_array()){if(v.empty()){a.integer_arrays[n]={};a.number_arrays[n]={};a.string_arrays[n]={};}else{bool numeric=true,integers=true,strings=true;for(const auto& x:v){strings=strings&&x.is_string();integers=integers&&(x.is_number_integer()||x.is_number_unsigned()||x.is_boolean());try{number(x);}catch(...){numeric=false;}}if(numeric){if(integers){std::vector<int64_t> data;for(const auto& x:v)data.push_back(x.is_boolean()?(x.get<bool>()?1:0):x.get<int64_t>());a.integer_arrays[n]=std::move(data);}else{std::vector<double> data;for(const auto& x:v)data.push_back(number(x));a.number_arrays[n]=std::move(data);}}else if(strings)a.string_arrays[n]=v.get<std::vector<std::string>>();else throw std::invalid_argument("Mixed symbolic/numeric attribute array: "+n);}}else if(v.is_object()&&v.contains("dtype")&&v.contains("shape"))a.tensors[n]=tensor(v,base,true,n);else throw std::invalid_argument("Unsupported native attribute encoding: "+n);}return a;}
+static Json describe(const Tensor& t){return Json{{"name",t.name},{"dtype",dtype_name(t.dtype)},{"storage_dtype",dtype_name(t.storage_dtype==DType::Unspecified?t.dtype:t.storage_dtype)},{"shape",t.shape},{"layout",t.layout}};}
+int main(int argc,char** argv){try{if(argc!=2)throw std::invalid_argument("Usage: xrgpu_extended_execute JOB.json");fs::path job=fs::absolute(argv[1]);std::ifstream in(job);Json j;in>>j;if(!in)throw std::invalid_argument("Cannot read invocation JSON");ex::Request r;r.operation=j.at("operation").get<std::string>();for(const auto& t:j.value("inputs",Json::array())){if(t.is_null())continue;r.inputs.push_back(tensor(t,job.parent_path(),true));}r.attrs=attributes(j.value("attrs",Json::object()),job.parent_path());r.args=attributes(j.value("args",Json::object()),job.parent_path());for(const auto& t:j.value("outputs",Json::array()))r.requested_outputs.push_back(tensor(t,job.parent_path(),false));Json answer;auto p=ex::plan(r);answer["planned_outputs"]=Json::array();for(const auto& t:p.outputs)answer["planned_outputs"].push_back(describe(t));
+#ifdef XRGPU_EXTENDED_PLAN_ONLY
+ bool plan_only=true;
+#else
+ bool plan_only=j.value("plan_only",false);
+#endif
+ if(plan_only){answer["info"]={{"backend","host_shape_plan"},{"test_only",true},{"physical_qualification",false},{"operation",r.operation},{"extended",true},{"shader",p.shader}};answer["outputs"]=answer["planned_outputs"];std::cout<<answer.dump()<<'\n';return 0;}
+#ifndef XRGPU_EXTENDED_PLAN_ONLY
+ xrgpu::operators::Options options;options.profiling=j.value("profiling",false);options.timeout_ns=j.value("timeout_ns",options.timeout_ns);options.memory_limit_bytes=j.value("memory_limit_bytes",options.memory_limit_bytes);auto op=ex::Operator::prepare(j.at("package").get<std::string>(),r,options);int repeat=j.value("repeat",1);if(repeat<1||repeat>1000)throw std::invalid_argument("Invalid repeat count");for(int i=0;i<repeat;++i)op->run();auto outputs=op->read_outputs();fs::path dir=j.at("output_directory").get<std::string>();if(dir.is_relative())dir=job.parent_path()/dir;fs::create_directories(dir);answer["outputs"]=Json::array();for(size_t i=0;i<outputs.size();++i){auto file=dir/("output"+std::to_string(i)+".bin");std::ofstream out(file,std::ios::binary);if(!outputs[i].data.empty())out.write(reinterpret_cast<const char*>(outputs[i].data.data()),outputs[i].data.size());if(!out)throw std::runtime_error("Output file write failed");auto d=describe(outputs[i]);d["file"]=file.string();answer["outputs"].push_back(d);}answer["info"]=Json::parse(op->info());op->close();std::cout<<answer.dump()<<'\n';return 0;
+#endif
+ }catch(const std::exception& e){std::cerr<<Json{{"error",e.what()},{"physical_qualification",false}}.dump()<<'\n';return 1;}}

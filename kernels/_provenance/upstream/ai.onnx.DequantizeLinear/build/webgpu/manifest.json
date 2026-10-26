@@ -1,0 +1,321 @@
+{
+  "domain": "ai.onnx",
+  "name": "DequantizeLinear",
+  "sinceVersion": 25,
+  "inputs": {
+    "x": { "dtype": "TQ" },
+    "x_scale": { "dtype": "TF" },
+    "x_zero_point": { "dtype": "TQ", "optional": true }
+  },
+  "outputs": { "y": { "dtype": "TF", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "axis": { "default": 1 }, "block_size": { "default": 0 }, "output_dtype": { "default": 0 } },
+  "typeConstraints": { "TQ": ["uint8", "int8", "int16", "int32"], "TF": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 }, "VEC4_TAIL_MIN_ELEMENTS": { "default": 4096 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "workgroupOk": "tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "outputDispatchFits": "workgroupOk and ceilDiv(ceilDiv(numel(shapes.y), tunables.WORKGROUP_SIZE), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "elementCount": "numel(shapes.y)",
+    "elementCount4": "floor(numel(shapes.y) / 4)",
+    "blockedAxisDim": "dim(shapes.x, attrs.axis) if ranks.x >= 2 else 1",
+    "blockedInner": "inner(shapes.x, attrs.axis) if ranks.x >= 2 else 1",
+    "sameShapeOk": "ranks.y == ranks.x and numel(shapes.x) == numel(shapes.y) and outputDispatchFits",
+    "dequantDtypesOk": "(attrs.output_dtype == 0 or attrs.output_dtype == onnxDtypeCode(logicalDtypes.TF)) and f16Ok(dtypes.TF)",
+    "blockedScaleOk": "attrs.block_size > 0 and ranks.x >= 2 and ranks.x_scale == ranks.x and sameShapeOk and dim(shapes.x_scale, attrs.axis) == ceil(dim(shapes.x, attrs.axis) / attrs.block_size)",
+    "hasZero": "present.x_zero_point",
+    "scaleSize": "1 if ranks.x_scale == 0 else dim(shapes.x_scale, 0)",
+    "scaleInner": "1 if ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1 else inner(shapes.x, attrs.axis)",
+    "blockedScaleAxisDim": "dim(shapes.x_scale, attrs.axis) if ranks.x_scale >= 2 else 1",
+    "xVec4": "\"vec4<\" ~ dtypes.TQ ~ \">\"",
+    "scaleVec4": "\"vec4<\" ~ dtypes.TF ~ \">\"",
+    "yScalar": "dtypes.TF",
+    "yVec4": "\"vec4<\" ~ dtypes.TF ~ \">\"",
+    "xUnsigned": "tensorDtypes.x == \"uint8\"",
+    "routeInnermostAxisVec4WithZeroPoint": "(present.x_zero_point) and (ranks.x >= 1) and (attrs.axis == -1 or attrs.axis == ranks.x - 1) and (ranks.x_scale == 1) and (dim(shapes.x_scale, 0) == dim(shapes.x, ranks.x - 1)) and (dim(shapes.x_scale, 0) % 4 == 0) and (ranks.x_zero_point == 1) and (dim(shapes.x_zero_point, 0) == dim(shapes.x_scale, 0)) and (numel(shapes.y) > 0) and (numel(shapes.y) % 4 == 0) and (sameShapeOk)",
+    "routeInnermostAxisVec4NoZeroPoint": "(not present.x_zero_point) and (ranks.x >= 1) and (attrs.axis == -1 or attrs.axis == ranks.x - 1) and (ranks.x_scale == 1) and (dim(shapes.x_scale, 0) == dim(shapes.x, ranks.x - 1)) and (dim(shapes.x_scale, 0) % 4 == 0) and (numel(shapes.y) > 0) and (numel(shapes.y) % 4 == 0) and (sameShapeOk)",
+    "routeVec4CrossAxisWithZeroPoint": "(present.x_zero_point) and (attrs.block_size == 0) and (ranks.x >= 1) and (attrs.axis >= 0) and (attrs.axis < ranks.x) and (ranks.x_scale == 1) and (dim(shapes.x_scale, 0) == dim(shapes.x, attrs.axis)) and (inner(shapes.x, attrs.axis) % 4 != 0) and (ranks.x_zero_point == 1) and (dim(shapes.x_zero_point, 0) == dim(shapes.x_scale, 0)) and (numel(shapes.y) > 0) and (numel(shapes.y) % 4 == 0) and (sameShapeOk)",
+    "routeVec4WithZeroPoint": "(present.x_zero_point) and (numel(shapes.y) > 0) and (numel(shapes.y) % 4 == 0) and ((ranks.x_scale == 0 or ranks.x_scale == 1)) and (sameShapeOk) and ((ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_scale, 0) == dim(shapes.x, attrs.axis) and inner(shapes.x, attrs.axis) % 4 == 0))) and ((ranks.x_zero_point == 0 or ranks.x_zero_point == 1)) and ((ranks.x_zero_point == 0 or dim(shapes.x_zero_point, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_zero_point, 0) == dim(shapes.x, attrs.axis))))",
+    "routeVec4NoZeroPoint": "(not present.x_zero_point) and (numel(shapes.y) > 0) and (numel(shapes.y) % 4 == 0) and ((ranks.x_scale == 0 or ranks.x_scale == 1)) and (sameShapeOk) and ((ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_scale, 0) == dim(shapes.x, attrs.axis) and inner(shapes.x, attrs.axis) % 4 == 0)))",
+    "routeVec4TailWithZeroPoint": "(present.x_zero_point) and (numel(shapes.y) >= tunables.VEC4_TAIL_MIN_ELEMENTS) and (numel(shapes.y) % 4 != 0) and ((ranks.x_scale == 0 or (ranks.x_scale == 1 and dim(shapes.x_scale, 0) == 1))) and ((ranks.x_zero_point == 0 or (ranks.x_zero_point == 1 and dim(shapes.x_zero_point, 0) == 1))) and (sameShapeOk)",
+    "routeVec4TailNoZeroPoint": "(not present.x_zero_point) and (numel(shapes.y) >= tunables.VEC4_TAIL_MIN_ELEMENTS) and (numel(shapes.y) % 4 != 0) and ((ranks.x_scale == 0 or (ranks.x_scale == 1 and dim(shapes.x_scale, 0) == 1))) and (sameShapeOk)",
+    "routeBlockedWithZeroPoint": "(present.x_zero_point) and (blockedScaleOk) and (ranks.x_zero_point == ranks.x) and (dim(shapes.x_zero_point, attrs.axis) == dim(shapes.x_scale, attrs.axis))",
+    "routeBlockedNoZeroPoint": "(not present.x_zero_point) and (blockedScaleOk)"
+  },
+  "when": ["dequantDtypesOk"],
+  "bindings": {
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "elementCount" },
+        { "name": "axisDim", "type": "u32", "value": "blockedAxisDim" },
+        { "name": "scaleAxisDim", "type": "u32", "value": "blockedScaleAxisDim" },
+        { "name": "inner", "type": "u32", "value": "blockedInner" },
+        { "name": "blockSize", "type": "u32", "value": "attrs.block_size" }
+      ]
+    },
+    "x_main": { "name": "x", "elementType": "$xVec4" },
+    "x_scale_main": { "name": "x_scale", "elementType": "$scaleVec4" },
+    "y_main": { "name": "y", "elementType": "$yVec4" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "elementCount4" },
+        { "name": "scaleSize", "type": "u32", "value": "scaleSize" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "elementCount4" },
+        { "name": "scaleSize", "type": "u32", "value": "scaleSize" },
+        { "name": "inner", "type": "u32", "value": "scaleInner" }
+      ]
+    },
+    "params_bulk": { "name": "params", "struct": [{ "name": "count4", "type": "u32", "value": "elementCount4" }] },
+    "params_tail": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "elementCount" }] },
+    "params_quant_linear_scalar": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "elementCount" },
+        { "name": "scaleSize", "type": "u32", "value": "scaleSize" },
+        { "name": "inner", "type": "u32", "value": "scaleInner" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "innermost_axis_vec4_with_zero_point",
+      "priority": 20,
+      "when": ["routeInnermostAxisVec4WithZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.InnermostAxisVec4",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": true, "vectorParams": true },
+          "bindings": [
+            "x_main",
+            "x_scale_main",
+            { "arg": "x_zero_point", "elementType": "$xVec4" },
+            "y_main",
+            "params_main"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "innermost_axis_vec4_no_zero_point",
+      "priority": 20,
+      "when": ["routeInnermostAxisVec4NoZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.InnermostAxisVec4NoZero",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": true, "vectorParams": true },
+          "bindings": ["x_main", "x_scale_main", "y_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_cross_axis_with_zero_point",
+      "priority": 16,
+      "when": ["routeVec4CrossAxisWithZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.Vec4CrossAxis",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": true, "crossingParams": true },
+          "bindings": ["x_main", "x_scale", "x_zero_point", "y_main", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_with_zero_point",
+      "priority": 15,
+      "when": ["routeVec4WithZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.Vec4",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": "not (ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1)" },
+          "bindings": ["x_main", "x_scale", "x_zero_point", "y_main", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_no_zero_point",
+      "priority": 15,
+      "when": ["routeVec4NoZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.Vec4",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": "not (ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1)" },
+          "bindings": ["x_main", "x_scale", "y_main", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail_with_zero_point",
+      "priority": 10,
+      "when": ["routeVec4TailWithZeroPoint"],
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "DequantizeLinear.Vec4Bulk",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": false },
+          "bindings": ["x_main", "x_scale", "x_zero_point", "y_main", "params_bulk"],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "DequantizeLinear.ScalarTail",
+          "shader": "quant-linear-scalar.wgsl.jinja",
+          "derive": { "x4": true, "perAxis": false },
+          "bindings": ["x", "x_scale", "x_zero_point", "y", "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail_no_zero_point",
+      "priority": 10,
+      "when": ["routeVec4TailNoZeroPoint"],
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "DequantizeLinear.Vec4Bulk",
+          "shader": "quant-linear-vec4.wgsl.jinja",
+          "derive": { "perAxis": false },
+          "bindings": ["x_main", "x_scale", "y_main", "params_bulk"],
+          "dispatch": {
+            "x": "min(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((floor(numel(shapes.y) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "DequantizeLinear.ScalarTail",
+          "shader": "quant-linear-scalar.wgsl.jinja",
+          "derive": { "x4": true, "perAxis": false },
+          "bindings": ["x", "x_scale", "y", "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "blocked_with_zero_point",
+      "priority": 19,
+      "when": ["routeBlockedWithZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.Blocked",
+          "shader": "quant-linear-blocked-axis.wgsl.jinja",
+          "bindings": ["x", "x_scale", "x_zero_point", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "blocked_no_zero_point",
+      "priority": 19,
+      "when": ["routeBlockedNoZeroPoint"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear.BlockedNoZero",
+          "shader": "quant-linear-blocked-axis.wgsl.jinja",
+          "bindings": ["x", "x_scale", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_scalar_or_axis_zero",
+      "when": ["present.x_zero_point", "(ranks.x_scale == 0 or ranks.x_scale == 1)", "sameShapeOk", "(ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_scale, 0) == dim(shapes.x, attrs.axis)))", "(ranks.x_zero_point == 0 or ranks.x_zero_point == 1)", "(ranks.x_zero_point == 0 or dim(shapes.x_zero_point, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_zero_point, 0) == dim(shapes.x, attrs.axis)))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear",
+          "shader": "quant-linear-scalar.wgsl.jinja",
+          "derive": { "x4": "false", "perAxis": "not (ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1)" },
+          "bindings": ["x", "x_scale", "x_zero_point", "y", "params_quant_linear_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_scalar_or_axis_no_zero",
+      "when": ["not present.x_zero_point", "(ranks.x_scale == 0 or ranks.x_scale == 1)", "sameShapeOk", "(ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1 or (ranks.x >= 1 and dim(shapes.x_scale, 0) == dim(shapes.x, attrs.axis)))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DequantizeLinear",
+          "shader": "quant-linear-scalar.wgsl.jinja",
+          "derive": { "x4": "false", "perAxis": "not (ranks.x_scale == 0 or dim(shapes.x_scale, 0) == 1)" },
+          "bindings": ["x", "x_scale", "y", "params_quant_linear_scalar"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

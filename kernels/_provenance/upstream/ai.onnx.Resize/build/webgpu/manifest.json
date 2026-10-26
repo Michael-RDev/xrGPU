@@ -1,0 +1,486 @@
+{
+  "domain": "ai.onnx",
+  "name": "Resize",
+  "sinceVersion": 19,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x" } },
+  "attributes": {
+    "mode": { "default": "nearest" },
+    "coordinate_transformation_mode": { "default": "half_pixel" },
+    "nearest_mode": { "default": "round_prefer_floor" },
+    "cubic_coeff_a": { "default": -0.75 },
+    "roi": { "default": [] },
+    "scales": { "default": [] },
+    "extrapolation_value": { "default": 0 },
+    "antialias": { "default": 0 },
+    "exclude_outside": { "default": 0 },
+    "keep_aspect_ratio_policy": { "default": "stretch" },
+    "axes": {}
+  },
+  "attributeConstraints": {
+    "mode": { "values": ["nearest", "linear", "cubic"] },
+    "coordinate_transformation_mode": {
+      "values": ["half_pixel", "half_pixel_symmetric", "pytorch_half_pixel", "align_corners", "asymmetric", "tf_crop_and_resize"]
+    },
+    "nearest_mode": { "values": ["round_prefer_floor", "round_prefer_ceil", "floor", "ceil"] },
+    "antialias": { "values": [0, 1] },
+    "exclude_outside": { "values": [0, 1] },
+    "keep_aspect_ratio_policy": { "values": ["stretch"] }
+  },
+  "typeConstraints": { "T": ["float32", "float16", "uint8", "int8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "nchw4dContract": "ranks.x == 4 and ranks.y == 4 and dim(shapes.x, 0) == dim(shapes.y, 0) and dim(shapes.x, 1) == dim(shapes.y, 1)",
+    "axesContract": "not has(attrs, \"axes\") or ((attrs.axes | length) > 0 and (attrs.axes | length) <= ranks.x and isUniqueIntList(attrs.axes, 0 - ranks.x, ranks.x, ranks.x))",
+    "scalesContract": "(attrs.scales | length) == 0 or ((not has(attrs, \"axes\") and (attrs.scales | length) == ranks.x) or (has(attrs, \"axes\") and (attrs.scales | length) == (attrs.axes | length)))",
+    "roiContract": "(attrs.roi | length) == 0 or (attrs.roi | length) == 2 * ((attrs.axes | length) if has(attrs, \"axes\") else ranks.x)",
+    "noExplicitScales": "(attrs.scales | length) == 0",
+    "spatialSpecializedScales": "noExplicitScales or (not has(attrs, \"axes\") and (attrs.scales | length) == ranks.x and ranks.x >= 2 and attrs.scales[0] == 1 and attrs.scales[1] == 1) or (has(attrs, \"axes\") and ranks.x >= 2 and (attrs.scales | length) == (attrs.axes | length) and not hasAxis(attrs.axes, 0, ranks.x) and not hasAxis(attrs.axes, 1, ranks.x))",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "storageFits": "numel(shapes.x) * dtypeBytes(dtypes.T) <= storageBufferLimit and numel(shapes.y) * dtypeBytes(dtypes.T) <= storageBufferLimit",
+    "dispatchFits": "numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * workgroupSize",
+    "portableResources": "axesContract and scalesContract and roiContract and workgroupSize > 0 and storageFits and dispatchFits",
+    "f16X8PortableOk": "device.features.has(\"subgroups\") or not (has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 8 and device.adapterInfo.subgroupMaxSize <= 32)",
+    "rank4Vec4Preferred": "not has(device.adapterInfo, \"subgroupMaxSize\") or device.adapterInfo.subgroupMaxSize <= 32",
+    "scaleAtAxis2": "0 if (noExplicitScales or ranks.x <= 2) else (axisValue(attrs.scales, attrs.axes, 2, ranks.x, 1) if has(attrs, \"axes\") else attrs.scales[2])",
+    "scaleAtAxis3": "0 if (noExplicitScales or ranks.x <= 3) else (axisValue(attrs.scales, attrs.axes, 3, ranks.x, 1) if has(attrs, \"axes\") else attrs.scales[3])",
+    "scaleAtAxis4": "0 if (noExplicitScales or ranks.x <= 4) else (axisValue(attrs.scales, attrs.axes, 4, ranks.x, 1) if has(attrs, \"axes\") else attrs.scales[4])",
+    "scalar": "dtypes.T",
+    "stencilScalesEquivalent": "noExplicitScales or (spatialSpecializedScales and ranks.x == 4 and scaleAtAxis2 == dim(shapes.y, 2) / dim(shapes.x, 2) and scaleAtAxis3 == dim(shapes.y, 3) / dim(shapes.x, 3))",
+    "suffixAxis": "ranks.x - 1",
+    "suffixScale": "1 if noExplicitScales else (axisValue(attrs.scales, attrs.axes, suffixAxis, ranks.x, 1) if has(attrs, \"axes\") else attrs.scales[suffixAxis])",
+    "suffixRoiStart": "0 if (attrs.roi | length) == 0 else (axisValue(prefix(attrs.roi, (attrs.axes | length)), attrs.axes, suffixAxis, ranks.x, 0) if has(attrs, \"axes\") else attrs.roi[suffixAxis])",
+    "suffixRoiEnd": "1 if (attrs.roi | length) == 0 else (axisValue(suffix(attrs.roi, (attrs.axes | length)), attrs.axes, suffixAxis, ranks.x, 1) if has(attrs, \"axes\") else attrs.roi[ranks.x + suffixAxis])",
+    "suffixVec4Ok": "dim(shapes.x, suffixAxis) == dim(shapes.y, suffixAxis) and dim(shapes.x, suffixAxis) % 4 == 0 and suffixScale == 1 and suffixRoiStart == 0 and suffixRoiEnd == 1",
+    "coordinateMode": "attrs.coordinate_transformation_mode",
+    "modeSpec": "attrs.mode",
+    "nearestMode": "attrs.nearest_mode",
+    "xShape": "shapes.x",
+    "yShape": "shapes.y"
+  },
+  "when": ["f16Ok(dtypes.T)", "portableResources"],
+  "bindings": {
+    "y": { "elementType": "$outputElement" },
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "C", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "scaleH", "type": "f32", "value": "scaleAtAxis2" },
+        { "name": "scaleW", "type": "f32", "value": "scaleAtAxis3" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "linear_2x_stencil_f16_x8",
+      "priority": 22,
+      "when": ["nchw4dContract", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\")", "dim(shapes.y, 2) == dim(shapes.x, 2) * 2", "dim(shapes.y, 3) == dim(shapes.x, 3) * 2", "dim(shapes.y, 3) % 8 == 0", "dtypes.T == \"f16\"", "f16X8PortableOk", "stencilScalesEquivalent"],
+      "derive": { "outputElement": "\"vec4<f16>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Linear2xStencilF16X8",
+          "shader": "resize-linear-2x-stencil-x8.wgsl.jinja",
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 8), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nearest_integer_scale_vec4",
+      "priority": 21,
+      "when": ["nchw4dContract", "numel(shapes.y) > 0", "attrs.mode == \"nearest\"", "((attrs.coordinate_transformation_mode == \"asymmetric\" and attrs.nearest_mode == \"floor\") or (attrs.coordinate_transformation_mode == \"half_pixel\" and (attrs.nearest_mode == \"round_prefer_floor\" or attrs.nearest_mode == \"round_prefer_ceil\")))", "(dim(shapes.y, 2) == dim(shapes.x, 2) * 2 or dim(shapes.y, 2) == dim(shapes.x, 2) * 3 or dim(shapes.y, 2) == dim(shapes.x, 2) * 4)", "(dim(shapes.y, 3) == dim(shapes.x, 3) * 2 or dim(shapes.y, 3) == dim(shapes.x, 3) * 3 or dim(shapes.y, 3) == dim(shapes.x, 3) * 4)", "dim(shapes.y, 3) % 4 == 0", "stencilScalesEquivalent"],
+      "demoteWhen": ["variableSubgroup16To32 and dtypes.T == \"f16\""],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.NearestIntegerScaleVec4",
+          "shader": "resize-nearest-integer-scale.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nearest_integer_scale",
+      "priority": 20,
+      "when": ["nchw4dContract", "numel(shapes.y) > 0", "attrs.mode == \"nearest\"", "((attrs.coordinate_transformation_mode == \"asymmetric\" and attrs.nearest_mode == \"floor\") or (attrs.coordinate_transformation_mode == \"half_pixel\" and (attrs.nearest_mode == \"round_prefer_floor\" or attrs.nearest_mode == \"round_prefer_ceil\")))", "(dim(shapes.y, 2) == dim(shapes.x, 2) * 2 or dim(shapes.y, 2) == dim(shapes.x, 2) * 3 or dim(shapes.y, 2) == dim(shapes.x, 2) * 4)", "(dim(shapes.y, 3) == dim(shapes.x, 3) * 2 or dim(shapes.y, 3) == dim(shapes.x, 3) * 3 or dim(shapes.y, 3) == dim(shapes.x, 3) * 4)", "stencilScalesEquivalent"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.NearestIntegerScale",
+          "shader": "resize-nearest-integer-scale.wgsl.jinja",
+          "derive": { "vec4": false },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_2x_stencil_vec4",
+      "priority": 20,
+      "when": ["nchw4dContract", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\")", "dim(shapes.y, 2) == dim(shapes.x, 2) * 2", "dim(shapes.y, 3) == dim(shapes.x, 3) * 2", "dim(shapes.y, 3) % 4 == 0", "stencilScalesEquivalent"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Linear2xStencilVec4",
+          "shader": "resize-linear-2x-stencil.wgsl.jinja",
+          "derive": { "vec4": true },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_2x_stencil",
+      "priority": 19,
+      "when": ["nchw4dContract", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\")", "dim(shapes.y, 2) == dim(shapes.x, 2) * 2", "dim(shapes.y, 3) == dim(shapes.x, 3) * 2", "stencilScalesEquivalent"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Linear2xStencil",
+          "shader": "resize-linear-2x-stencil.wgsl.jinja",
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4_vec4",
+      "priority": 1,
+      "when": ["nchw4dContract", "(attrs.mode == \"nearest\" or attrs.mode == \"linear\")", "attrs.coordinate_transformation_mode != \"tf_crop_and_resize\"", "(attrs.antialias != 1 or attrs.mode == \"nearest\")", "dim(shapes.y, 3) % 4 == 0", "spatialSpecializedScales"],
+      "demoteWhen": ["not rank4Vec4Preferred"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Vec4",
+          "shader": "resize-coord-transform.wgsl.jinja",
+          "derive": { "vec4": true, "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4_scalar_x4",
+      "priority": 2,
+      "when": ["nchw4dContract", "(attrs.mode == \"nearest\" or attrs.mode == \"linear\")", "attrs.coordinate_transformation_mode != \"tf_crop_and_resize\"", "(attrs.antialias != 1 or attrs.mode == \"nearest\")", "dim(shapes.y, 3) >= 4", "dim(shapes.y, 3) % 4 != 0", "spatialSpecializedScales"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.ScalarX4",
+          "shader": "resize-coord-transform.wgsl.jinja",
+          "derive": { "scalarX4": true },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * dim(shapes.y, 1) * dim(shapes.y, 2) * ceil(dim(shapes.y, 3) / 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * dim(shapes.y, 1) * dim(shapes.y, 2) * ceil(dim(shapes.y, 3) / 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4",
+      "when": ["nchw4dContract", "(attrs.mode == \"nearest\" or attrs.mode == \"linear\")", "attrs.coordinate_transformation_mode != \"tf_crop_and_resize\"", "(attrs.antialias != 1 or attrs.mode == \"nearest\")", "spatialSpecializedScales"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize",
+          "shader": "resize-coord-transform.wgsl.jinja",
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw_rank5",
+      "when": ["ranks.x == 5", "ranks.y == 5", "dim(shapes.x, 0) == dim(shapes.y, 0)", "dim(shapes.x, 1) == dim(shapes.y, 1)", "(attrs.mode == \"nearest\" or attrs.mode == \"linear\")", "attrs.coordinate_transformation_mode != \"tf_crop_and_resize\"", "(attrs.antialias != 1 or attrs.mode == \"nearest\")", "spatialSpecializedScales"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Ncdhw",
+          "shader": "resize-coord-transform-5d.wgsl.jinja",
+          "bindings": [
+            "x",
+            { "arg": "y" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "C", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+                { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+                { "name": "scaleD", "type": "f32", "value": "scaleAtAxis2" },
+                { "name": "scaleH", "type": "f32", "value": "scaleAtAxis3" },
+                { "name": "scaleW", "type": "f32", "value": "scaleAtAxis4" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_rank4_cubic",
+      "when": ["nchw4dContract", "(attrs.antialias != 1)", "attrs.mode == \"cubic\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\" or attrs.coordinate_transformation_mode == \"align_corners\" or attrs.coordinate_transformation_mode == \"half_pixel_symmetric\")", "spatialSpecializedScales"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Cubic",
+          "shader": "resize-cubic.wgsl.jinja",
+          "derive": { "excludeOutside": "attrs.exclude_outside if attrs.exclude_outside else 0" },
+          "bindings": [
+            "x",
+            { "arg": "y" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "C", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+                { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "scaleH", "type": "f32", "value": "scaleAtAxis2" },
+                { "name": "scaleW", "type": "f32", "value": "scaleAtAxis3" },
+                { "name": "coeffA", "type": "f32", "value": "attrs.cubic_coeff_a" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_rank_n_suffix_vec4",
+      "priority": 1,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "(attrs.coordinate_transformation_mode == \"tf_crop_and_resize\" or ranks.x < 4 or ranks.x > 5 or dim(shapes.x, 0) != dim(shapes.y, 0) or dim(shapes.x, 1) != dim(shapes.y, 1) or not spatialSpecializedScales)", "attrs.mode == \"linear\"", "attrs.antialias != 1", "dtypes.T == \"f32\" or dtypes.T == \"f16\"", "suffixVec4Ok"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.GenericSuffixVec4",
+          "shader": "resize-generic.wgsl.jinja",
+          "derive": {
+            "roi": "attrs.roi",
+            "scales": "attrs.scales",
+            "extrapolationValue": "attrs.extrapolation_value",
+            "excludeOutside": "attrs.exclude_outside if attrs.exclude_outside else 0",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []",
+            "suffixVec4": true,
+            "coeffA": "attrs.cubic_coeff_a if attrs.mode == \"cubic\" else 0"
+          },
+          "bindings": [{ "arg": "x", "elementType": "$vectorScalar" }, "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), workgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_rank_n_cubic_suffix_vec4",
+      "priority": 1,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "(attrs.antialias != 1)", "attrs.mode == \"cubic\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\" or attrs.coordinate_transformation_mode == \"align_corners\" or attrs.coordinate_transformation_mode == \"half_pixel_symmetric\")", "(ranks.x != 4 or dim(shapes.x, 0) != dim(shapes.y, 0) or dim(shapes.x, 1) != dim(shapes.y, 1) or not spatialSpecializedScales)", "dtypes.T == \"f32\" or dtypes.T == \"f16\"", "suffixVec4Ok"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.GenericSuffixVec4",
+          "shader": "resize-generic.wgsl.jinja",
+          "derive": {
+            "roi": "attrs.roi",
+            "scales": "attrs.scales",
+            "extrapolationValue": "attrs.extrapolation_value",
+            "excludeOutside": "attrs.exclude_outside if attrs.exclude_outside else 0",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []",
+            "suffixVec4": true,
+            "coeffA": "attrs.cubic_coeff_a if attrs.mode == \"cubic\" else 0"
+          },
+          "bindings": [{ "arg": "x", "elementType": "$vectorScalar" }, "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), workgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_rank_n",
+      "priority": 0,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "(attrs.mode == \"nearest\" or attrs.mode == \"linear\")", "(attrs.antialias != 1 or attrs.mode == \"nearest\")", "(attrs.coordinate_transformation_mode == \"tf_crop_and_resize\" or ranks.x < 4 or ranks.x > 5 or dim(shapes.x, 0) != dim(shapes.y, 0) or dim(shapes.x, 1) != dim(shapes.y, 1) or not spatialSpecializedScales)"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.Generic",
+          "shader": "resize-generic.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "yShape": "shapes.y",
+            "modeSpec": "attrs.mode",
+            "coordinateMode": "attrs.coordinate_transformation_mode",
+            "nearestMode": "attrs.nearest_mode",
+            "roi": "attrs.roi",
+            "scales": "attrs.scales",
+            "extrapolationValue": "attrs.extrapolation_value",
+            "excludeOutside": "attrs.exclude_outside if attrs.exclude_outside else 0",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []"
+          },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "antialias_linear",
+      "priority": 5,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "attrs.mode == \"linear\"", "attrs.antialias == 1", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\" or attrs.coordinate_transformation_mode == \"align_corners\")"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.AntialiasLinear",
+          "shader": "resize-antialias.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "yShape": "shapes.y",
+            "coordinateMode": "attrs.coordinate_transformation_mode",
+            "excludeOutside": "attrs.exclude_outside == 1",
+            "scales": "attrs.scales",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []"
+          },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "antialias_cubic",
+      "priority": 5,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "attrs.mode == \"cubic\"", "attrs.antialias == 1", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\" or attrs.coordinate_transformation_mode == \"align_corners\")"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.AntialiasCubic",
+          "shader": "resize-antialias.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "yShape": "shapes.y",
+            "coordinateMode": "attrs.coordinate_transformation_mode",
+            "excludeOutside": "attrs.exclude_outside == 1",
+            "scales": "attrs.scales",
+            "filter": "\"cubic\"",
+            "coeffA": "attrs.cubic_coeff_a",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []"
+          },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_rank_n_cubic",
+      "priority": 0,
+      "when": ["ranks.x == ranks.y", "ranks.x >= 1", "numel(shapes.y) > 0", "(attrs.antialias != 1)", "attrs.mode == \"cubic\"", "(attrs.coordinate_transformation_mode == \"half_pixel\" or attrs.coordinate_transformation_mode == \"pytorch_half_pixel\" or attrs.coordinate_transformation_mode == \"asymmetric\" or attrs.coordinate_transformation_mode == \"align_corners\" or attrs.coordinate_transformation_mode == \"half_pixel_symmetric\")", "(ranks.x != 4 or dim(shapes.x, 0) != dim(shapes.y, 0) or dim(shapes.x, 1) != dim(shapes.y, 1) or not spatialSpecializedScales)"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Resize.GenericCubic",
+          "shader": "resize-generic.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "yShape": "shapes.y",
+            "modeSpec": "attrs.mode",
+            "coordinateMode": "attrs.coordinate_transformation_mode",
+            "nearestMode": "attrs.nearest_mode",
+            "coeffA": "attrs.cubic_coeff_a",
+            "roi": "attrs.roi",
+            "scales": "attrs.scales",
+            "extrapolationValue": "attrs.extrapolation_value",
+            "excludeOutside": "attrs.exclude_outside if attrs.exclude_outside else 0",
+            "axes": "attrs.axes if has(attrs, \"axes\") else []"
+          },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+---
+library_name: kernels
+license: apache-2.0
+tags:
+- kernel
+- webgpu
+- wgsl
+---
+# com.microsoft.QuickGelu
+
+`com.microsoft`  ·  ONNX Runtime contrib operator  ·  contrib since_version 1
+
+## Description
+
+Computes `x * sigmoid(alpha * x)` elementwise, a fast approximation of GELU activation. The output has the same shape as the input. This WebGPU package implements float16 and float32; the schema-allowed double and bfloat16 types are not supported.
+
+See the [ONNX Runtime `QuickGelu` contrib-operator spec](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.QuickGelu) for the reference semantics.
+
+## Inputs
+
+| Name | Logical dtype | Rank | Shape | Description | Presence |
+| --- | --- | --- | --- | --- | --- |
+| `X` | `T` | — | — | Input tensor of any shape. | required |
+
+## Outputs
+
+| Name | Logical dtype | Rank | Shape | Description | Presence |
+| --- | --- | --- | --- | --- | --- |
+| `Y` | `T` | same as `X` | same as `X` | Output tensor; same shape as the input. | required |
+
+## Attributes
+
+Default values (overridable per request):
+
+| Attribute | Default | Description |
+| --- | --- | --- |
+| `alpha` | `1.702` | Scalar multiplier applied to `x` inside the sigmoid; defaults to 1.702, which approximates GELU. |
+
+## Type constraints
+
+| Variable | Allowed dtypes |
+| --- | --- |
+| `T` | `float32`, `float16` |
+
+## Files
+
+- [`metadata.json`](build/webgpu/metadata.json) — kernel metadata (id, digests, per-variant templates, provenance)
+- [`manifest.json`](build/webgpu/manifest.json) — the op contract (source of truth)
+- [`test.json`](build/webgpu/test.json) — correctness cases
+- [`bench.json`](build/webgpu/bench.json) — benchmark cases
+- [`quick-gelu.wgsl.jinja`](build/webgpu/quick-gelu.wgsl.jinja)
+
+## Use with `@huggingface/kernels`
+
+```sh
+npm install --save-exact @huggingface/kernels@0.0.1-preview.3
+```
+
+Required output shapes and logical data types are inferred from the supplied inputs and attributes; result tensors are allocated automatically.
+
+The `version: 1` option selects the published kernel contract; it is independent of any operator opset, contrib `since_version`, or model version.
+It follows the `v1` branch as fixes land. To pin exact artifact bytes, pass a 40-character commit `revision` instead of `version`.
+
+Replace each `*Data` placeholder with a typed array containing the corresponding input data.
+
+```js
+import { getKernel } from "@huggingface/kernels";
+
+const kernel = await getKernel("webgpu-kernels/com.microsoft.QuickGelu", { version: 1 });
+const { Y } = await kernel({ X: { data: XData, shape: [2, 4] } });
+```

@@ -1,0 +1,115 @@
+{
+  "domain": "ai.onnx",
+  "name": "NonZero",
+  "sinceVersion": 9,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "I", "rank": 2, "storage": "uint32" } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool"],
+    "I": ["int64"]
+  },
+  "tunables": {
+    "SCAN_ITEMS_PER_THREAD": { "default": 16 },
+    "SCAN_ITEMS_PER_THREAD_WIDE": { "default": 32 },
+    "SCAN_ITEMS_PER_THREAD_WIDE_3COORD": { "default": 8 },
+    "SCAN_ITEMS_PER_THREAD_WIDE_4COORD": { "default": 4 },
+    "SCAN_MIN_BLOCKS": { "default": 256 }
+  },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["ranks.y == 2", "dim(shapes.y, 0) == ranks.x", "dim(shapes.y, 1) <= numel(shapes.x)", "tensorDtypes.y == \"uint32\"", "f16Ok(tensorDtypes.x)"],
+  "variants": [
+    {
+      "id": "parallel_scan",
+      "priority": 15,
+      "when": ["ranks.x >= 1", "numel(shapes.x) >= 1024", "numel(shapes.x) <= 1073741823"],
+      "derive": {
+        "workgroupSize": 256,
+        "scanN": "numel(shapes.x)",
+        "scanItemsWide": "tunables.SCAN_ITEMS_PER_THREAD_WIDE_4COORD if ranks.x >= 4 else (tunables.SCAN_ITEMS_PER_THREAD_WIDE_3COORD if ranks.x == 3 else tunables.SCAN_ITEMS_PER_THREAD_WIDE)",
+        "scanItems": "scanItemsWide if ceilDiv(numel(shapes.x), workgroupSize * scanItemsWide) >= tunables.SCAN_MIN_BLOCKS else tunables.SCAN_ITEMS_PER_THREAD",
+        "scanThreads": "ceilDiv(scanN, scanItems)",
+        "scanBlocks": "ceilDiv(scanN, workgroupSize * scanItems)",
+        "rank": "ranks.x",
+        "shape": "shapes.x"
+      },
+      "intermediates": [
+        { "id": "offsets", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "flags", "dtype": "uint32", "shape": "[scanThreads]" },
+        { "id": "blockSums", "dtype": "uint32", "shape": "[scanBlocks]" },
+        { "id": "blockPrefix", "dtype": "uint32", "shape": "[scanBlocks]" }
+      ],
+      "passes": [
+        {
+          "id": "flag_scan",
+          "name": "NonZero.FlagBlockScan",
+          "shader": "nonzero-flag-block-scan-vec4.wgsl.jinja",
+          "derive": { "itemsPerThread": "scanItems" },
+          "bindings": [
+            { "arg": "x", "name": "src", "elementType": "$scalar" },
+            { "name": "offsets", "elementType": "u32" },
+            { "name": "flags", "elementType": "u32" },
+            { "name": "blockSums", "elementType": "u32" },
+            { "name": "params", "struct": [{ "name": "n", "type": "u32", "value": "scanN" }] }
+          ],
+          "dispatch": { "x": "min(scanBlocks, 65535)", "y": "ceilDiv(scanBlocks, 65535)", "z": 1 }
+        },
+        {
+          "id": "block_prefix",
+          "name": "NonZero.BlockPrefixScan",
+          "shader": "scan-block-prefix-u32.wgsl.jinja",
+          "bindings": [
+            { "name": "blockSums", "buffer": "read-only-storage", "elementType": "u32" },
+            { "name": "blockPrefix", "elementType": "u32" },
+            { "name": "params", "struct": [{ "name": "numBlocks", "type": "u32", "value": "scanBlocks" }] }
+          ],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "scatter",
+          "name": "NonZero.CoordinateScatter",
+          "shader": "nonzero-scatter-vec4.wgsl.jinja",
+          "derive": { "itemsPerThread": "scanItems" },
+          "bindings": [
+            { "name": "offsets", "buffer": "read-only-storage", "elementType": "u32" },
+            { "name": "flags", "buffer": "read-only-storage", "elementType": "u32" },
+            { "name": "blockPrefix", "buffer": "read-only-storage", "elementType": "u32" },
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "inputCount", "type": "u32", "value": "scanN" },
+                { "name": "capacity", "type": "u32", "value": "dim(shapes.y, 1)" },
+                { "name": "numBlocks", "type": "u32", "value": "scanBlocks" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(scanBlocks, 65535)", "y": "ceilDiv(scanBlocks, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "serial_rankn",
+      "when": ["ranks.x >= 0"],
+      "derive": { "rank": "ranks.x", "shape": "shapes.x" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "NonZero",
+          "shader": "nonzero.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "inputCount", "type": "u32", "value": "numel(shapes.x)" },
+                { "name": "capacity", "type": "u32", "value": "dim(shapes.y, 1)" }
+              ]
+            }
+          ],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    }
+  ]
+}

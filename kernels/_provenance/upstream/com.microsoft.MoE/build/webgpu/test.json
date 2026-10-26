@@ -1,0 +1,2670 @@
+{
+  "cases": [
+    {
+      "name": "relu_top1_no_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "default activation_type (relu), one expert per token",
+        "notes": "Exercises the schema's default activation with no optional biases or FC3 input."
+      },
+      "attrs": { "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "gelu_top1_fc1_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "activation_type gelu with an FC1 bias",
+        "notes": "Tanh-approximate GELU after the FC1 projection and its per-expert bias."
+      },
+      "attrs": { "k": 1, "activation_type": "gelu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_topk2_fc2_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "activation_type silu at k = 2 with an FC2 bias",
+        "notes": "The FC2 bias belongs to the expert, so at k = 2 each selected expert contributes its own bias scaled by its own routing weight. Adding it once to the routed sum instead would be wrong by the difference of the two experts' biases."
+      },
+      "attrs": { "k": 2, "activation_type": "silu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_gate_fc3_no_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "activation_type silu with FC3 as a multiplicative linear projection",
+        "notes": "The pinned CUDA provider's separate FC3 gated-MLP form computes the FC3 projection times SiLU of the FC1 projection."
+      },
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_gate_fc3_every_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "all three optional biases present at once",
+        "notes": "The SiLU gated path applies FC1, FC2, and FC3 biases in one invocation."
+      },
+      "attrs": { "k": 2, "activation_type": "silu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "swiglu_fusion2_top1",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "swiglu_fusion 2 (fused, concatenated halves)",
+        "notes": "One fused FC1 whose row block holds the gate half then the linear half. inter_size is the FC1 row count halved, which is what fusion_size 2 means in the schema's shape formula."
+      },
+      "attrs": {
+        "k": 1,
+        "activation_type": "swiglu",
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1,
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.33, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.23, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 6, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "swiglu_fusion1_interleaved_topk2",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "swiglu_fusion 1 (fused, interleaved rows)",
+        "notes": "The same fused FC1 as fusion 2 but with the two operands interleaved: lane i reads rows 2i and 2i+1 rather than i and inter+i. Reading the concatenated layout here still lands on the right gate row for lane 0 and on the wrong linear row for it, and on the wrong row for both operands of every later lane."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "swiglu_fusion": 1,
+        "normalize_routing_weights": 1,
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.33, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.23, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 6, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [4, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "swiglu_fusion0_separate_fc3",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "swiglu_fusion 0 (two unfused GEMMs)",
+        "notes": "With the GEMMs unfused the SwiGLU operands come from separate FC1 and FC3 tensors, so fusion_size is 1 and inter_size is the full FC1 row count. FC3 is required in this form and rejected in the fused ones."
+      },
+      "attrs": {
+        "k": 1,
+        "activation_type": "swiglu",
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 0,
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "swiglu_fusion2_limit_clamped",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "swiglu_limit clamping both operands",
+        "notes": "swiglu_limit clamps the gate operand from above and the linear operand into [-limit, limit] before the product. The limit is small enough here that it actually binds; when the attribute is absent no clamp is applied at all."
+      },
+      "attrs": {
+        "k": 1,
+        "activation_type": "swiglu",
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1,
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_limit": 0.35
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.33, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.23, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 6, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "rank3_batched_relu",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "3D input (batch, sequence, hidden)",
+        "notes": "num_tokens is the product of every leading dimension, so a [1, 3, 4] input routes exactly like the [3, 4] case while the output keeps the 3D shape."
+      },
+      "attrs": { "k": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [1, 3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "topk_equals_expert_count",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "k equal to the expert count",
+        "notes": "Every expert is selected for every token, which is the upper bound the contract allows and the case where the router's taken-exclusion has to visit every index without repeating one."
+      },
+      "attrs": { "k": 3, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "empty_tokens_zero_dim",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "zero-token input",
+        "notes": "A zero-length token axis: every stage dispatches nothing and the output is empty. The route scratch is still allocated at one element so the binding stays well-formed."
+      },
+      "attrs": { "k": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "routerT": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [0, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "gelu_fc1_bias_fc2_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "Uses FC1 and FC2 biases without an FC3 projection, exercising GELU on the FC1 projection before the biased FC2 projection."
+      },
+      "attrs": { "k": 1, "activation_type": "gelu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.21, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_silu_gate_fc3_fc2_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "This optional-input layout uses a 128-wide reduction so the cooperative GEMV schedule exercises SiLU with a separate, unbiased FC3 projection and FC2 bias."
+      },
+      "attrs": { "k": 2, "activation_type": "silu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.23, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_silu_gate_fc3_bias_only",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "This optional-input layout supplies enough routed slots for the expert-grouped schedule to exercise SiLU with a separately biased FC3 projection and no FC2 bias."
+      },
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.25, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_gate_fc3_bias_fc2_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "Uses the gated SiLU branch with an FC3 bias and an FC2 bias while omitting the FC1 bias; routing weights are normalized across the selected experts."
+      },
+      "attrs": { "k": 2, "activation_type": "silu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.25, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.27, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_fc1_bias_gate_fc3",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "Uses the gated SiLU branch with an FC1 bias, an unbiased FC3 projection, and no FC2 bias."
+      },
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.29, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "silu_fc1_bias_gate_fc3_fc2_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "Uses normalized top-2 routing with the gated SiLU branch, an FC1 bias, an unbiased FC3 projection, and an FC2 bias."
+      },
+      "attrs": { "k": 2, "activation_type": "silu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.31, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "ort_softmax_tie_break_top1",
+      "provenance": {
+        "source": "onnxruntime/contrib_ops/cpu/moe/moe_cpu.cc",
+        "test": "full-softmax routing and equal-probability pair ordering",
+        "notes": "Equal zero logits become probabilities [0.5, 0.5], with ties selecting the higher expert index. That expert emits 6, and its non-normalized route probability scales the result to exactly 3. Also exercises the defaults k=1, activation_type=relu, and normalize_routing_weights=0."
+      },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "routerT": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [0.0, 0.0] } },
+        "fc1T": { "dtype": "float32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [1.0, 2.0] } },
+        "fc2T": { "dtype": "float32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [1.0, 3.0] } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [3.0] }
+        }
+      }
+    },
+    {
+      "name": "silu_fc1_bias_gate_fc3_bias",
+      "provenance": {
+        "source": "onnxruntime/docs/ContribOperators.md#com.microsoft.MoE",
+        "test": "com.microsoft.MoE optional-input combination",
+        "notes": "Uses the gated SiLU branch with FC1 and FC3 biases and no FC2 bias."
+      },
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.33, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.25 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3none_fc2plain_identity",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, no fc3, plain fc2, and identity activation."
+      },
+      "attrs": { "activation_type": "identity", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.31, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.26, "cosStep": 0.24, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.36, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.28, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, no fc3, biased fc2, and SwiGLU formula 2."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.083, "cosStep": 0.299, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.273, "cosStep": 0.229, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 256, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.123, "cosStep": 0.349, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.103, "cosStep": 0.269, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.233, "cosStep": 0.319, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3none_fc2plain_swiglu1",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, no fc3, plain fc2, and SwiGLU formula 1."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.096, "cosStep": 0.288, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.286, "cosStep": 0.218, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 256, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.136, "cosStep": 0.338, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.186, "cosStep": 0.418, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.116, "cosStep": 0.258, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, no fc3, biased fc2, and SwiGLU formula 2."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.109, "cosStep": 0.277, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.299, "cosStep": 0.207, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 256, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.149, "cosStep": 0.327, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.199, "cosStep": 0.407, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.129, "cosStep": 0.247, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.259, "cosStep": 0.297, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, plain fc3, plain fc2, and formula 0."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.122, "cosStep": 0.266, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.312, "cosStep": 0.196, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.162, "cosStep": 0.316, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.142, "cosStep": 0.236, "scale": 0.12 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.182, "cosStep": 0.356, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, plain fc3, biased fc2, and formula 0."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.135, "cosStep": 0.255, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.325, "cosStep": 0.185, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.175, "cosStep": 0.305, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.155, "cosStep": 0.225, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.285, "cosStep": 0.275, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.195, "cosStep": 0.345, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, biased fc3, plain fc2, and formula 0."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.148, "cosStep": 0.244, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.338, "cosStep": 0.174, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.188, "cosStep": 0.294, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.168, "cosStep": 0.214, "scale": 0.12 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.208, "cosStep": 0.334, "scale": 0.12 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.258, "cosStep": 0.194, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1plain_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with plain fc1, biased fc3, biased fc2, and formula 0."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.161, "cosStep": 0.233, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.351, "cosStep": 0.163, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.201, "cosStep": 0.283, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.181, "cosStep": 0.203, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.253, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.221, "cosStep": 0.323, "scale": 0.12 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.271, "cosStep": 0.183, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, plain fc3, plain fc2, and formula 0."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.174, "cosStep": 0.222, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.364, "cosStep": 0.152, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.214, "cosStep": 0.272, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.264, "cosStep": 0.352, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.194, "cosStep": 0.192, "scale": 0.12 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.234, "cosStep": 0.312, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, plain fc3, biased fc2, and formula 0."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.187, "cosStep": 0.211, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.377, "cosStep": 0.141, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.227, "cosStep": 0.261, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.341, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.207, "cosStep": 0.181, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.337, "cosStep": 0.231, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.247, "cosStep": 0.301, "scale": 0.12 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, biased fc3, plain fc2, and formula 0."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.2, "cosStep": 0.2, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.39, "cosStep": 0.13, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.24, "cosStep": 0.25, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.33, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.22, "cosStep": 0.17, "scale": 0.12 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.26, "cosStep": 0.29, "scale": 0.12 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.15, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_fc1bias_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "A 128-element reduction on both projections exercises the cooperative schedule with biased fc1, biased fc3, biased fc2, and formula 0."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.189, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.403, "cosStep": 0.119, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.253, "cosStep": 0.239, "scale": 0.12 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.303, "cosStep": 0.319, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.233, "cosStep": 0.159, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.363, "cosStep": 0.209, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.273, "cosStep": 0.279, "scale": 0.12 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.323, "cosStep": 0.139, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "identity_activation_top1",
+      "provenance": {
+        "notes": "With `activation_type=identity`, the FC1 projection passes through unchanged before the output projection."
+      },
+      "attrs": { "activation_type": "identity" },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.17, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.18 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "deep_reduction_gelu_fc2bias",
+      "provenance": {
+        "notes": "GELU over a 128-long reduction makes the cooperative schedule exercise its tanh-approximation activation path."
+      },
+      "attrs": { "k": 2, "activation_type": "gelu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.11, "scale": 0.6 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.19, "scale": 0.12 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.25, "cosStep": 0.33, "scale": 0.12 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.38, "cosStep": 0.21, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3none_fc2plain_relu",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "k": 2, "activation_type": "relu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.29, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.3, "cosStep": 0.24, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.12, "cosStep": 0.36, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.14, "cosStep": 0.26, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.107, "cosStep": 0.281, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.317, "cosStep": 0.231, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.137, "cosStep": 0.351, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.157, "cosStep": 0.251, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.321, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3none_fc2plain_swiglu1",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.124, "cosStep": 0.272, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.334, "cosStep": 0.222, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.154, "cosStep": 0.342, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.234, "cosStep": 0.422, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.174, "cosStep": 0.242, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.141, "cosStep": 0.263, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.351, "cosStep": 0.213, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.171, "cosStep": 0.333, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.191, "cosStep": 0.233, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_partial_tiles_gelu",
+      "provenance": {
+        "notes": "Three experts share 64 routed slots across 32-row tiles, so most lanes address padding and the store guard discards more rows than it writes."
+      },
+      "attrs": { "activation_type": "gelu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.173, "cosStep": 0.229, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [32, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.163, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.199, "cosStep": 0.271, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.241, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [32, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.158, "cosStep": 0.254, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.368, "cosStep": 0.204, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.188, "cosStep": 0.324, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.208, "cosStep": 0.224, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.228, "cosStep": 0.364, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.175, "cosStep": 0.245, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.385, "cosStep": 0.195, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.205, "cosStep": 0.315, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.225, "cosStep": 0.215, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.345, "cosStep": 0.285, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.245, "cosStep": 0.355, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.192, "cosStep": 0.236, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.402, "cosStep": 0.186, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.222, "cosStep": 0.306, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.242, "cosStep": 0.206, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.262, "cosStep": 0.346, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.322, "cosStep": 0.176, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1plain_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.227, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.419, "cosStep": 0.177, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.239, "cosStep": 0.297, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.259, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.379, "cosStep": 0.267, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.279, "cosStep": 0.337, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.339, "cosStep": 0.167, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.226, "cosStep": 0.218, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.436, "cosStep": 0.168, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.256, "cosStep": 0.288, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.336, "cosStep": 0.368, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.276, "cosStep": 0.188, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.296, "cosStep": 0.328, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.243, "cosStep": 0.209, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.453, "cosStep": 0.159, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.273, "cosStep": 0.279, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.353, "cosStep": 0.359, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.293, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.413, "cosStep": 0.249, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.313, "cosStep": 0.319, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.26, "cosStep": 0.2, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.15, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.27, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.35, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.17, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.31, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.39, "cosStep": 0.14, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_fc1bias_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Enough routed slots per expert to fill grouped tiles, so the expert-grouped schedule reuses one staged weight tile across a tile of slots."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.191, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.487, "cosStep": 0.141, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.307, "cosStep": 0.261, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.387, "cosStep": 0.341, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.327, "cosStep": 0.161, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.447, "cosStep": 0.231, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.301, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.407, "cosStep": 0.131, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 32], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_identity_no_fc3",
+      "provenance": { "notes": "Compact prefill with grouped experts, identity activation and no FC3." },
+      "attrs": { "k": 2, "activation_type": "identity", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.181, "cosStep": 0.217, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.391, "cosStep": 0.127, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.211, "cosStep": 0.287, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.231, "cosStep": 0.187, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 16], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "grouped_prefill_unaligned_hidden_inter",
+      "provenance": {
+        "notes": "Hidden 34 and intermediate 30 are not divisible by four, so grouped staging uses scalar activation and weight reads. The gated FC3 stream adds a second scalar weight stream, and every K tile is partial against the 16-wide tile."
+      },
+      "attrs": { "activation_type": "silu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.163, "cosStep": 0.239, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.337, "cosStep": 0.173, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 30, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.281, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 30],
+          "data": { "kind": "fillFloat32", "sinStep": 0.261, "cosStep": 0.423, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 34, 30],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.189, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.321, "cosStep": 0.313, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 30, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.227, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 30],
+          "data": { "kind": "fillFloat32", "sinStep": 0.283, "cosStep": 0.359, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 34], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_silu_gate_fc3_bias_only",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_silu_gate_fc3_bias_only. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 1, "activation_type": "silu", "normalize_routing_weights": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.31, "scale": 0.5 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.25, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.18 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.16 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3none_fc2plain_relu",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3none_fc2plain_relu. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 2, "activation_type": "relu", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.29, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.3, "cosStep": 0.24, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.12, "cosStep": 0.36, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.14, "cosStep": 0.26, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3none_fc2bias_swiglu2. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 2,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.107, "cosStep": 0.281, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.317, "cosStep": 0.231, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.137, "cosStep": 0.351, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.157, "cosStep": 0.251, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.321, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3none_fc2plain_swiglu1",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3none_fc2plain_swiglu1. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 1, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.124, "cosStep": 0.272, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.334, "cosStep": 0.222, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.154, "cosStep": 0.342, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.234, "cosStep": 0.422, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.174, "cosStep": 0.242, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3none_fc2bias_swiglu2",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3none_fc2bias_swiglu2. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 2, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.141, "cosStep": 0.263, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.351, "cosStep": 0.213, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 192, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.171, "cosStep": 0.333, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.191, "cosStep": 0.233, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_partial_tiles_gelu",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_partial_tiles_gelu. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "activation_type": "gelu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.173, "cosStep": 0.229, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [32, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.163, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.199, "cosStep": 0.271, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.413, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.241, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.311, "cosStep": 0.303, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [32, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3plain_fc2plain_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.158, "cosStep": 0.254, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.368, "cosStep": 0.204, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.188, "cosStep": 0.324, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.208, "cosStep": 0.224, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.228, "cosStep": 0.364, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 48, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3plain_fc2bias_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.175, "cosStep": 0.245, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.385, "cosStep": 0.195, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.205, "cosStep": 0.315, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.225, "cosStep": 0.215, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.345, "cosStep": 0.285, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.245, "cosStep": 0.355, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3biased_fc2plain_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.192, "cosStep": 0.236, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.402, "cosStep": 0.186, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.222, "cosStep": 0.306, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.242, "cosStep": 0.206, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.262, "cosStep": 0.346, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.322, "cosStep": 0.176, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1plain_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1plain_fc3biased_fc2bias_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.227, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.419, "cosStep": 0.177, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.239, "cosStep": 0.297, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.259, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.379, "cosStep": 0.267, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.279, "cosStep": 0.337, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.339, "cosStep": 0.167, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3plain_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3plain_fc2plain_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": {
+        "k": 2,
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.226, "cosStep": 0.218, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.436, "cosStep": 0.168, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.256, "cosStep": 0.288, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.336, "cosStep": 0.368, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.276, "cosStep": 0.188, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.296, "cosStep": 0.328, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3plain_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3plain_fc2bias_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.243, "cosStep": 0.209, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.453, "cosStep": 0.159, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.273, "cosStep": 0.279, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.353, "cosStep": 0.359, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.293, "cosStep": 0.179, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.413, "cosStep": 0.249, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.313, "cosStep": 0.319, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3biased_fc2plain_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3biased_fc2plain_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 2, "activation_type": "swiglu", "swiglu_fusion": 0, "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 24, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.26, "cosStep": 0.2, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.15, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.27, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.35, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.17, "scale": 0.15 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.33, "cosStep": 0.31, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.39, "cosStep": 0.14, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 24, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_fc1bias_fc3biased_fc2bias_swiglu0",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_fc1bias_fc3biased_fc2bias_swiglu0. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": {
+        "activation_type": "swiglu",
+        "activation_alpha": 1.702,
+        "activation_beta": 0.05,
+        "swiglu_fusion": 0,
+        "normalize_routing_weights": 1
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.277, "cosStep": 0.191, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.487, "cosStep": 0.141, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.307, "cosStep": 0.261, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.387, "cosStep": 0.341, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.327, "cosStep": 0.161, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.447, "cosStep": 0.231, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.347, "cosStep": 0.301, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.407, "cosStep": 0.131, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [96, 64], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_identity_no_fc3",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_identity_no_fc3. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "k": 2, "activation_type": "identity", "normalize_routing_weights": 1 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [48, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.181, "cosStep": 0.217, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [48, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.391, "cosStep": 0.127, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.211, "cosStep": 0.287, "scale": 0.15 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.231, "cosStep": 0.187, "scale": 0.15 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [48, 128], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "matrix_unaligned_hidden_inter",
+      "provenance": {
+        "notes": "Direct-weight matrix sibling of grouped_prefill_unaligned_hidden_inter. Preserves the activation, biases, input recipes, and tolerance; varies aligned reduction extents and rank while routed expert slices may end in partial row tiles."
+      },
+      "attrs": { "activation_type": "silu", "normalize_routing_weights": 1, "k": 2 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.163, "cosStep": 0.239, "scale": 0.4 }
+        },
+        "routerT": {
+          "dtype": "float32",
+          "shape": [96, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.337, "cosStep": 0.173, "scale": 0.7 }
+        },
+        "fc1T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.209, "cosStep": 0.281, "scale": 0.15 }
+        },
+        "fc1BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.261, "cosStep": 0.423, "scale": 0.2 }
+        },
+        "fc2T": {
+          "dtype": "float32",
+          "shape": [3, 64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.251, "cosStep": 0.189, "scale": 0.15 }
+        },
+        "fc2BiasT": {
+          "dtype": "float32",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.321, "cosStep": 0.313, "scale": 0.2 }
+        },
+        "fc3T": {
+          "dtype": "float32",
+          "shape": [3, 96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.227, "cosStep": 0.197, "scale": 0.15 }
+        },
+        "fc3BiasT": {
+          "dtype": "float32",
+          "shape": [3, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.283, "cosStep": 0.359, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 48, 64], "tolerance": 0.00002 } }
+    }
+  ]
+}

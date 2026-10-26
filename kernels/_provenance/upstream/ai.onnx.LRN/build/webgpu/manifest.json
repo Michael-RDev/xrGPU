@@ -1,0 +1,94 @@
+{
+  "domain": "ai.onnx",
+  "name": "LRN",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "X", "dtype": "T", "rank": 4 } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "alpha": { "default": 0.0001 }, "beta": { "default": 0.75 }, "bias": { "default": 1 }, "size": {} },
+  "attributeConstraints": { "size": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "lrnShapeOk": "ranks.x == 4 and ranks.y == 4 and sameShape(shapes.y, shapes.x)",
+    "lrnWorkgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "lrnBaseOk": "attrs.size > 0 and lrnShapeOk and f16Ok(dtypes.T)"
+  },
+  "when": ["lrnBaseOk"],
+  "variants": [
+    {
+      "id": "nchw_vec4w",
+      "priority": 20,
+      "when": ["dim(shapes.x, 3) % 4 == 0"],
+      "derive": {
+        "lrnWidthSlots": "dim(shapes.x, 3) / 4",
+        "lrnSlotCount": "numel(shapes.y) / 4",
+        "vecT": "\"vec4<f16>\" if dtypes.T == \"f16\" else \"vec4<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LRN.NchwVec4W",
+          "shader": "lrn-nchw.wgsl.jinja",
+          "derive": { "vectorizedSpec": true, "workgroupSizeSpec": "lrnWorkgroupSize" },
+          "bindings": [
+            { "arg": "x", "elementType": "$vecT" },
+            { "arg": "y", "elementType": "$vecT" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "height", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "widthVec", "type": "u32", "value": "lrnWidthSlots" },
+                { "name": "size", "type": "u32", "value": "attrs.size" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha" },
+                { "name": "beta", "type": "f32", "value": "attrs.beta" },
+                { "name": "bias", "type": "f32", "value": "attrs.bias" },
+                { "name": "countVec", "type": "u32", "value": "lrnSlotCount" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((lrnSlotCount), (lrnWorkgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw",
+      "derive": { "lrnWidthSlots": "dim(shapes.x, 3)", "lrnSlotCount": "numel(shapes.y)", "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LRN.NCHW",
+          "shader": "lrn-nchw.wgsl.jinja",
+          "derive": { "workgroupSizeSpec": "lrnWorkgroupSize" },
+          "bindings": [
+            { "arg": "x", "elementType": "$scalar" },
+            { "arg": "y", "elementType": "$scalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "height", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "width", "type": "u32", "value": "lrnWidthSlots" },
+                { "name": "size", "type": "u32", "value": "attrs.size" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha" },
+                { "name": "beta", "type": "f32", "value": "attrs.beta" },
+                { "name": "bias", "type": "f32", "value": "attrs.bias" },
+                { "name": "count", "type": "u32", "value": "lrnSlotCount" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((lrnSlotCount), (lrnWorkgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

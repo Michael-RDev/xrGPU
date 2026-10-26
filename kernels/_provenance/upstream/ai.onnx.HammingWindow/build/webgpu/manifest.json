@@ -1,0 +1,44 @@
+{
+  "domain": "ai.onnx",
+  "name": "HammingWindow",
+  "sinceVersion": 17,
+  "inputs": { "size": { "dtype": "T1", "rank": 0 } },
+  "outputs": { "y": { "onnx": "output", "dtype": "T2", "rank": 1 } },
+  "attributes": { "output_datatype": { "default": 1 }, "periodic": { "default": 1 } },
+  "attributeConstraints": { "periodic": { "values": [0, 1] } },
+  "typeConstraints": { "T1": ["int32"], "T2": ["float32", "float16", "uint32", "int32", "uint8", "int8", "int16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "generic",
+      "when": ["ranks.y == 1 and attrs.output_datatype == onnxDtypeCode(logicalDtypes.T2) and f16Ok(tensorDtypes.y)"],
+      "derive": {
+        "integerOutput": "tensorDtypes.y != \"float32\" and tensorDtypes.y != \"float16\"",
+        "outScalar": "dtypes.T2",
+        "denom": "dim(shapes.y, 0) if attrs.periodic else dim(shapes.y, 0) - 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "HammingWindow",
+          "shader": "window-cosine-sum.wgsl.jinja",
+          "derive": { "a0": "0.54347826086956519", "a1": "0.45652173913043481", "a2": "0" },
+          "bindings": [
+            { "arg": "y", "elementType": "$outScalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "denom", "type": "f32", "value": "denom" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(numel(shapes.y), tunables.WORKGROUP_SIZE), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {}
+}

@@ -1,0 +1,98 @@
+{
+  "domain": "ai.onnx",
+  "name": "Dropout",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "data", "dtype": "T" } },
+  "outputs": {
+    "y": { "onnx": "output", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" },
+    "mask": { "dtype": "M", "rank": "ranks.x", "optional": true, "shape": "shapes.x" }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+  },
+  "variants": [
+    {
+      "id": "inference_copy_vec4",
+      "priority": 20,
+      "when": ["not present.mask", "numel(shapes.y) > 0", "numel(shapes.y) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "hasMask": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Dropout.InferenceCopyVec4",
+          "shader": "dropout-vec4.wgsl.jinja",
+          "derive": { "count": "numel(shapes.y) / 4" },
+          "bindings": ["x", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inference_copy_mask_vec4",
+      "priority": 20,
+      "when": ["present.mask", "numel(shapes.mask) == numel(shapes.y)", "numel(shapes.y) > 0", "numel(shapes.y) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "hasMask": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Dropout.InferenceCopyMaskVec4",
+          "shader": "dropout-vec4.wgsl.jinja",
+          "derive": { "count": "numel(shapes.y) / 4" },
+          "bindings": ["x", "y", { "arg": "mask", "elementType": "vec4<u32>" }],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inference_copy",
+      "when": ["not present.mask"],
+      "derive": { "hasMask": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Dropout.InferenceCopy",
+          "shader": "dropout.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inference_copy_mask",
+      "when": ["present.mask", "numel(shapes.mask) == numel(shapes.y)"],
+      "derive": { "hasMask": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Dropout.InferenceCopyMask",
+          "shader": "dropout.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, { "arg": "mask", "elementType": "u32" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

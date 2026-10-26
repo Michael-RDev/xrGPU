@@ -1,0 +1,296 @@
+{
+  "domain": "ai.onnx",
+  "name": "Split",
+  "sinceVersion": 18,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "split": { "dtype": "S", "rank": 1, "optional": true, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": {
+    "y0": { "onnx": "Y0", "dtype": "T", "rank": "ranks.input" },
+    "y1": { "onnx": "Y1", "dtype": "T", "rank": "ranks.input", "optional": true },
+    "y2": { "onnx": "Y2", "dtype": "T", "rank": "ranks.input", "optional": true },
+    "y3": { "onnx": "Y3", "dtype": "T", "rank": "ranks.input", "optional": true },
+    "y4": { "onnx": "Y4", "dtype": "T", "rank": "ranks.input", "optional": true }
+  },
+  "attributes": { "axis": { "default": 0 }, "num_outputs": {} },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "S": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "axis": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+    "outputCount": "1 + (1 if present.y1 else 0) + (1 if present.y2 else 0) + (1 if present.y3 else 0) + (1 if present.y4 else 0)",
+    "numOutputsContract": "not has(attrs, \"num_outputs\") or attrs.num_outputs == outputCount",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "baseContract": "ranks.input >= 1 and axis >= 0 and axis < ranks.input and numOutputsContract and f16Ok(dtypes.T)",
+    "oneOutputContract": "baseContract and not present.y1 and not present.y2 and not present.y3 and not present.y4 and sameShape(shapes.input, shapes.y0)",
+    "twoOutputContract": "baseContract and present.y1 and not present.y2 and ranks.input == ranks.y0 and ranks.input == ranks.y1 and dim(shapes.input, attrs.axis) == dim(shapes.y0, attrs.axis) + dim(shapes.y1, attrs.axis)",
+    "threeOutputContract": "baseContract and present.y1 and present.y2 and not present.y3 and ranks.input == ranks.y0 and ranks.input == ranks.y1 and ranks.input == ranks.y2 and dim(shapes.input, attrs.axis) == dim(shapes.y0, attrs.axis) + dim(shapes.y1, attrs.axis) + dim(shapes.y2, attrs.axis)",
+    "fourOutputContract": "baseContract and present.y1 and present.y2 and present.y3 and not present.y4 and ranks.input == ranks.y0 and ranks.input == ranks.y1 and ranks.input == ranks.y2 and ranks.input == ranks.y3 and dim(shapes.input, attrs.axis) == dim(shapes.y0, attrs.axis) + dim(shapes.y1, attrs.axis) + dim(shapes.y2, attrs.axis) + dim(shapes.y3, attrs.axis)",
+    "fiveOutputContract": "baseContract and present.y1 and present.y2 and present.y3 and present.y4 and ranks.input == ranks.y0 and ranks.input == ranks.y1 and ranks.input == ranks.y2 and ranks.input == ranks.y3 and ranks.input == ranks.y4 and dim(shapes.input, attrs.axis) == dim(shapes.y0, attrs.axis) + dim(shapes.y1, attrs.axis) + dim(shapes.y2, attrs.axis) + dim(shapes.y3, attrs.axis) + dim(shapes.y4, attrs.axis)",
+    "twoBlockContract": "twoOutputContract and outer(shapes.y0, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y0, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y1, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y1, attrs.axis) == inner(shapes.input, attrs.axis)",
+    "threeBlockContract": "threeOutputContract and outer(shapes.y0, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y0, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y1, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y1, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y2, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y2, attrs.axis) == inner(shapes.input, attrs.axis)",
+    "fourBlockContract": "fourOutputContract and outer(shapes.y0, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y0, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y1, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y1, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y2, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y2, attrs.axis) == inner(shapes.input, attrs.axis) and outer(shapes.y3, attrs.axis) == outer(shapes.input, attrs.axis) and inner(shapes.y3, attrs.axis) == inner(shapes.input, attrs.axis)",
+    "scalar": "dtypes.T",
+    "inputShape": "shapes.input",
+    "rank": "ranks.input",
+    "axisSpec": "axis"
+  },
+  "bindings": {
+    "input": { "elementType": "$vectorScalar" },
+    "y0": { "elementType": "$vectorScalar" },
+    "y1": { "elementType": "$vectorScalar" },
+    "input_main": { "name": "input", "elementType": "$ioElement" },
+    "y0_main": { "name": "y0", "elementType": "$ioElement" },
+    "y1_main": { "name": "y1", "elementType": "$ioElement" },
+    "y2": { "elementType": "$ioElement" },
+    "input_scalar": { "name": "input", "elementType": "$scalar" },
+    "y0_scalar": { "name": "y0", "elementType": "$scalar" },
+    "y1_scalar": { "name": "y1", "elementType": "$scalar" },
+    "params": {
+      "struct": [
+        { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+        { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" }
+      ]
+    },
+    "y2_main": { "name": "y2", "elementType": "$scalar" },
+    "y3_main": { "name": "y3", "elementType": "$scalar" },
+    "y4": { "elementType": "$scalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+        { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+        { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" },
+        { "name": "y3Count", "type": "u32", "value": "numel(shapes.y3)" },
+        { "name": "y4Count", "type": "u32", "value": "numel(shapes.y4)" }
+      ]
+    },
+    "params_split_n": {
+      "name": "params",
+      "struct": [
+        { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+        { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+        { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" },
+        { "name": "y3Count", "type": "u32", "value": "numel(shapes.y3)" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "y0Count", "type": "u32", "value": "numel(shapes.y0)" },
+        { "name": "y1Count", "type": "u32", "value": "numel(shapes.y1)" },
+        { "name": "y2Count", "type": "u32", "value": "numel(shapes.y2)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "one_output_copy",
+      "priority": 30,
+      "when": ["oneOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split.Copy",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.y0)" },
+          "bindings": [
+            { "arg": "input", "name": "src", "elementType": "$scalar" },
+            { "arg": "y0", "name": "dst", "elementType": "$scalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y0)), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "two_outputs_block_vec4",
+      "priority": 15,
+      "when": ["dtypes.T != \"vec2<u32>\"", "twoBlockContract", "(dim(shapes.y0, attrs.axis) * inner(shapes.y0, attrs.axis)) % 4 == 0", "(dim(shapes.y1, attrs.axis) * inner(shapes.y1, attrs.axis)) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split.BlockVec4",
+          "shader": "datamove-split-block.wgsl.jinja",
+          "derive": { "y0Shape": "shapes.y0", "y1Shape": "shapes.y1", "outputCountSpec": 2 },
+          "bindings": ["input", "y0", "y1"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1)) / 4), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_outputs_block_scalar_x4",
+      "priority": 14,
+      "when": ["dtypes.T != \"vec2<u32>\"", "threeBlockContract", "dim(shapes.y0, attrs.axis) > 0", "dim(shapes.y1, attrs.axis) > 0", "dim(shapes.y2, attrs.axis) > 0", "max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2)) >= 16"],
+      "derive": { "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split3.BlockScalarX4",
+          "shader": "datamove-split-block.wgsl.jinja",
+          "derive": {
+            "y0Shape": "shapes.y0",
+            "y1Shape": "shapes.y1",
+            "y2Shape": "shapes.y2",
+            "outputCountSpec": 3,
+            "scalarBoundX4": true
+          },
+          "bindings": ["input_main", "y0_main", "y1_main", "y2"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(outer(shapes.y0, attrs.axis) * ceil(dim(shapes.y0, attrs.axis) * inner(shapes.y0, attrs.axis) / 4), outer(shapes.y1, attrs.axis) * ceil(dim(shapes.y1, attrs.axis) * inner(shapes.y1, attrs.axis) / 4), outer(shapes.y2, attrs.axis) * ceil(dim(shapes.y2, attrs.axis) * inner(shapes.y2, attrs.axis) / 4))), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_outputs_block_vec4",
+      "priority": 15,
+      "when": ["dtypes.T != \"vec2<u32>\"", "threeBlockContract", "(dim(shapes.y0, attrs.axis) * inner(shapes.y0, attrs.axis)) % 4 == 0", "(dim(shapes.y1, attrs.axis) * inner(shapes.y1, attrs.axis)) % 4 == 0", "(dim(shapes.y2, attrs.axis) * inner(shapes.y2, attrs.axis)) % 4 == 0"],
+      "derive": { "ioElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split3.BlockVec4",
+          "shader": "datamove-split-block.wgsl.jinja",
+          "derive": { "y0Shape": "shapes.y0", "y1Shape": "shapes.y1", "y2Shape": "shapes.y2", "outputCountSpec": 3 },
+          "bindings": ["input_main", "y0_main", "y1_main", "y2"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2)) / 4), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "four_outputs_block_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"vec2<u32>\"", "fourBlockContract", "(dim(shapes.y0, attrs.axis) * inner(shapes.y0, attrs.axis)) % 4 == 0", "(dim(shapes.y1, attrs.axis) * inner(shapes.y1, attrs.axis)) % 4 == 0", "(dim(shapes.y2, attrs.axis) * inner(shapes.y2, attrs.axis)) % 4 == 0", "(dim(shapes.y3, attrs.axis) * inner(shapes.y3, attrs.axis)) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split4.BlockVec4",
+          "shader": "datamove-split-block.wgsl.jinja",
+          "derive": {
+            "y0Shape": "shapes.y0",
+            "y1Shape": "shapes.y1",
+            "y2Shape": "shapes.y2",
+            "y3Shape": "shapes.y3",
+            "outputCountSpec": 4
+          },
+          "bindings": [
+            "input",
+            "y0",
+            "y1",
+            { "arg": "y2", "elementType": "$vectorScalar" },
+            { "arg": "y3", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2), numel(shapes.y3)) / 4), (workgroupSize)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "two_outputs",
+      "when": ["twoOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split",
+          "shader": "split-n.wgsl.jinja",
+          "derive": {
+            "outputs": "[ {\"name\": \"y0\", \"shape\": shapes.y0}, {\"name\": \"y1\", \"shape\": shapes.y1} ]"
+          },
+          "bindings": ["input_scalar", "y0_scalar", "y1_scalar", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1))), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(numel(shapes.y0), numel(shapes.y1))), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "five_outputs",
+      "priority": 21,
+      "when": ["fiveOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "SplitN",
+          "shader": "split-n.wgsl.jinja",
+          "derive": {
+            "outputs": "[ {\"name\": \"y0\", \"shape\": shapes.y0}, {\"name\": \"y1\", \"shape\": shapes.y1}, {\"name\": \"y2\", \"shape\": shapes.y2}, {\"name\": \"y3\", \"shape\": shapes.y3}, {\"name\": \"y4\", \"shape\": shapes.y4} ]"
+          },
+          "bindings": ["input_scalar", "y0_scalar", "y1_scalar", "y2_main", "y3_main", "y4", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2), numel(shapes.y3), numel(shapes.y4))), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2), numel(shapes.y3), numel(shapes.y4))), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "four_outputs",
+      "priority": 20,
+      "when": ["fourOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split4",
+          "shader": "split-n.wgsl.jinja",
+          "derive": {
+            "outputs": "[ {\"name\": \"y0\", \"shape\": shapes.y0}, {\"name\": \"y1\", \"shape\": shapes.y1}, {\"name\": \"y2\", \"shape\": shapes.y2}, {\"name\": \"y3\", \"shape\": shapes.y3} ]"
+          },
+          "bindings": ["input_scalar", "y0_scalar", "y1_scalar", "y2_main", "y3_main", "params_split_n"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2), numel(shapes.y3))), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2), numel(shapes.y3))), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_outputs",
+      "priority": 10,
+      "when": ["threeOutputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Split3",
+          "shader": "split-n.wgsl.jinja",
+          "derive": {
+            "outputs": "[ {\"name\": \"y0\", \"shape\": shapes.y0}, {\"name\": \"y1\", \"shape\": shapes.y1}, {\"name\": \"y2\", \"shape\": shapes.y2} ]"
+          },
+          "bindings": ["input_scalar", "y0_scalar", "y1_scalar", "y2_main", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2))), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(numel(shapes.y0), numel(shapes.y1), numel(shapes.y2))), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

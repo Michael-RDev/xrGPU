@@ -1,0 +1,125 @@
+{
+  "domain": "ai.onnx",
+  "name": "Pow",
+  "sinceVersion": 15,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" }, "y": { "onnx": "Y", "dtype": "U" } },
+  "outputs": {
+    "z": { "onnx": "Z", "dtype": "T", "rank": "max(ranks.x, ranks.y)", "shape": "broadcastShape(shapes.x, shapes.y)" }
+  },
+  "args": { "constantY": { "kind": "f32", "required": false } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32"],
+    "U": ["float32", "float16", "int32", "int16", "uint32", "int8", "uint8"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "scalar": "dtypes.T",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "yScalar": "dtypes.U",
+    "aShape": "shapes.x",
+    "bShape": "shapes.y",
+    "cShape": "shapes.z",
+    "aRank": "ranks.x",
+    "bRank": "ranks.y",
+    "cRank": "ranks.z",
+    "itemsPerInvocation": 4
+  },
+  "when": ["f16Ok(dtypes.T) and f16Ok(dtypes.U)"],
+  "bindings": {
+    "a": { "arg": "x", "elementType": "$vectorScalar" },
+    "c": { "arg": "z", "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.z) / 4" }] },
+    "a_x": { "arg": "x", "name": "a", "elementType": "$scalar" },
+    "c_z": { "arg": "z", "name": "c", "elementType": "$scalar" },
+    "params_pow": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.z)" }] }
+  },
+  "variants": [
+    {
+      "id": "same_shape_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"i32\"", "sameShape(shapes.x, shapes.z)", "sameShape(shapes.y, shapes.z)", "numel(shapes.z) > 0", "numel(shapes.z) % 4 == 0"],
+      "derive": { "yVectorScalar": "\"vec4<\" ~ dtypes.U ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pow.Vec4",
+          "shader": "pow-vec4.wgsl.jinja",
+          "bindings": ["a", { "arg": "y", "name": "b", "elementType": "$yVectorScalar" }, "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_exponent_chain_vec4",
+      "priority": 30,
+      "when": ["has(args, \"constantY\")", "floor(args.constantY) == args.constantY", "args.constantY >= -16", "args.constantY <= 16", "dtypes.T != \"i32\"", "sameShape(shapes.x, shapes.z)", "numel(shapes.z) % 4 == 0", "ranks.y <= 1", "numel(shapes.y) == 1"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pow.ScalarExponentChainVec4",
+          "shader": "pow-scalar-exponent-vec4.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"scalar_exponent\"",
+            "exponent": "args.constantY",
+            "absExponent": "args.constantY if args.constantY >= 0 else 0 - args.constantY",
+            "zeroExponent": "args.constantY == 0",
+            "exponentChainBits": "5"
+          },
+          "bindings": ["a", "c", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_exponent_chain",
+      "priority": 20,
+      "when": ["has(args, \"constantY\")", "floor(args.constantY) == args.constantY", "args.constantY >= -16", "args.constantY <= 16", "ranks.x <= ranks.z", "ranks.y <= 1", "numel(shapes.y) == 1"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pow.ScalarExponentChain",
+          "shader": "pow.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"scalar_exponent\"",
+            "exponent": "args.constantY",
+            "absExponent": "args.constantY if args.constantY >= 0 else 0 - args.constantY",
+            "zeroExponent": "args.constantY == 0",
+            "exponentChainBits": "5"
+          },
+          "bindings": ["a_x", "c_z", "params_pow"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.z), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.z), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast",
+      "when": ["ranks.x <= ranks.z", "ranks.y <= ranks.z"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pow",
+          "shader": "pow.wgsl.jinja",
+          "derive": { "modeSpec": "\"custom\"", "zeroExponent": false },
+          "bindings": ["a_x", { "arg": "y", "name": "b", "elementType": "$yScalar" }, "c_z", "params_pow"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.z), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.z), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

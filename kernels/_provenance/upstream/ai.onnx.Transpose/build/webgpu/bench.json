@@ -1,0 +1,454 @@
+{
+  "tunableSpace": {
+    "WORKGROUP_SIZE": [64, 128, 256],
+    "INNER_VEC4_ITEMS_PER_THREAD": [1, 2, 4, 8],
+    "INNER_VEC4_MIN_THREADS": [16384, 65536, 262144]
+  },
+  "cases": [
+    {
+      "name": "transpose-f32-1024x1024",
+      "preset": "smoke",
+      "vars": { "rows": 1024, "cols": 1024 },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [1024, 1024], "dtype": "float32", "dist": "normal", "seed": 120, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [1024, 1024], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * 4 * 2" }] }
+    },
+    {
+      "name": "transpose-f32-rank1-1m",
+      "preset": "smoke",
+      "vars": { "count": 1048576, "dtype": "float32" },
+      "inputs": { "x": { "shape": [1048576], "dtype": "float32", "dist": "normal", "seed": 121, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [1048576], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-tiled-f32-2048x2048",
+      "preset": "smoke",
+      "vars": { "rows": 2048, "cols": 2048, "dtype": "float32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [2048, 2048], "dtype": "float32", "dist": "normal", "seed": 122, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [2048, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-tiled-f16-4096x1024",
+      "preset": "smoke",
+      "vars": { "rows": 4096, "cols": 1024, "dtype": "float16" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [4096, 1024], "dtype": "float16", "dist": "normal", "seed": 123, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [1024, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-batched-f32-8x512x256",
+      "preset": "smoke",
+      "vars": { "batch": 8, "rows": 512, "cols": 256, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 1] },
+      "inputs": { "x": { "shape": [8, 512, 256], "dtype": "float32", "dist": "normal", "seed": 124, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 256, 512], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.batch * args.rows * args.cols * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-inner-vec4-f32-8x64x32x128",
+      "preset": "smoke",
+      "vars": { "count": 2097152, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 1, 3] },
+      "inputs": { "x": { "shape": [8, 64, 32, 128], "dtype": "float32", "dist": "normal", "seed": 125, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 32, 64, 128], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-identity-f32-4m",
+      "preset": "edge",
+      "vars": { "count": 4194304, "dtype": "float32" },
+      "attrs": { "perm": [0, 1] },
+      "inputs": { "x": { "shape": [2048, 2048], "dtype": "float32", "dist": "normal", "seed": 126, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [2048, 2048], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-scalar-f32-1024x1023",
+      "preset": "edge",
+      "vars": { "rows": 1024, "cols": 1023, "dtype": "float32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [1024, 1023], "dtype": "float32", "dist": "normal", "seed": 130, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [1023, 1024], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-scalar-f32-768x50257-vocab",
+      "preset": "edge",
+      "vars": { "rows": 768, "cols": 50257, "dtype": "float32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [768, 50257], "dtype": "float32", "dist": "normal", "seed": 131, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [50257, 768], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-scalar-f32-rank3-8x512x255",
+      "preset": "edge",
+      "vars": { "batch": 8, "rows": 512, "cols": 255, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 1] },
+      "inputs": { "x": { "shape": [8, 512, 255], "dtype": "float32", "dist": "normal", "seed": 132, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 255, 512], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.batch * args.rows * args.cols * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-tiled-i32-1024x1024",
+      "preset": "edge",
+      "vars": { "rows": 1024, "cols": 1024, "dtype": "int32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": {
+        "x": { "shape": [1024, 1024], "dtype": "int32", "dist": "randint", "seed": 133, "min": -1000, "max": 1000 }
+      },
+      "outputs": { "y": { "shape": [1024, 1024], "dtype": "int32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.rows * args.cols * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-scalar-f32-rank4-nhwc-to-nchw-8x64x96x96",
+      "preset": "stress",
+      "vars": { "n": 8, "h": 64, "w": 96, "c": 96, "dtype": "float32" },
+      "attrs": { "perm": [0, 3, 1, 2] },
+      "inputs": { "x": { "shape": [8, 64, 96, 96], "dtype": "float32", "dist": "normal", "seed": 140, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 96, 64, 96], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.n * args.h * args.w * args.c * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-scalar-f32-rank3-default-reverse-96x200x128",
+      "preset": "stress",
+      "vars": { "d0": 96, "d1": 200, "d2": 128, "dtype": "float32" },
+      "inputs": { "x": { "shape": [96, 200, 128], "dtype": "float32", "dist": "normal", "seed": 141, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [128, 200, 96], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.d0 * args.d1 * args.d2 * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-scalar-f32-rank5-ncdhw-to-ndhwc-volumetric",
+      "preset": "stress",
+      "vars": { "count": 8388608, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 3, 4, 1] },
+      "inputs": {
+        "x": { "shape": [1, 64, 32, 64, 64], "dtype": "float32", "dist": "normal", "seed": 142, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 64, 64, 64], "dtype": "float32", "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-scalar-f32-rank5-ndhwc-to-ncdhw-volumetric",
+      "preset": "stress",
+      "vars": { "count": 8388608, "dtype": "float32" },
+      "attrs": { "perm": [0, 4, 1, 2, 3] },
+      "inputs": {
+        "x": { "shape": [1, 32, 64, 64, 64], "dtype": "float32", "dist": "normal", "seed": 143, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [1, 64, 32, 64, 64], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-f32-rank4-nchw-to-nhwc-8x64x96x96",
+      "preset": "stress",
+      "vars": { "n": 8, "h": 64, "w": 96, "c": 96, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 3, 1] },
+      "inputs": { "x": { "shape": [8, 64, 96, 96], "dtype": "float32", "dist": "normal", "seed": 140, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 96, 96, 64], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.n * args.h * args.w * args.c * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-unitdim-memcpy-f32-4096x1024x1-perm201",
+      "preset": "smoke",
+      "vars": { "tokens": 4096, "hidden": 1024, "dtype": "float32" },
+      "attrs": { "perm": [2, 0, 1] },
+      "inputs": { "x": { "shape": [4096, 1024, 1], "dtype": "float32", "dist": "normal", "seed": 141, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [1, 4096, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.tokens * args.hidden * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "transpose-inner-vec4-f32-dinov2-qkv-1814x3x6x64",
+      "preset": "all",
+      "provenance": {
+        "source": "Depth Anything V2 Small backbone",
+        "notes": "Depth Anything V2 Small's stacked q/k/v permute at 518x686, repeated once per DINOv2 layer. It exercises the inner-vec4 route at the model's 1814-row shape."
+      },
+      "vars": { "count": 2089728, "dtype": "float32" },
+      "attrs": { "perm": [1, 2, 0, 3] },
+      "inputs": { "x": { "shape": [1814, 3, 6, 64], "dtype": "float32", "dist": "normal", "seed": 9411, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [3, 6, 1814, 64], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-dpt-patchgrid-1813x384",
+      "preset": "all",
+      "provenance": {
+        "source": "Depth Anything V2 Small neck reassemble",
+        "notes": "A 1813x384 transpose (the 37x49 Depth Anything V2 Small patch grid) has a row count that is not a multiple of four; its 1812-row sibling in this file is the vec4-aligned control at the same column width."
+      },
+      "vars": { "count": 696192, "dtype": "float32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [1813, 384], "dtype": "float32", "dist": "normal", "seed": 9441, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [384, 1813], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-dpt-patchgrid-1812x384-aligned",
+      "preset": "all",
+      "provenance": {
+        "source": "Depth Anything V2 Small neck reassemble",
+        "notes": "Probe pair (b): the same transpose one row shorter, making the row extent vec4-aligned. It is the aligned control for pair (a)."
+      },
+      "vars": { "count": 695808, "dtype": "float32" },
+      "attrs": { "perm": [1, 0] },
+      "inputs": { "x": { "shape": [1812, 384], "dtype": "float32", "dist": "normal", "seed": 9451, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [384, 1812], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-rank6-swin-window-partition-perm013245-pathology",
+      "preset": "edge",
+      "provenance": {
+        "notes": "Rank-six window partition swaps a within-window axis with a window-grid axis while retaining a contiguous 96-wide final axis at a batch-eight Swin 56x56 stage. The permutation is its own inverse, so one case covers both directions."
+      },
+      "vars": { "count": 2408448, "dtype": "float32" },
+      "attrs": { "perm": [0, 1, 3, 2, 4, 5] },
+      "inputs": {
+        "x": { "shape": [8, 8, 7, 8, 7, 96], "dtype": "float32", "dist": "normal", "seed": 154, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [8, 8, 8, 7, 7, 96], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-rank6-swin-window-partition-rank4-tiled-control",
+      "preset": "edge",
+      "provenance": {
+        "notes": "Equal-byte tiled control for the rank-6 window-partition case: the same 8x56x56x96 elements as an NHWC-to-NCHW permutation, which takes the vec4 staged transpose tile."
+      },
+      "vars": { "count": 2408448, "dtype": "float32" },
+      "attrs": { "perm": [0, 3, 1, 2] },
+      "inputs": { "x": { "shape": [8, 56, 56, 96], "dtype": "float32", "dist": "normal", "seed": 155, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 96, 56, 56], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-rank4-perm0321-8x64x197x64-pathology",
+      "preset": "edge",
+      "provenance": {
+        "notes": "Rank-four permutation [0,3,2,1] at a 197-token, 64-wide attention shape moves the final axis and checks strided output indexing."
+      },
+      "vars": { "count": 6455296, "dtype": "float32" },
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 64, 197, 64], "dtype": "float32", "dist": "normal", "seed": 156, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 64, 197, 64], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "transpose-f32-rank4-perm0213-8x64x197x64-control",
+      "preset": "edge",
+      "provenance": {
+        "notes": "Control for the [0,3,2,1] case: the same [8,64,197,64] shape under the attention-layout permutation [0,2,1,3] keeps its innermost axis."
+      },
+      "vars": { "count": 6455296, "dtype": "float32" },
+      "attrs": { "perm": [0, 2, 1, 3] },
+      "inputs": { "x": { "shape": [8, 64, 197, 64], "dtype": "float32", "dist": "normal", "seed": 157, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 197, 64, 64], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "strided_large_float32_95x201x127",
+      "preset": "all",
+      "attrs": { "perm": [2, 1, 0] },
+      "inputs": { "x": { "shape": [95, 201, 127], "dtype": "float32", "dist": "normal", "seed": 842, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [127, 201, 95], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 19400520 }] }
+    },
+    {
+      "name": "strided_large_float32_8x63x197x65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 63, 197, 65], "dtype": "float32", "dist": "normal", "seed": 842, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 197, 63], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 51629760 }] }
+    },
+    {
+      "name": "strided_large_float16_95x201x127",
+      "preset": "all",
+      "attrs": { "perm": [2, 1, 0] },
+      "inputs": { "x": { "shape": [95, 201, 127], "dtype": "float16", "dist": "normal", "seed": 842, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [127, 201, 95], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 9700260 }] }
+    },
+    {
+      "name": "strided_large_float16_8x63x197x65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 63, 197, 65], "dtype": "float16", "dist": "normal", "seed": 842, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 197, 63], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 25814880 }] }
+    },
+    {
+      "name": "strided_large_float16_8x64x197x64",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 64, 197, 64], "dtype": "float16", "dist": "normal", "seed": 842, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 64, 197, 64], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 25821184 }] }
+    },
+    {
+      "name": "strided_padding_float32_a8",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [16, 8, 137, 128], "dtype": "float32", "dist": "normal", "seed": 843, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [16, 128, 137, 8], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 17956864 }] }
+    },
+    {
+      "name": "strided_padding_float32_a16",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 16, 137, 128], "dtype": "float32", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 16], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 35913728 }] }
+    },
+    {
+      "name": "strided_padding_float32_a20",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 20, 137, 128], "dtype": "float32", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 20], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 44892160 }] }
+    },
+    {
+      "name": "strided_padding_float32_a15",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 15, 137, 128], "dtype": "float32", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 15], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 33669120 }] }
+    },
+    {
+      "name": "strided_padding_float32_a17",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 17, 137, 128], "dtype": "float32", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 17], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 38158336 }] }
+    },
+    {
+      "name": "strided_padding_float16_a8",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [16, 8, 137, 128], "dtype": "float16", "dist": "normal", "seed": 843, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [16, 128, 137, 8], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 8978432 }] }
+    },
+    {
+      "name": "strided_padding_float16_a15",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 15, 137, 128], "dtype": "float16", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 15], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 16834560 }] }
+    },
+    {
+      "name": "strided_padding_float16_a16",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 16, 137, 128], "dtype": "float16", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 16], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 17956864 }] }
+    },
+    {
+      "name": "strided_padding_float16_a17",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 17, 137, 128], "dtype": "float16", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 17], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 19079168 }] }
+    },
+    {
+      "name": "strided_padding_float16_a20",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": {
+        "x": { "shape": [16, 20, 137, 128], "dtype": "float16", "dist": "normal", "seed": 843, "scale": 0.2 }
+      },
+      "outputs": { "y": { "shape": [16, 128, 137, 20], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 22446080 }] }
+    },
+    {
+      "name": "strided_rect_float32_a47c65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 47, 137, 65], "dtype": "float32", "dist": "normal", "seed": 845, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 137, 47], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 26786240 }] }
+    },
+    {
+      "name": "strided_rect_float32_a48c65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 48, 137, 65], "dtype": "float32", "dist": "normal", "seed": 845, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 137, 48], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 27356160 }] }
+    },
+    {
+      "name": "strided_fulltile_float32_a33",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 33, 137, 128], "dtype": "float32", "dist": "normal", "seed": 844, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 128, 137, 33], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 37036032 }] }
+    },
+    {
+      "name": "strided_rect_float16_a47c65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 47, 137, 65], "dtype": "float16", "dist": "normal", "seed": 845, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 137, 47], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 13393120 }] }
+    },
+    {
+      "name": "strided_rect_float16_a48c65",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 48, 137, 65], "dtype": "float16", "dist": "normal", "seed": 845, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 65, 137, 48], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 13678080 }] }
+    },
+    {
+      "name": "strided_fulltile_float16_a33",
+      "preset": "all",
+      "attrs": { "perm": [0, 3, 2, 1] },
+      "inputs": { "x": { "shape": [8, 33, 137, 128], "dtype": "float16", "dist": "normal", "seed": 844, "scale": 0.2 } },
+      "outputs": { "y": { "shape": [8, 128, 137, 33], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": 18518016 }] }
+    }
+  ]
+}

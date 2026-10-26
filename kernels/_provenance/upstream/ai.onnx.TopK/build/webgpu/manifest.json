@@ -1,0 +1,873 @@
+{
+  "domain": "ai.onnx",
+  "name": "TopK",
+  "sinceVersion": 11,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": {
+    "values": {
+      "onnx": "Values",
+      "dtype": "T",
+      "rank": "ranks.x",
+      "shape": "prefix(shapes.x, normalizedAxis) + [args.k] + suffix(shapes.x, normalizedAxis + 1)"
+    },
+    "indices": {
+      "onnx": "Indices",
+      "dtype": "I",
+      "rank": "ranks.x",
+      "shape": "prefix(shapes.x, normalizedAxis) + [args.k] + suffix(shapes.x, normalizedAxis + 1)",
+      "storage": "uint32"
+    }
+  },
+  "args": { "k": { "kind": "u32" } },
+  "attributes": { "axis": { "default": -1 }, "largest": { "default": 1 }, "sorted": { "default": 1 } },
+  "attributeConstraints": { "largest": { "values": [0, 1] }, "sorted": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int8", "int16", "int32", "uint8", "uint32"], "I": ["int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "AXIS_SHARED_MAX_VALUES": { "default": 2048 },
+    "TOP1_BLOCK_SIZE": { "default": 512 },
+    "SMALL_K_BLOCK_SIZE": { "default": 512 },
+    "LARGE_K_BLOCK_SIZE": { "default": 2048 },
+    "SMALL_K_LIMIT": { "default": 128 },
+    "MERGE_CHUNK_SIZE": { "default": 2048 },
+    "SMALL_ROWS_MIN_ROWS": { "default": 4096 },
+    "SMALL_ROWS_MAX_AXIS": { "default": 64 },
+    "SMALL_ROWS_MAX_K": { "default": 8 },
+    "PORTABLE_ROW_WORKGROUP_SIZE": { "default": 32 },
+    "PORTABLE_ROWS_MIN": { "default": 1024 },
+    "PORTABLE_ROWS_MAX_AXIS": { "default": 256 },
+    "TOURNAMENT_MAX_AXIS": { "default": 4096 },
+    "TOURNAMENT_MAX_K": { "default": 16 },
+    "TOURNAMENT_MIN_OUTPUTS": { "default": 256 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "subgroupsWave32": "device.features.has(\"subgroups\") and wave32Adapter",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32SubgroupsUsable": "subgroupsWave32 or pinSubgroupSize32",
+    "normalizedAxis": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x",
+    "axisInRange": "ranks.x >= 1 and normalizedAxis >= 0 and normalizedAxis < ranks.x",
+    "axisOuter": "outer(shapes.x, normalizedAxis)",
+    "axisDim": "dim(shapes.x, normalizedAxis)",
+    "axisInner": "inner(shapes.x, normalizedAxis)",
+    "outputPositions": "axisOuter * axisInner",
+    "outputShapeOk": "ranks.values == ranks.x and ranks.indices == ranks.x and outer(shapes.values, normalizedAxis) == axisOuter and outer(shapes.indices, normalizedAxis) == axisOuter and dim(shapes.values, normalizedAxis) == args.k and dim(shapes.indices, normalizedAxis) == args.k and inner(shapes.values, normalizedAxis) == axisInner and inner(shapes.indices, normalizedAxis) == axisInner",
+    "dtypeOk": "f16Ok(dtypes.T)",
+    "shapeContract": "axisInRange and outputShapeOk and args.k <= axisDim",
+    "baseContract": "shapeContract and dtypeOk",
+    "lastAxis": "normalizedAxis == ranks.x - 1",
+    "floatInput": "dtypes.T == \"f32\" or dtypes.T == \"f16\"",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "workgroupStorageFits": "workgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "outputDispatchFits": "outputPositions <= foldedDispatchCapacity",
+    "sortRetainedSize": "pow2ceil(max(1, args.k))",
+    "axisSharedSize": "pow2ceil(max(1, axisDim))",
+    "axisSharedFits": "axisSharedSize <= tunables.AXIS_SHARED_MAX_VALUES and axisSharedSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "top1Blocks": "ceilDiv(axisDim, tunables.TOP1_BLOCK_SIZE)",
+    "top1ScratchElements": "outputPositions * top1Blocks",
+    "top1ScratchFits": "top1ScratchElements * 4 <= device.limits.maxStorageBufferBindingSize and top1ScratchElements * 4 <= device.limits.maxBufferSize and outputPositions * top1Blocks <= foldedDispatchCapacity",
+    "largeBlockSize": "tunables.SMALL_K_BLOCK_SIZE if args.k <= tunables.SMALL_K_LIMIT else tunables.LARGE_K_BLOCK_SIZE",
+    "largeBlockCount": "ceilDiv(axisDim, largeBlockSize)",
+    "firstCandidates": "largeBlockCount * args.k",
+    "mergeChunkSize": "max(tunables.MERGE_CHUNK_SIZE, pow2ceil(args.k * 2))",
+    "secondGroups": "ceilDiv(firstCandidates, mergeChunkSize)",
+    "secondCandidates": "secondGroups * args.k",
+    "firstScratchElements": "outputPositions * firstCandidates",
+    "secondScratchElements": "outputPositions * secondCandidates",
+    "firstScratchFits": "firstScratchElements * 4 <= device.limits.maxStorageBufferBindingSize and firstScratchElements * 4 <= device.limits.maxBufferSize",
+    "secondScratchFits": "secondScratchElements * 4 <= device.limits.maxStorageBufferBindingSize and secondScratchElements * 4 <= device.limits.maxBufferSize",
+    "thirdGroups": "ceilDiv(secondCandidates, mergeChunkSize)",
+    "thirdCandidates": "thirdGroups * args.k",
+    "thirdScratchElements": "outputPositions * thirdCandidates",
+    "thirdScratchFits": "thirdScratchElements * 4 <= device.limits.maxStorageBufferBindingSize and thirdScratchElements * 4 <= device.limits.maxBufferSize",
+    "thirdMergeDispatchFits": "outputPositions * thirdGroups <= foldedDispatchCapacity",
+    "largeBlockDispatchFits": "outputPositions * largeBlockCount <= foldedDispatchCapacity",
+    "secondMergeDispatchFits": "outputPositions * secondGroups <= foldedDispatchCapacity",
+    "largeSharedFits": "largeBlockSize * 8 <= device.limits.maxComputeWorkgroupStorageSize and mergeChunkSize * 8 <= device.limits.maxComputeWorkgroupStorageSize"
+  },
+  "bindings": {
+    "x": { "elementType": "$T" },
+    "values": { "elementType": "$T" },
+    "indices": { "elementType": "$I" },
+    "params": {
+      "struct": [
+        { "name": "outputPositions", "type": "u32", "value": "outputPositions" },
+        { "name": "axis", "type": "u32", "value": "axisDim" },
+        { "name": "inner", "type": "u32", "value": "axisInner" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals": { "buffer": "storage", "elementType": "f32" },
+    "candidateIdxs": { "buffer": "storage", "elementType": "u32" },
+    "candidateVals_f32": { "name": "candidateVals", "buffer": "read-only-storage", "elementType": "f32" },
+    "candidateIdxs_u32": { "name": "candidateIdxs", "buffer": "read-only-storage", "elementType": "u32" },
+    "params_block": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "cols", "type": "u32", "value": "axisDim" },
+        { "name": "k", "type": "u32" },
+        { "name": "blocks", "type": "u32", "value": "largeBlockCount" }
+      ]
+    },
+    "candidateVals_u32": { "name": "candidateVals", "buffer": "storage", "elementType": "u32" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "cols", "type": "u32", "value": "axisDim" },
+        { "name": "k", "type": "u32" },
+        { "name": "inner", "type": "u32", "value": "axisInner" },
+        { "name": "blocks", "type": "u32", "value": "largeBlockCount" }
+      ]
+    },
+    "params_merge": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "firstCandidates" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals_merge": { "name": "candidateVals", "buffer": "read-only-storage", "elementType": "u32" },
+    "candidateIdxs2": { "buffer": "storage", "elementType": "u32" },
+    "params_merge_scratch": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "firstCandidates" },
+        { "name": "outGroups", "type": "u32", "value": "secondGroups" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals2_u32": { "name": "candidateVals2", "buffer": "storage", "elementType": "u32" },
+    "candidateIdxs_merge": {
+      "scratch": "candidateIdxs2",
+      "name": "candidateIdxs",
+      "buffer": "read-only-storage",
+      "elementType": "u32"
+    },
+    "params_topk_large_block": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "secondCandidates" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals_u32_read": {
+      "scratch": "candidateVals2",
+      "name": "candidateVals",
+      "buffer": "read-only-storage",
+      "elementType": "u32"
+    },
+    "candidateIdxs2_u32": { "scratch": "candidateIdxs3", "name": "candidateIdxs2", "elementType": "u32" },
+    "params_merge_scratch2": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "secondCandidates" },
+        { "name": "outGroups", "type": "u32", "value": "thirdGroups" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals2_u32_write": { "scratch": "candidateVals3", "name": "candidateVals2", "elementType": "u32" },
+    "candidateIdxs_u32_read": {
+      "scratch": "candidateIdxs3",
+      "name": "candidateIdxs",
+      "buffer": "read-only-storage",
+      "elementType": "u32"
+    },
+    "params_rows_in_candidates_k": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "thirdCandidates" },
+        { "name": "k", "type": "u32" }
+      ]
+    },
+    "candidateVals_topk_large_block": {
+      "scratch": "candidateVals3",
+      "name": "candidateVals",
+      "buffer": "read-only-storage",
+      "elementType": "u32"
+    },
+    "params_9_source": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "firstCandidates" },
+        { "name": "k", "type": "u32" },
+        { "name": "cols", "type": "u32", "value": "axisDim" }
+      ]
+    },
+    "params_12_source": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "secondCandidates" },
+        { "name": "k", "type": "u32" },
+        { "name": "cols", "type": "u32", "value": "axisDim" }
+      ]
+    },
+    "params_10_source": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "firstCandidates" },
+        { "name": "k", "type": "u32" },
+        { "name": "inner", "type": "u32", "value": "axisInner" },
+        { "name": "cols", "type": "u32", "value": "axisDim" }
+      ]
+    },
+    "params_13_source": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "secondCandidates" },
+        { "name": "k", "type": "u32" },
+        { "name": "inner", "type": "u32", "value": "axisInner" },
+        { "name": "cols", "type": "u32", "value": "axisDim" }
+      ]
+    },
+    "params_15_source": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "outputPositions" },
+        { "name": "inCandidates", "type": "u32", "value": "thirdCandidates" },
+        { "name": "k", "type": "u32" },
+        { "name": "cols", "type": "u32", "value": "axisDim" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "axis_smallk_tournament",
+      "priority": 25,
+      "when": ["baseContract", "not lastAxis", "args.k >= 1", "args.k <= tunables.TOURNAMENT_MAX_K", "axisDim <= tunables.TOURNAMENT_MAX_AXIS", "workgroupStorageFits", "outputDispatchFits"],
+      "demoteWhen": ["not (axisInner > 1 and outputPositions >= tunables.TOURNAMENT_MIN_OUTPUTS)"],
+      "derive": { "scalar": "dtypes.T", "localItems": "ceilDiv(axisDim, workgroupSize)" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.AxisSmallKTournament",
+          "shader": "topk-strided-smallk.wgsl.jinja",
+          "derive": { "nativeValues": true },
+          "bindings": ["x", "values", "indices", "params"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_top1",
+      "priority": 20,
+      "when": ["baseContract", "floatInput", "lastAxis", "args.k == 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "workgroupStorageFits", "top1ScratchFits", "outputDispatchFits"],
+      "derive": { "scalar": "dtypes.T", "top1BlockSize": "tunables.TOP1_BLOCK_SIZE" },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "float32", "shape": "[top1ScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[top1ScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeTop1Block",
+          "shader": "topk-top1-last-axis.wgsl.jinja",
+          "derive": { "stage": "\"block\"", "nativeValues": false },
+          "bindings": [
+            "x",
+            "candidateVals",
+            "candidateIdxs",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" },
+                { "name": "blocks", "type": "u32", "value": "top1Blocks" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(outputPositions * top1Blocks, 65535)",
+            "y": "ceilDiv(outputPositions * top1Blocks, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "output",
+          "name": "TopK.LargeTop1Output",
+          "shader": "topk-top1-last-axis.wgsl.jinja",
+          "derive": { "stage": "\"output\"", "nativeValues": false },
+          "bindings": [
+            "candidateVals_f32",
+            "candidateIdxs_u32",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "blocks", "type": "u32", "value": "top1Blocks" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_top1",
+      "priority": 15,
+      "when": ["baseContract", "lastAxis", "args.k == 1", "workgroupStorageFits", "outputDispatchFits"],
+      "supersededBy": ["last_axis_large_top1"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.LastAxisTop1",
+          "shader": "topk-top1-last-axis.wgsl.jinja",
+          "derive": { "stage": "\"direct\"", "nativeValues": true },
+          "bindings": [
+            "x",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_bitonic",
+      "priority": 0,
+      "when": ["baseContract", "axisSharedFits", "outputDispatchFits"],
+      "derive": { "scalar": "dtypes.T", "sharedSize": "axisSharedSize", "floatOrderKeys": "floatInput" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.AxisBitonic",
+          "shader": "topk-axis.wgsl.jinja",
+          "bindings": ["x", "values", "indices", "params"],
+          "dispatch": {
+            "x": "min(0 if args.k == 0 else outputPositions, 65535)",
+            "y": "ceilDiv(0 if args.k == 0 else outputPositions, 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "top0_noop",
+      "priority": 100,
+      "when": ["shapeContract", "args.k == 0"],
+      "passes": [
+        {
+          "id": "noop",
+          "name": "TopK.Top0",
+          "shader": "topk-noop.wgsl.jinja",
+          "bindings": [{ "name": "params", "struct": [{ "name": "dummy", "type": "u32", "value": 0 }] }],
+          "dispatch": { "x": 0 }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_rows_smallk",
+      "priority": 35,
+      "when": ["baseContract", "floatInput", "wave32SubgroupsUsable", "device.wgslLanguageFeatures.has(\"subgroup_id\")", "lastAxis", "args.k >= 1", "args.k <= tunables.SMALL_ROWS_MAX_K", "axisDim >= 32 * 4", "axisDim <= workgroupSize", "outputPositions >= workgroupSize * 4", "workgroupSize % 32 == 0", "outputDispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "subgroupWidth": 32,
+        "pinSubgroupWidth": "pinSubgroupSize32",
+        "subgroupsPerWorkgroup": "workgroupSize / 32",
+        "localItems": "ceilDiv(axisDim, 32)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.SubgroupRowsSmallK",
+          "shader": "topk-subgroup-rows.wgsl.jinja",
+          "derive": { "nativeValues": true },
+          "bindings": [
+            "x",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" },
+                { "name": "k", "type": "u32" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv(outputPositions, workgroupSize / 32), 65535)",
+            "y": "ceilDiv(ceilDiv(outputPositions, workgroupSize / 32), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_min_rows_smallk",
+      "priority": 35,
+      "when": ["baseContract", "floatInput", "not subgroupsWave32", "device.features.has(\"subgroups\")", "device.wgslLanguageFeatures.has(\"subgroup_id\")", "has(device.adapterInfo, \"subgroupMinSize\")", "has(device.adapterInfo, \"subgroupMaxSize\")", "device.adapterInfo.subgroupMinSize >= 4", "device.adapterInfo.subgroupMinSize <= device.adapterInfo.subgroupMaxSize", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeInvocationsPerWorkgroup", "device.adapterInfo.subgroupMinSize <= device.limits.maxComputeWorkgroupSizeX", "lastAxis", "args.k >= 1", "args.k <= tunables.SMALL_ROWS_MAX_K", "axisDim > tunables.SMALL_ROWS_MAX_AXIS", "axisDim <= tunables.PORTABLE_ROWS_MAX_AXIS", "outputPositions >= device.adapterInfo.subgroupMinSize * 4", "outputDispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "workgroupSize": "device.adapterInfo.subgroupMinSize",
+        "subgroupWidth": "device.adapterInfo.subgroupMinSize",
+        "pinSubgroupWidth": false,
+        "subgroupsPerWorkgroup": 1,
+        "localItems": "ceilDiv(axisDim, device.adapterInfo.subgroupMinSize)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.SubgroupMinRowsSmallK",
+          "shader": "topk-subgroup-rows.wgsl.jinja",
+          "derive": { "nativeValues": true },
+          "bindings": [
+            "x",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" },
+                { "name": "k", "type": "u32" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "portable_rows_smallk",
+      "priority": 34,
+      "when": ["baseContract", "floatInput", "not subgroupsWave32 or not device.wgslLanguageFeatures.has(\"subgroup_id\")", "lastAxis", "args.k >= 1", "args.k <= tunables.SMALL_ROWS_MAX_K", "axisDim > tunables.SMALL_ROWS_MAX_AXIS", "axisDim <= tunables.PORTABLE_ROWS_MAX_AXIS", "outputPositions >= tunables.PORTABLE_ROWS_MIN", "tunables.PORTABLE_ROW_WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup", "tunables.PORTABLE_ROW_WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupSizeX", "tunables.PORTABLE_ROW_WORKGROUP_SIZE * 8 + 4 <= device.limits.maxComputeWorkgroupStorageSize", "outputDispatchFits"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "rowWorkgroupSize": "tunables.PORTABLE_ROW_WORKGROUP_SIZE",
+        "localItems": "ceilDiv(axisDim, tunables.PORTABLE_ROW_WORKGROUP_SIZE)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.PortableRowsSmallK",
+          "shader": "topk-portable-rows-smallk.wgsl.jinja",
+          "derive": { "nativeValues": true },
+          "bindings": [
+            "x",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" },
+                { "name": "k", "type": "u32" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "small_rows_batched",
+      "priority": 30,
+      "when": ["baseContract", "floatInput", "lastAxis", "args.k >= 1", "args.k <= tunables.SMALL_ROWS_MAX_K", "axisOuter >= tunables.SMALL_ROWS_MIN_ROWS", "axisDim <= tunables.SMALL_ROWS_MAX_AXIS", "outputDispatchFits"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "TopK.SmallRowsBatched",
+          "shader": "topk-small-rows-batched.wgsl.jinja",
+          "derive": { "nativeValues": true },
+          "bindings": [
+            "x",
+            "values",
+            "indices",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "outputPositions" },
+                { "name": "cols", "type": "u32", "value": "axisDim" },
+                { "name": "k", "type": "u32" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((outputPositions), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputPositions), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_one_merge",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates <= mergeChunkSize", "firstScratchFits", "largeSharedFits", "largeBlockDispatchFits", "outputDispatchFits", "floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": true },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(firstCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "values", "indices", "params_9_source", "x"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_two_merge",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates > mergeChunkSize", "secondCandidates <= mergeChunkSize", "firstScratchFits", "secondScratchFits", "largeSharedFits", "largeBlockDispatchFits", "secondMergeDispatchFits", "outputDispatchFits", "floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": true },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateVals2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateIdxs2", "dtype": "uint32", "shape": "[secondScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch",
+          "name": "TopK.LargeMergeScratch",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "candidateVals2_u32", "candidateIdxs2", "params_merge_scratch"],
+          "dispatch": {
+            "x": "min(outputPositions * secondGroups, 65535)",
+            "y": "ceilDiv(outputPositions * secondGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(secondCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_u32_read", "candidateIdxs_merge", "values", "indices", "params_12_source", "x"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_one_merge_int",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates <= mergeChunkSize", "firstScratchFits", "largeSharedFits", "largeBlockDispatchFits", "outputDispatchFits", "not floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": false },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(firstCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "values", "indices", "params_merge"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_two_merge_int",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates > mergeChunkSize", "secondCandidates <= mergeChunkSize", "firstScratchFits", "secondScratchFits", "largeSharedFits", "largeBlockDispatchFits", "secondMergeDispatchFits", "outputDispatchFits", "not floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": false },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateVals2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateIdxs2", "dtype": "uint32", "shape": "[secondScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch",
+          "name": "TopK.LargeMergeScratch",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "candidateVals2_u32", "candidateIdxs2", "params_merge_scratch"],
+          "dispatch": {
+            "x": "min(outputPositions * secondGroups, 65535)",
+            "y": "ceilDiv(outputPositions * secondGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(secondCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_u32_read", "candidateIdxs_merge", "values", "indices", "params_topk_large_block"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_large_one_merge",
+      "priority": 10,
+      "when": ["baseContract", "not lastAxis", "args.k >= 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates <= mergeChunkSize", "firstScratchFits", "largeSharedFits", "largeBlockDispatchFits", "outputDispatchFits", "floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": true },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"", "strided": true },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params__uniform"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(firstCandidates)", "stage": "\"output\"", "strided": true },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "values", "indices", "params_10_source", "x"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "axis_large_two_merge",
+      "priority": 10,
+      "when": ["baseContract", "not lastAxis", "args.k >= 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates > mergeChunkSize", "secondCandidates <= mergeChunkSize", "firstScratchFits", "secondScratchFits", "largeSharedFits", "largeBlockDispatchFits", "secondMergeDispatchFits", "outputDispatchFits", "floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": true },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateVals2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateIdxs2", "dtype": "uint32", "shape": "[secondScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"", "strided": true },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params__uniform"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch",
+          "name": "TopK.LargeMergeScratch",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "candidateVals2_u32", "candidateIdxs2", "params_merge_scratch"],
+          "dispatch": {
+            "x": "min(outputPositions * secondGroups, 65535)",
+            "y": "ceilDiv(outputPositions * secondGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(secondCandidates)", "stage": "\"output\"", "strided": true },
+          "bindings": ["candidateVals_u32_read", "candidateIdxs_merge", "values", "indices", "params_13_source", "x"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_three_merge",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates > mergeChunkSize", "secondCandidates > mergeChunkSize", "thirdCandidates <= mergeChunkSize", "firstScratchFits", "secondScratchFits", "thirdScratchFits", "largeSharedFits", "largeBlockDispatchFits", "secondMergeDispatchFits", "thirdMergeDispatchFits", "outputDispatchFits", "floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": true },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateVals2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateIdxs2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateVals3", "dtype": "uint32", "shape": "[thirdScratchElements]" },
+        { "id": "candidateIdxs3", "dtype": "uint32", "shape": "[thirdScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch",
+          "name": "TopK.LargeMergeScratch",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "candidateVals2_u32", "candidateIdxs2", "params_merge_scratch"],
+          "dispatch": {
+            "x": "min(outputPositions * secondGroups, 65535)",
+            "y": "ceilDiv(outputPositions * secondGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch2",
+          "name": "TopK.LargeMergeScratch2",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_u32_read", "candidateIdxs_merge", "candidateVals2_u32_write", "candidateIdxs2_u32", "params_merge_scratch2"],
+          "dispatch": {
+            "x": "min(outputPositions * thirdGroups, 65535)",
+            "y": "ceilDiv(outputPositions * thirdGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(thirdCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_topk_large_block", "candidateIdxs_u32_read", "values", "indices", "params_15_source", "x"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_large_three_merge_int",
+      "priority": 10,
+      "when": ["baseContract", "lastAxis", "args.k > 1", "axisDim > tunables.AXIS_SHARED_MAX_VALUES", "firstCandidates > mergeChunkSize", "secondCandidates > mergeChunkSize", "thirdCandidates <= mergeChunkSize", "firstScratchFits", "secondScratchFits", "thirdScratchFits", "largeSharedFits", "largeBlockDispatchFits", "secondMergeDispatchFits", "thirdMergeDispatchFits", "outputDispatchFits", "not floatInput"],
+      "derive": { "scalar": "dtypes.T", "blockSize": "largeBlockSize", "floatOrderKeys": false },
+      "intermediates": [
+        { "id": "candidateVals", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateIdxs", "dtype": "uint32", "shape": "[firstScratchElements]" },
+        { "id": "candidateVals2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateIdxs2", "dtype": "uint32", "shape": "[secondScratchElements]" },
+        { "id": "candidateVals3", "dtype": "uint32", "shape": "[thirdScratchElements]" },
+        { "id": "candidateIdxs3", "dtype": "uint32", "shape": "[thirdScratchElements]" }
+      ],
+      "passes": [
+        {
+          "id": "block",
+          "name": "TopK.LargeBlock",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "stage": "\"block\"" },
+          "bindings": ["x", "candidateVals_u32", "candidateIdxs", "params_block"],
+          "dispatch": {
+            "x": "min(outputPositions * largeBlockCount, 65535)",
+            "y": "ceilDiv(outputPositions * largeBlockCount, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch",
+          "name": "TopK.LargeMergeScratch",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_merge", "candidateIdxs_u32", "candidateVals2_u32", "candidateIdxs2", "params_merge_scratch"],
+          "dispatch": {
+            "x": "min(outputPositions * secondGroups, 65535)",
+            "y": "ceilDiv(outputPositions * secondGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge_scratch2",
+          "name": "TopK.LargeMergeScratch2",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "mergeChunkSize", "stage": "\"scratch\"" },
+          "bindings": ["candidateVals_u32_read", "candidateIdxs_merge", "candidateVals2_u32_write", "candidateIdxs2_u32", "params_merge_scratch2"],
+          "dispatch": {
+            "x": "min(outputPositions * thirdGroups, 65535)",
+            "y": "ceilDiv(outputPositions * thirdGroups, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "merge",
+          "name": "TopK.LargeMergeOutput",
+          "shader": "topk-large-block.wgsl.jinja",
+          "derive": { "sharedSize": "pow2ceil(thirdCandidates)", "stage": "\"output\"" },
+          "bindings": ["candidateVals_topk_large_block", "candidateIdxs_u32_read", "values", "indices", "params_rows_in_candidates_k"],
+          "dispatch": { "x": "min(outputPositions, 65535)", "y": "ceilDiv(outputPositions, 65535)", "z": 1 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1065 @@
+{
+  "cases": [
+    {
+      "name": "no_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00002 },
+        "residualT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "f32_epsilon_zero_explicit_tiny_variance",
+      "attrs": { "epsilon": 0 },
+      "provenance": {
+        "source": "onnxruntime/contrib_ops/webgpu/bert/skip_layer_norm.h",
+        "test": "GetAttrOrDefault epsilon semantics",
+        "notes": "An explicit epsilon=0.0 must be honored, not replaced by the 1e-12 schema default via a truthiness fallback. The 1e-7-scale rows make that difference numerically observable."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31, "scale": 1e-7 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 1e-7 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.0001 },
+        "residualT": { "dtype": "float32", "shape": [3, 8], "tolerance": 1e-9 }
+      }
+    },
+    {
+      "name": "bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.2 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.17, "scale": 0.08 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.00002 },
+        "residualT": { "dtype": "float32", "shape": [3, 8], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "zero_residual_hidden_vector",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [5.0, 5.0, 5.0, 5.0, -3.0, -2.0, -1.0, 0.0] }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-5.0, -5.0, -5.0, -5.0, 3.0, 3.0, 3.0, 3.0] }
+        },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [10.0, -2.0, 3.0, 4.0] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 },
+        "residualT": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "hidden_size_one_bias_path",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [2.0, -4.0, 0.5] } },
+        "skipT": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [3.0, 1.0, -0.5] } },
+        "gammaT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [7.0] } },
+        "biasT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [3, 1], "tolerance": 0.00001 },
+        "residualT": { "dtype": "float32", "shape": [3, 1], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "large_values_scaled_by_rms",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [40000.0, 40001.0, 40002.0, 40003.0] }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [-39999.0, -39999.5, -40000.0, -40000.5] }
+        },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 2.0, -1.0, 0.5] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 4], "tolerance": 0.000001 },
+        "residualT": { "dtype": "float32", "shape": [1, 4], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "zero_tokens_null_input",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/skiplayernorm_op_test.cc",
+        "test": "SkipLayerNormTest.SkipLayerNormNullInput",
+        "notes": "A zero-token ORT shape is flattened to an empty token-row input for simplified RMS normalization."
+      },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "skipT": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.3, 0.2, 4.0, 2.2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [0, 4], "tolerance": 0 },
+        "residualT": { "dtype": "float32", "shape": [0, 4], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "large_hidden_320_no_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 320],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 320],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [320],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 320], "tolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [2, 320], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "large_hidden_320_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 320],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.029 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 320],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.037 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [320],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.029, "cosStep": 0.017 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [320],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.031, "cosStep": 0.007 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 320], "tolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [2, 320], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "large_hidden_768_no_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.003, "cosStep": 0.005 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [1, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.007, "cosStep": 0.011 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.013, "cosStep": 0.017 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 768], "tolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [1, 768], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "large_hidden_768_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.005, "cosStep": 0.009 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [1, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.015 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.017, "cosStep": 0.021 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 768], "tolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [1, 768], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_simplified_batch1_flattened_tokens",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/skiplayernorm_op_test.cc",
+        "test": "SkipLayerNormTest.SkipSimplifiedLayerNormBatch1_Float16",
+        "notes": "This package represents ORT's float16 shape [1, 2, 4] as two float32 token rows of width 4. Epsilon is omitted to exercise the schema default of 1e-12."
+      },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.8, -0.5, 0.0, 1.0, 0.5, 0.2, 0.3, -0.6] }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.3, 0.2, 4.0, 2.2] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.00002 },
+        "residualT": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_simplified_batch1_bias_flattened_tokens",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/skiplayernorm_op_test.cc",
+        "test": "SkipLayerNormTest.SkipSimplifiedLayerNormBatch1_Bias_Float16",
+        "notes": "This package represents ORT's float16 shape [1, 1, 8] as one float32 token row of width 8."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": {
+            "kind": "values",
+            "values": [0.12573242, -0.13208008, 0.640625, 0.10491943, -0.53564453, 0.36157227, 1.3037109, 0.94726562]
+          }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": {
+            "kind": "values",
+            "values": [-0.70361328, -1.265625, -0.62304688, 0.041320801, -2.3242188, -0.21875, -1.2460938, -0.73242188]
+          }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [0.94580078, 0.96826172, 1.0410156, 1.1044922, 0.98730469, 1.1367188, 0.93359375, 1.0351562]
+          }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [0.45166016, 0.04699707, -0.37182617, -0.4609375, -0.22888184, 0.11010742, -0.50488281, -0.10461426]
+          }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.00002 },
+        "residualT": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "output_only_no_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 2.0, -1.0, 0.5, -0.5] }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.5, -1.0, 1.0, 0.0, 0.0, 1.0, -0.5, 0.5] }
+        },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 2.0, -1.0, 0.5] } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0.00002,
+          "data": {
+            "kind": "values",
+            "values": [0.5052908659501396, 0.6737211546001862, -1.3474423092003724, 0.6737211546001862, 1.9999900000749995, 0.0, 0.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "no_bias_hidden128_compact",
+      "provenance": {
+        "notes": "A compact hidden-size-128 case exercises full outputs at the row width used by the output-only benchmark family."
+      },
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [16, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [16, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [16, 128], "tolerance": 0.0002, "relTolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [16, 128], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "output_only_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.25, -0.5, 1.0, 2.0, -1.0, 0.5, 1.5, -2.0] }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.75, 0.25, -0.5, 1.0, 1.0, -1.0, 0.5, 0.25] }
+        },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.5, -1.0, 0.5, 2.0] } },
+        "biasT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.1, -0.2, 0.3, 0.4] } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0.00002,
+          "data": {
+            "kind": "values",
+            "values": [0.8944258768765443, 0.24393433005723933, 0.21683051560643496, 3.686118765309394, 0.10873177077789489, 0.5074149302968427, 0.8336102426305274, -1.957171874002108]
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_no_bias_hidden768_decode",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.029 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.037 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 768], "tolerance": 0.01 },
+        "residualT": { "dtype": "float16", "shape": [2, 768], "tolerance": 0.01 }
+      }
+    },
+    {
+      "name": "f16_bias_hidden2048",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 2048],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.005, "cosStep": 0.009 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 2048],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.015 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.017, "cosStep": 0.021 }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 2048], "tolerance": 0.01 },
+        "residualT": { "dtype": "float16", "shape": [2, 2048], "tolerance": 0.01 }
+      }
+    },
+    {
+      "name": "unaligned_hidden770_bias_scalar_fallback",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 770],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 770],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [770],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.013, "cosStep": 0.017 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [770],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.029, "cosStep": 0.007 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 770], "tolerance": 0.0002 },
+        "residualT": { "dtype": "float32", "shape": [2, 770], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "scalar_fallback_odd_hidden_large_common_offset_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [5, 771],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "offset": 1000.0, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [5, 771],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [771],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [5, 771], "tolerance": 0.0005 },
+        "residualT": { "dtype": "float32", "shape": [5, 771], "tolerance": 0.001 }
+      }
+    },
+    {
+      "name": "empty_rows_vec4_hidden8",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [0, 8], "data": { "kind": "values", "values": [] } },
+        "skipT": { "dtype": "float32", "shape": [0, 8], "data": { "kind": "values", "values": [] } },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.3, 0.2, 4.0, 2.2, 1.0, -1.0, 0.5, 1.5] }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [0, 8], "tolerance": 0 },
+        "residualT": { "dtype": "float32", "shape": [0, 8], "tolerance": 0 }
+      }
+    },
+    {
+      "name": "rank3_no_bias_residual_2x3x8",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.41, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.00002 },
+        "residualT": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "rank3_output_only_bias_2x2x12",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 2, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.27 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 2, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.37, "scale": 0.2 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.11, "scale": 0.1 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 2, 12], "tolerance": 0.00002 } }
+    },
+    {
+      "name": "f16_rank3_residual_2x2x768",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 2, 768],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 2, 768],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.041, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 2, 768], "tolerance": 0.01 },
+        "residualT": { "dtype": "float16", "shape": [2, 2, 768], "tolerance": 0.005 }
+      }
+    },
+    {
+      "name": "f16_no_bias_output_only_768",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.029 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 768],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.037 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [768],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float16", "shape": [2, 768], "tolerance": 0.01 } }
+    },
+    {
+      "name": "f16_bias_output_only_2048",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 2048],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.005, "cosStep": 0.009 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 2048],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.015 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.017, "cosStep": 0.021 }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float16", "shape": [2, 2048], "tolerance": 0.01 } }
+    },
+    {
+      "name": "f16_rank3_output_only_unaligned_2x2x767",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 2, 767],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 2, 767],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [767],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.041, "scale": 0.2 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float16", "shape": [2, 2, 767], "tolerance": 0.01 } }
+    },
+    {
+      "name": "output_only_no_bias_unaligned_hidden6_scalar_row",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 6], "tolerance": 0.000002 } }
+    },
+    {
+      "name": "output_only_bias_unaligned_hidden6_scalar_row",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.037 }
+        },
+        "skipT": {
+          "dtype": "float32",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.029 }
+        },
+        "gammaT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        },
+        "biasT": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float32", "shape": [2, 6], "tolerance": 0.000002 } }
+    },
+    {
+      "name": "f16_no_bias_unaligned_hidden6_scalar_row",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.031 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 6], "tolerance": 0.01 },
+        "residualT": { "dtype": "float16", "shape": [2, 6], "tolerance": 0.005 }
+      }
+    },
+    {
+      "name": "f16_bias_unaligned_hidden6_scalar_row",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.037 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.029 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.007, "cosStep": 0.041 }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 6], "tolerance": 0.01 },
+        "residualT": { "dtype": "float16", "shape": [2, 6], "tolerance": 0.005 }
+      }
+    },
+    {
+      "name": "f16_bias_output_only_unaligned_hidden6_scalar_row",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.005, "cosStep": 0.009 }
+        },
+        "skipT": {
+          "dtype": "float16",
+          "shape": [2, 6],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.015 }
+        },
+        "gammaT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.1, "offset": 1.0, "sinStep": 0.017, "cosStep": 0.021 }
+        },
+        "biasT": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.023, "cosStep": 0.027 }
+        }
+      },
+      "outputs": { "outputT": { "dtype": "float16", "shape": [2, 6], "tolerance": 0.01 } }
+    },
+    {
+      "name": "zero_row_epsilon_zero",
+      "provenance": {
+        "notes": "An all-zero padded row with epsilon 0 computes `inverseSqrt(0) = +Inf` and then `0 * Inf = NaN`; the simplified RMS contract has no finite degenerate-row special case."
+      },
+      "attrs": { "epsilon": 0 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 4, 64],
+          "data": { "kind": "cycle", "values": [0.5, -0.25, 0.75, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        },
+        "skipT": { "dtype": "float32", "shape": [1, 4, 64], "data": { "kind": "constant", "value": 0.0 } },
+        "gammaT": { "dtype": "float32", "shape": [64], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [1, 4, 64],
+          "tolerance": 0.00002,
+          "relTolerance": 0.00002,
+          "allowNaN": true
+        }
+      }
+    },
+    {
+      "name": "stats_mean_plain",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_mean_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_mean_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_mean_bias_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002 }
+      }
+    },
+    {
+      "name": "stats_inv_plain",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_inv_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [2, 3, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float32", "shape": [2, 3, 5], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_inv_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 3, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "invStdT": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_inv_bias_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [2, 3, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [2, 3, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "invStdT": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float16", "shape": [2, 3, 5], "tolerance": 0.002 }
+      }
+    },
+    {
+      "name": "stats_both_plain",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_both_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float32", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float32", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_both_bias",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "stats_both_bias_residual",
+      "attrs": { "epsilon": 0.00001 },
+      "inputs": {
+        "inputT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": -2.0, "end": 3.0 } },
+        "skipT": { "dtype": "float16", "shape": [1, 1, 5], "data": { "kind": "linspace", "start": 0.4, "end": -0.7 } },
+        "gammaT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": 0.5, "end": 1.5 } },
+        "biasT": { "dtype": "float16", "shape": [5], "data": { "kind": "linspace", "start": -0.2, "end": 0.3 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002, "relTolerance": 0.002 },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "invStdT": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0.00001, "relTolerance": 0.00001 },
+        "residualT": { "dtype": "float16", "shape": [1, 1, 5], "tolerance": 0.002 }
+      }
+    },
+    {
+      "name": "ort_saved_statistics",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/skiplayernorm_op_test.cc",
+        "test": "SkipSimplifiedLayerNormStatistics"
+      },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] }
+        },
+        "skipT": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "gammaT": { "dtype": "float32", "shape": [4], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "outputT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.3651484, 0.7302967, 1.0954452, 1.4605935] }
+        },
+        "meanT": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.0] } },
+        "invStdT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.3651484] }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "domain": "ai.onnx",
+  "name": "IsNaN",
+  "sinceVersion": 20,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "B", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["float32", "float16"], "B": ["bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "ranks.y == ranks.x", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outVec": "\"vec4<\" ~ dtypes.B ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "IsNaN.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1" },
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$outVec" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "passes": [
+        {
+          "id": "main",
+          "name": "IsNaN",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            { "arg": "y", "elementType": "u32" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

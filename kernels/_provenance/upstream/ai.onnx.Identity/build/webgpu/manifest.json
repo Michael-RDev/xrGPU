@@ -1,0 +1,58 @@
+{
+  "domain": "ai.onnx",
+  "name": "Identity",
+  "sinceVersion": 16,
+  "inputs": { "x": { "onnx": "input", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "output", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "variants": [
+    {
+      "id": "copy_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "COPY_VEC4_LEN": "numel(shapes.y) / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Identity.CopyVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.y) / 4" },
+          "bindings": [
+            { "arg": "x", "name": "src", "elementType": "$vectorScalar", "length": "$COPY_VEC4_LEN" },
+            { "arg": "y", "name": "dst", "elementType": "$vectorScalar", "length": "$COPY_VEC4_LEN" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "when": ["numel(shapes.x) == numel(shapes.y) and (f16Ok(dtypes.T))"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Identity",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "elementType": "$scalar" },
+            { "arg": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "x", "output": "y" }]
+        }
+      ]
+    }
+  ]
+}

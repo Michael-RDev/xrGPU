@@ -1,0 +1,400 @@
+{
+  "domain": "ai.onnx",
+  "name": "CumSum",
+  "sinceVersion": 14,
+  "inputs": { "x": { "dtype": "T" } },
+  "outputs": { "y": { "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "args": { "axis": { "kind": "i32" } },
+  "attributes": { "exclusive": { "default": 0 }, "reverse": { "default": 0 } },
+  "attributeConstraints": { "exclusive": { "values": [0, 1] }, "reverse": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SPLITK_MIN_DIM": { "default": 8192 },
+    "SPLITK_MID_FALLBACK_DIM": { "default": 1024 },
+    "SPLITK_MAX_ROWS": { "default": 2048 },
+    "SPLITK_CHUNK_DIM": { "default": 2048 },
+    "SPLITK_MAX_CHUNKS": { "default": 64 },
+    "ROW_SCAN_MIN_DIM": { "default": 32 },
+    "STRIDED_SCAN_MIN_DIM": { "default": 256 },
+    "STRIDED_SCAN_MAX_ROWS": { "default": 16384 },
+    "STRIDED_SHORT_MAX_THREAD_GROUPS": { "default": 8 }
+  },
+  "derive": {
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "subgroupsWave32": "device.features.has(\"subgroups\") and wave32Adapter",
+    "op": "\"add\"",
+    "shapeContract": "ranks.x >= 1 and ranks.y == ranks.x and numel(shapes.x) == numel(shapes.y)",
+    "scanRows": "rows(shapes.x, args.axis)",
+    "scanDim": "dim(shapes.x, args.axis)",
+    "scanInner": "inner(shapes.x, args.axis)",
+    "variableNarrowSubgroups": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "parallelSubgroupScan": "subgroupsWave32 or variableNarrowSubgroups",
+    "scanUseSubgroups": "parallelSubgroupScan",
+    "orderedSubgroupScan": "variableNarrowSubgroups or (subgroupsWave32 and device.adapterInfo.vendor == \"apple\")",
+    "orderedParallelScanSafe": "orderedSubgroupScan or dtypes.T == \"i32\" or dtypes.T == \"u32\"",
+    "splitCount": "min(tunables.SPLITK_MAX_CHUNKS, pow2ceil(ceilDiv(scanDim, tunables.SPLITK_CHUNK_DIM)))",
+    "splitScratchFits": "scanRows * splitCount * 4 <= device.limits.maxStorageBufferBindingSize and scanRows * splitCount * 4 <= device.limits.maxBufferSize",
+    "splitKContract": "scanDim >= tunables.SPLITK_MIN_DIM and scanRows >= 1 and scanRows <= tunables.SPLITK_MAX_ROWS and splitScratchFits",
+    "splitKMidFallback": "(not orderedSubgroupScan) and (dtypes.T == \"f32\" or dtypes.T == \"f16\") and scanDim >= tunables.SPLITK_MID_FALLBACK_DIM and scanRows >= 1 and scanRows <= tunables.SPLITK_MAX_ROWS and splitScratchFits",
+    "shortStridedVec4Scan": "scanDim > min(tunables.STRIDED_SCAN_MIN_DIM, tunables.ROW_SCAN_MIN_DIM) and ceilDiv(scanRows, tunables.WORKGROUP_SIZE) <= tunables.STRIDED_SHORT_MAX_THREAD_GROUPS"
+  },
+  "when": ["f16Ok(dtypes.T)", "shapeContract"],
+  "bindings": {
+    "x": { "elementType": "$vec4Scalar" },
+    "chunkTotals": { "buffer": "storage", "elementType": "vec4<f32>" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis) / 4" },
+        { "name": "dim", "type": "u32", "value": "dim(shapes.x, args.axis)" },
+        { "name": "inner", "type": "u32", "value": "inner(shapes.x, args.axis) / 4" }
+      ]
+    },
+    "x_scan": { "name": "x", "elementType": "$scalar" },
+    "chunkTotals_totals": { "name": "chunkTotals", "buffer": "storage", "elementType": "$accType" },
+    "params_scan": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "scanRows" },
+        { "name": "dim", "type": "u32", "value": "scanDim" },
+        { "name": "inner", "type": "u32", "value": "scanInner" }
+      ]
+    },
+    "chunkTotals_carry": { "name": "chunkTotals", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "carries": { "buffer": "storage", "elementType": "vec4<f32>" },
+    "params_rows": {
+      "name": "params",
+      "struct": [{ "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis) / 4" }]
+    },
+    "chunkTotals_acc_type": { "name": "chunkTotals", "buffer": "read-only-storage", "elementType": "$accType" },
+    "carries_carry": { "name": "carries", "buffer": "storage", "elementType": "$accType" },
+    "params_carry": { "name": "params", "struct": [{ "name": "rows", "type": "u32", "value": "scanRows" }] },
+    "y": { "elementType": "$vec4Scalar" },
+    "carries_scan": { "name": "carries", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "y_scan": { "name": "y", "elementType": "$scalar" },
+    "carries_acc_type": { "name": "carries", "buffer": "read-only-storage", "elementType": "$accType" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rows(shapes.x, args.axis)" },
+        { "name": "dim4", "type": "u32", "value": "dim(shapes.x, args.axis) / 4" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "scanRows" },
+        { "name": "dim", "type": "u32", "value": "scanDim" }
+      ]
+    },
+    "params_rows_dim_inner": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "scanRows / 4" },
+        { "name": "dim", "type": "u32", "value": "scanDim" },
+        { "name": "inner", "type": "u32", "value": "scanInner / 4" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "single_segment_row_scan_vec4",
+      "priority": 19,
+      "when": ["(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "splitKContract or splitKMidFallback", "parallelSubgroupScan or splitCount >= 4", "scanInner % 4 == 0", "splitCount == 1"],
+      "derive": {
+        "accType": "\"vec4<f32>\"",
+        "vec4Scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "split": "splitCount"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.SingleSegmentScanVec4",
+          "shader": "cumsum-splitk-scan.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups",
+            "singleSegment": true
+          },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        }
+      ]
+    },
+    {
+      "id": "splitk_row_scan_vec4",
+      "priority": 17,
+      "when": ["(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "splitKContract or splitKMidFallback", "parallelSubgroupScan or splitCount >= 4", "scanInner % 4 == 0"],
+      "demoteWhen": ["not device.features.has(\"subgroups\") and scanInner >= 4 and scanInner % 4 == 0 and splitCount >= tunables.SPLITK_MAX_CHUNKS / 4 and scanRows >= 4 * tunables.STRIDED_SHORT_MAX_THREAD_GROUPS and scanRows / 4 <= min(tunables.STRIDED_SCAN_MAX_ROWS, min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"],
+      "derive": {
+        "accType": "\"vec4<f32>\"",
+        "vec4Scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "split": "splitCount"
+      },
+      "intermediates": [
+        { "id": "chunkTotals", "dtype": "float32", "shape": "[scanRows * splitCount]" },
+        { "id": "carries", "dtype": "float32", "shape": "[scanRows * splitCount]" }
+      ],
+      "passes": [
+        {
+          "id": "totals",
+          "name": "CumSum.SplitKTotalsVec4",
+          "shader": "cumsum-splitk-totals.wgsl.jinja",
+          "derive": { "reverse": "attrs.reverse != 0", "useSubgroups": "scanUseSubgroups" },
+          "bindings": ["x", "chunkTotals", "params"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        },
+        {
+          "id": "carry",
+          "name": "CumSum.SplitKCarryVec4",
+          "shader": "cumsum-splitk-carry.wgsl.jinja",
+          "bindings": ["chunkTotals_carry", "carries", "params_rows"],
+          "dispatch": {
+            "x": "min(ceilDiv((rows(shapes.x, args.axis) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((rows(shapes.x, args.axis) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scan",
+          "name": "CumSum.SplitKScanVec4",
+          "shader": "cumsum-splitk-scan.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups",
+            "singleSegment": false
+          },
+          "bindings": ["x", "y", "carries_scan", "params"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis) / 4, DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        }
+      ]
+    },
+    {
+      "id": "single_segment_row_scan",
+      "priority": 18,
+      "when": ["splitKContract or splitKMidFallback", "parallelSubgroupScan or scanInner == 1", "splitCount == 1"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "split": "splitCount"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.SingleSegmentScan",
+          "shader": "cumsum-splitk-scan.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups",
+            "singleSegment": true
+          },
+          "bindings": ["x_scan", "y_scan", "params_scan"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        }
+      ]
+    },
+    {
+      "id": "splitk_row_scan",
+      "priority": 16,
+      "when": ["splitKContract or splitKMidFallback", "parallelSubgroupScan or scanInner == 1"],
+      "demoteWhen": ["not device.features.has(\"subgroups\") and scanInner >= 4 and scanInner % 4 == 0 and splitCount >= tunables.SPLITK_MAX_CHUNKS / 4 and scanRows >= 4 * tunables.STRIDED_SHORT_MAX_THREAD_GROUPS and scanRows / 4 <= min(tunables.STRIDED_SCAN_MAX_ROWS, min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "split": "splitCount"
+      },
+      "intermediates": [
+        { "id": "chunkTotals", "dtype": "float32", "shape": "[scanRows * splitCount]" },
+        { "id": "carries", "dtype": "float32", "shape": "[scanRows * splitCount]" }
+      ],
+      "passes": [
+        {
+          "id": "totals",
+          "name": "CumSum.SplitKTotals",
+          "shader": "cumsum-splitk-totals.wgsl.jinja",
+          "derive": { "reverse": "attrs.reverse != 0", "useSubgroups": "scanUseSubgroups" },
+          "bindings": ["x_scan", "chunkTotals_totals", "params_scan"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        },
+        {
+          "id": "carry",
+          "name": "CumSum.SplitKCarry",
+          "shader": "cumsum-splitk-carry.wgsl.jinja",
+          "bindings": ["chunkTotals_acc_type", "carries_carry", "params_carry"],
+          "dispatch": {
+            "x": "min(ceilDiv((rows(shapes.x, args.axis)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((rows(shapes.x, args.axis)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scan",
+          "name": "CumSum.SplitKScan",
+          "shader": "cumsum-splitk-scan.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups",
+            "singleSegment": false
+          },
+          "bindings": ["x_scan", "y_scan", "carries_acc_type", "params_scan"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(rows(shapes.x, args.axis), DISPATCH_FOLD_WIDTH)",
+            "z": "splitCount"
+          }
+        }
+      ]
+    },
+    {
+      "id": "wg_row_scan_vec4",
+      "priority": 16,
+      "when": ["scanInner == 1", "scanDim > 32", "scanDim % 4 == 0", "attrs.reverse == 0", "scanRows >= 1", "scanRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "orderedParallelScanSafe"],
+      "supersededBy": ["splitk_row_scan_vec4", "splitk_row_scan"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "vec4Scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.WorkgroupRowScanVec4",
+          "shader": "scan-row-chunked-vec4.wgsl.jinja",
+          "derive": { "exclusive": "attrs.exclusive != 0", "useSubgroups": "scanUseSubgroups" },
+          "bindings": ["x", "y", "params_main"],
+          "dispatch": { "x": "rows(shapes.x, args.axis)" }
+        }
+      ]
+    },
+    {
+      "id": "wg_row_scan",
+      "priority": 15,
+      "when": ["scanInner == 1", "scanDim > tunables.ROW_SCAN_MIN_DIM", "scanRows >= 1", "scanRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "orderedParallelScanSafe"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.WorkgroupRowScan",
+          "shader": "scan-row-chunked.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups"
+          },
+          "bindings": ["x_scan", "y_scan", "params__uniform"],
+          "dispatch": { "x": "scanRows" }
+        }
+      ]
+    },
+    {
+      "id": "wg_strided_row_scan_vec4",
+      "priority": 15,
+      "when": ["(dtypes.T == \"f32\" or dtypes.T == \"f16\")", "scanInner >= 4", "scanInner % 4 == 0", "(scanDim > tunables.STRIDED_SCAN_MIN_DIM or shortStridedVec4Scan)", "scanRows >= 4", "scanRows / 4 <= min(tunables.STRIDED_SCAN_MAX_ROWS, min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535))", "scanRows >= 1"],
+      "derive": {
+        "scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "vec4Scalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "accType": "\"vec4<f32>\"",
+        "workgroupSize": "min(tunables.WORKGROUP_SIZE, pow2ceil(scanDim))"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.WorkgroupStridedRowScanVec4",
+          "shader": "scan-strided-row.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "vectorRows": true,
+            "useSubgroups": "scanUseSubgroups"
+          },
+          "bindings": ["x", "y", "params_rows_dim_inner"],
+          "dispatch": { "x": "min(scanRows / 4, 65535)", "y": "ceilDiv(scanRows / 4, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "wg_strided_row_scan",
+      "priority": 14,
+      "when": ["scanInner > 1", "scanDim > tunables.STRIDED_SCAN_MIN_DIM", "scanRows >= 1", "scanRows <= min(tunables.STRIDED_SCAN_MAX_ROWS, min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535))", "scanRows >= 1"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.WorkgroupStridedRowScan",
+          "shader": "scan-strided-row.wgsl.jinja",
+          "derive": {
+            "exclusive": "attrs.exclusive != 0",
+            "reverse": "attrs.reverse != 0",
+            "useSubgroups": "scanUseSubgroups"
+          },
+          "bindings": ["x_scan", "y_scan", "params_scan"],
+          "dispatch": {
+            "x": "min(rows(shapes.x, args.axis), 65535)",
+            "y": "ceilDiv(rows(shapes.x, args.axis), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "thread_row_scan",
+      "priority": 12,
+      "derive": {
+        "scalar": "dtypes.T",
+        "accType": "\"f32\" if (dtypes.T == \"f32\" or dtypes.T == \"f16\") else dtypes.T",
+        "workgroupSize": "tunables.WORKGROUP_SIZE"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "CumSum.ThreadRowScan",
+          "shader": "scan-thread-row.wgsl.jinja",
+          "derive": { "exclusive": "attrs.exclusive != 0", "reverse": "attrs.reverse != 0" },
+          "bindings": ["x_scan", "y_scan", "params_scan"],
+          "dispatch": {
+            "x": "min(ceilDiv((scanRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((scanRows), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

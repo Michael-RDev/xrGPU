@@ -1,0 +1,469 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_prelu_input_x": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+  },
+  "cases": [
+    {
+      "name": "scalar_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-3.0, -1.0, 0.0, 0.5, 1.0, 3.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_scalar_slope_subnormal_negative_branch_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_SingleSlope",
+        "notes": "The negative branch multiplies by the scalar slope even for subnormal inputs; positive subnormals pass through unchanged."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        },
+        "slope": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_true_scalar_slope_subnormal_negative_branch_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_SingleSlope",
+        "notes": "A rank-0 scalar slope exercises the broadcast negative branch with subnormal products."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 1e-40, -1e-39] } },
+        "slope": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "channel_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-3.0, -1.0, 0.0, 0.5, -2.0, 3.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.1, 0.2, 0.3] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "true_scalar_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.125] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_channel_broadcast_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 2, 2],
+          "data": { "kind": "values", "values": [-4.0, -2.0, 1.0, 2.0, -3.0, 3.0, -6.0, 6.0, 5.0, -5.0, 0.0, 0.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [1, 3, 1, 1], "data": { "kind": "values", "values": [0.1, 0.2, 0.3] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_per_element_slope",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu",
+        "notes": "ORT basic PRelu case with slope broadcast exactly matching input shape."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, -4.0, 0.0, -9.0] } },
+        "slope": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, -2.0, 3.0, -4.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_single_slope_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_SingleSlope",
+        "notes": "ORT scalar-slope broadcast over a rank-3 input."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, -4.0, 3.0, 0.0, 5.0, -9.0, 8.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_multi_channel_3d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_MultiChannel3D",
+        "notes": "ORT channel-slope broadcast over NCH-style rank-3 input."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, -4.0, 3.0, 0.0, 5.0, -9.0, 8.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [1.0, -2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_multi_channel_4d_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_MultiChannel4D",
+        "notes": "Deterministic generated projection of ORT's random NCHW channel-slope broadcast case."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5, 4, 3, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.07, "scale": 8.0 }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [4, 1, 1],
+          "data": { "kind": "values", "values": [0.1, -0.2, 0.3, -0.4] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5, 4, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_multi_channel_4d_single_channel_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_MultiChannel4D",
+        "notes": "Covers ORT's n=3,c=1,h=1,w=1 channel-broadcast subcase with deterministic values."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3, 1, 1, 1], "data": { "kind": "values", "values": [-2.0, 0.0, 3.0] } },
+        "slope": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [-0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_infinity_regression",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_Infinity"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["Infinity", "-Infinity", 5e+30, -2.5] }
+        },
+        "slope": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.25, 0.5, 0.25, 0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_infinite_inputs_per_element_slope",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_InfiniteInputs"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": ["Infinity", "-Infinity", "Infinity", "-Infinity", 5e+30, -2.5] }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0.25, 0.5, 0.0, 0.25, 0.25, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_infinite_inputs_scalar_slope",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_InfiniteInputs_ScalarSlope"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["Infinity", "-Infinity", 1.0, -1.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_nan_propagation",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_NaNPropagation"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": ["NaN", "NaN", 1.0] } },
+        "slope": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.5, 0.5, 0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "ort_negative_infinity_zero_slope_nan",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_NegInf_ZeroSlope"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": ["-Infinity", "-Infinity", 1.0] }
+        },
+        "slope": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.0, 0.5, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_prelu_broadcast",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_prelu_input_x" } }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": {
+            "kind": "values",
+            "values": [-0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_prelu_broadcast" }
+    },
+    {
+      "name": "onnx_backend_prelu_example",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_prelu_input_x" } }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [-0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235, 1.1394007205963135, -1.234825849533081, 0.4023416340351105, -0.6848101019859314, -0.8707971572875977, -0.5788496732711792, -0.3115525245666504, 0.056165341287851334, -1.1651498079299927, 0.9008265137672424, 0.4656624495983124, -1.5362436771392822, 1.4882521629333496, 1.895889163017273, 1.1787796020507812, -0.1799248307943344, -1.0707526206970215, 1.0544517040252686, -0.4031769335269928, 1.222445011138916, 0.2082749754190445, 0.9766390323638916, 0.3563663959503174, 0.7065731883049011, 0.01050002034753561, 1.7858705520629883, 0.12691208720207214, 0.4019893705844879, 1.8831506967544556, -1.3477590084075928, -1.2704850435256958, 0.969396710395813, -1.1731233596801758, 1.9436211585998535, -0.4136189818382263, -0.747454822063446, 1.922942042350769, 1.4805147647857666, 1.8675589561462402, 0.9060446619987488, -0.8612256646156311, 1.910064935684204, -0.26800337433815, 0.8024563789367676, 0.9472519755363464, -0.15501008927822113, 0.6140793561935425, 0.922206699848175]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_prelu_example" }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 0], "data": { "kind": "values", "values": [] } },
+        "slope": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_channel_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 3, 2, 2],
+          "data": { "kind": "values", "values": [-4.0, -2.0, 1.0, 2.0, -3.0, 3.0, -6.0, 6.0, 5.0, -5.0, 0.0, 0.0] }
+        },
+        "slope": {
+          "dtype": "float16",
+          "shape": [1, 3, 1, 1],
+          "data": { "kind": "values", "values": [0.25, 0.5, 0.125] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 3, 2, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f16_scalar_slope_vec4",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-4.0, -2.0, 1.0, 2.0, -3.0, 3.0, -6.0, 6.0] }
+        },
+        "slope": { "dtype": "float16", "shape": [1], "data": { "kind": "values", "values": [0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f16_dense_slope",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-4.0, -2.0, 1.0, 2.0, -3.0, 3.0, -6.0, 6.0] }
+        },
+        "slope": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.25, 0.5, 0.125, 0.75, 0.25, 0.5, 0.125, 0.75] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4], "tolerance": 0.001 } }
+    },
+    {
+      "name": "broadcast_two_interior_axes_slope_offset",
+      "provenance": {
+        "notes": "Slope [1,3,1,5] broadcasts into X [2,3,4,5] across two singleton axes. Mixed-sign X values check both PRelu branches and multi-axis slope indexing."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 6.0 }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [1, 3, 1, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.1, -0.2, 0.3, -0.4, 0.5, 0.15, -0.25, 0.35, -0.45, 0.55, 0.2, -0.3, 0.4, -0.5, 0.6]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "broadcast_leading_axis_same_rank_slope",
+      "provenance": {
+        "notes": "Slope [1,3,2] and X [4,3,2] have equal rank but differ only in the leading axis, so the path is broadcast (not sameShape_vec4, not scalar). Verifies slope_offset drops the leading size-1 axis while indexing the two trailing axes contiguously."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": [-4.0, -2.0, 1.0, 2.0, -3.0, 3.0, -6.0, 6.0, 5.0, -5.0, 0.0, 0.5, -1.5, 2.5, -3.5, 4.5, -0.25, 0.75, -7.0, 7.0, 8.0, -8.0, 0.1, -0.1]
+          }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "broadcast_channel_slope_nchw_perf_compact",
+      "provenance": {
+        "notes": "A compact NCHW input with slope shape [C,1,1] exercises channel-wise image-plane broadcasting."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 32, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.007, "scale": 2.0 }
+        },
+        "slope": {
+          "dtype": "float32",
+          "shape": [32, 1, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.013, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 32, 16, 16], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank7_channel_slope_broadcast",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.17 }
+        },
+        "slope": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.1, 0.2, 0.3] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank8_channel_slope_broadcast",
+      "attrs": {},
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.21 }
+        },
+        "slope": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.1, -0.2, 0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_f16_rank3_slope_into_rank4_last_dim4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_Float16_Opset9_WebGpu"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, -2.0, 3.0, -4.0, -5.0, 6.0, -7.0, 8.0, -1.0, 2.0, -3.0, 4.0, 5.0, -6.0, 7.0, -8.0]
+          }
+        },
+        "slope": { "dtype": "float16", "shape": [2, 1, 1], "data": { "kind": "values", "values": [0.5, -0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 2, 4], "tolerance": 0.002 } }
+    },
+    {
+      "name": "ort_f16_rank3_slope_into_rank4_last_dim3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.PRelu_Float16_Opset16_WebGpu"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.0, -4.0, 5.0, -6.0, -1.0, 2.0, -3.0, 4.0, -5.0, 6.0] }
+        },
+        "slope": { "dtype": "float16", "shape": [2, 1, 1], "data": { "kind": "values", "values": [0.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 2, 3], "tolerance": 0.002 } }
+    }
+  ]
+}

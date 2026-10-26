@@ -1,0 +1,262 @@
+{
+  "cases": [
+    {
+      "name": "rank3_rows_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        },
+        "gate": {
+          "dtype": "float32",
+          "shape": [2, 3, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.17, "offset": 0.75 }
+        }
+      },
+      "outputs": {
+        "output": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0.000001, "relTolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "rank2_channels_odd_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [5, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [5, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11 }
+        },
+        "gate": {
+          "dtype": "float32",
+          "shape": [5, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.53, "cosStep": 0.29, "offset": -1.25 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [5, 7], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "rank2_channels_not_vec4_aligned_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [4, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.43 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [4, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.61, "cosStep": 0.13 }
+        },
+        "gate": { "dtype": "float32", "shape": [4, 1], "data": { "kind": "values", "values": [2.0, -3.0, 0.5, 7.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4, 6], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "rank1_single_row_f32",
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [16], "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.09 } },
+        "Y": { "dtype": "float32", "shape": [16], "data": { "kind": "fillFloat32", "sinStep": 0.47, "cosStep": 0.21 } },
+        "gate": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [-1.75] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [16], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "rank4_rows_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.37 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.59 }
+        },
+        "gate": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.71, "cosStep": 0.19, "offset": 1.5 }
+        }
+      },
+      "outputs": {
+        "output": { "dtype": "float32", "shape": [2, 2, 3, 4], "tolerance": 0.000001, "relTolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "gate_broadcast_rows_pinned",
+      "provenance": {
+        "notes": "Expected values follow `output = X + round_to_T(Y * gate)` directly, and every intermediate is exactly representable in float32."
+      },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.5, -1.0, 2.0, 10.0, -0.25, 0.125] }
+        },
+        "gate": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [2.0, -0.5] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [2.0, 0.0, 7.0, -1.0, 5.125, 5.9375] }
+        }
+      }
+    },
+    {
+      "name": "f16_product_rounds_to_type_pinned",
+      "provenance": {
+        "notes": "Pins the round_to_T rule that separates this op from a wider-precision fused multiply-add. Row 0 uses gate = 1 + 2^-10, so Y = 1025 gives a real product of 1026.0009765625 that float16 rounds to 1026.0; X = -1026 then cancels it exactly to 0. A kernel that let the product stay unrounded -- by contracting the multiply into the add -- would return 2^-10 there instead. Every other value is exact in float16, so the whole expectation is hand-computable."
+      },
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-1026.0, -1000.0, 0.5, -8.0, 0.5, -1.0, 0.25, 3.0] }
+        },
+        "Y": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1025.0, 1024.0, 512.0, 8.0, 1.0, 2.0, 3.0, 4.0] }
+        },
+        "gate": { "dtype": "float16", "shape": [2, 1], "data": { "kind": "values", "values": [1.0009765625, 2.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 25.0, 513.0, 0.0078125, 2.5, 3.0, 6.25, 11.0] },
+          "tolerance": 0.0005
+        }
+      }
+    },
+    {
+      "name": "f16_rows",
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [3, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "offset": 1.25 }
+        },
+        "Y": {
+          "dtype": "float16",
+          "shape": [3, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07, "offset": -0.75 }
+        },
+        "gate": { "dtype": "float16", "shape": [3, 1], "data": { "kind": "values", "values": [1.5, -0.5, 2.25] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3, 16], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "f16_channels_odd",
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.17, "offset": -1.5 }
+        },
+        "Y": {
+          "dtype": "float16",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.53, "offset": 0.875 }
+        },
+        "gate": { "dtype": "float16", "shape": [4, 1], "data": { "kind": "values", "values": [0.75, -1.25, 3.0, 0.5] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4, 5], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "ort_gated_add_rank3_hidden7_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [2, 3, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [2, 3, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        },
+        "gate": {
+          "dtype": "float32",
+          "shape": [2, 3, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.17, "offset": 0.75 }
+        }
+      },
+      "outputs": {
+        "output": { "dtype": "float32", "shape": [2, 3, 7], "tolerance": 0.000001, "relTolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_gated_add_rank1_hidden7_f32",
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [7], "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 } },
+        "Y": { "dtype": "float32", "shape": [7], "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 } },
+        "gate": {
+          "dtype": "float32",
+          "shape": [1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.17, "offset": 0.75 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [7], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_gated_add_empty_outer_dim_f32",
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [0, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "Y": {
+          "dtype": "float32",
+          "shape": [0, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        },
+        "gate": {
+          "dtype": "float32",
+          "shape": [0, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.17, "offset": 0.75 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [0, 7], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_gated_add_f16_hidden2048",
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [1, 4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "Y": {
+          "dtype": "float16",
+          "shape": [1, 4, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        },
+        "gate": {
+          "dtype": "float16",
+          "shape": [1, 4, 1],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.17, "offset": 0.75 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 4, 2048], "tolerance": 0.0005, "relTolerance": 0.002 } }
+    }
+  ]
+}

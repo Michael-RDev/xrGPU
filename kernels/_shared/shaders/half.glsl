@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: Apache-2.0
+// Original IEEE 754 binary16 storage conversions. Integer rounding avoids
+// implementation-dependent packHalf overflow/NaN handling in GPU drivers.
+float xrgpuHalfToFloat(uint halfBits) {
+ uint sign=(halfBits&0x8000u)<<16u;
+ uint exponent=(halfBits>>10u)&31u;
+ uint fraction=halfBits&1023u;
+ if(exponent==0u) {
+  if(fraction==0u)return uintBitsToFloat(sign);
+  uint shifts=0u;
+  while((fraction&1024u)==0u){fraction<<=1u;++shifts;}
+  return uintBitsToFloat(sign|((113u-shifts)<<23u)|((fraction&1023u)<<13u));
+ }
+ if(exponent==31u)return uintBitsToFloat(sign|0x7f800000u|(fraction<<13u));
+ return uintBitsToFloat(sign|((exponent+112u)<<23u)|(fraction<<13u));
+}
+uint xrgpuFloatToHalf(float value) {
+ uint bits=floatBitsToUint(value);
+ uint sign=(bits>>16u)&0x8000u;
+ uint exponent=(bits>>23u)&255u;
+ uint fraction=bits&0x7fffffu;
+ if(exponent==255u) {
+  if(fraction==0u)return sign|0x7c00u;
+  // Keep representable payload bits and produce a nonzero quiet NaN payload.
+  return sign|0x7c00u|(fraction>>13u)|0x0200u;
+ }
+ int halfExponent=int(exponent)-112;
+ if(halfExponent>=31)return sign|0x7c00u;
+ if(halfExponent<=0) {
+  if(halfExponent< -10)return sign;
+  uint mantissa=fraction|0x800000u;
+  uint shift=uint(14-halfExponent);
+  uint truncated=mantissa>>shift;
+  uint remainder=mantissa&((1u<<shift)-1u);
+  uint halfway=1u<<(shift-1u);
+  if(remainder>halfway||(remainder==halfway&&(truncated&1u)!=0u))++truncated;
+  // Rounding the largest subnormal may produce the smallest normal (0x0400).
+  return sign|truncated;
+ }
+ uint rounded=fraction>>13u;
+ uint remainder=fraction&0x1fffu;
+ if(remainder>0x1000u||(remainder==0x1000u&&(rounded&1u)!=0u))++rounded;
+ // Carry through the exponent, including finite overflow to infinity.
+ return sign|(uint(halfExponent)<<10u)+rounded;
+}

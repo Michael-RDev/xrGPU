@@ -1,0 +1,1242 @@
+{
+  "domain": "ai.onnx",
+  "name": "LSTM",
+  "sinceVersion": 22,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T", "rank": 3 },
+    "w": { "onnx": "W", "dtype": "T", "rank": 3 },
+    "r": { "onnx": "R", "dtype": "T", "rank": 3 },
+    "b": { "onnx": "B", "dtype": "T", "rank": 2 },
+    "sequence_lens": { "dtype": "int32", "rank": 1, "optional": true },
+    "initial_h": { "dtype": "T", "rank": 3, "optional": true },
+    "initial_c": { "dtype": "T", "rank": 3, "optional": true },
+    "p": { "onnx": "P", "dtype": "T", "rank": 2, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": 4,
+      "shape": "[dim(shapes.x, 0), dim(shapes.w, 0), dim(shapes.x, 1), dim(shapes.r, 2)] if attrs.layout == 0 else [dim(shapes.x, 0), dim(shapes.x, 1), dim(shapes.w, 0), dim(shapes.r, 2)]"
+    },
+    "y_h": {
+      "onnx": "Y_h",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.w, 0), dim(shapes.x, 1), dim(shapes.r, 2)] if attrs.layout == 0 else [dim(shapes.x, 0), dim(shapes.w, 0), dim(shapes.r, 2)]"
+    },
+    "y_c": {
+      "onnx": "Y_c",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.w, 0), dim(shapes.x, 1), dim(shapes.r, 2)] if attrs.layout == 0 else [dim(shapes.x, 0), dim(shapes.w, 0), dim(shapes.r, 2)]"
+    }
+  },
+  "attributes": {
+    "layout": { "default": 0 },
+    "direction": { "default": "forward" },
+    "input_forget": { "default": 0 },
+    "hidden_size": {},
+    "clip": {},
+    "activation_alpha": {},
+    "activation_beta": {},
+    "activations": {}
+  },
+  "attributeConstraints": {
+    "layout": { "values": [0, 1] },
+    "direction": { "values": ["forward", "reverse", "bidirectional"] },
+    "input_forget": { "values": [0, 1] }
+  },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 }, "RECURRENT_WORKGROUP_SIZE": { "default": 4 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "subgroupsWide32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize >= 32",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "layoutBatchMajor": "attrs.layout == 1",
+    "seqLength": "dim(shapes.x, 1) if layoutBatchMajor else dim(shapes.x, 0)",
+    "batchSize": "dim(shapes.x, 0) if layoutBatchMajor else dim(shapes.x, 1)",
+    "ySeqDim": "dim(shapes.y, 1) if layoutBatchMajor else dim(shapes.y, 0)",
+    "yDirDim": "dim(shapes.y, 2) if layoutBatchMajor else dim(shapes.y, 1)",
+    "yBatchDim": "dim(shapes.y, 0) if layoutBatchMajor else dim(shapes.y, 2)",
+    "yhDirDim": "dim(shapes.y_h, 1) if layoutBatchMajor else dim(shapes.y_h, 0)",
+    "yhBatchDim": "dim(shapes.y_h, 0) if layoutBatchMajor else dim(shapes.y_h, 1)",
+    "inputSize": "dim(shapes.x, 2)",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "inputElements": "numel(shapes.x)",
+    "batchDispatchFits": "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rowStrideB": "seqLength if layoutBatchMajor else 1",
+    "hasClip": "attrs.clip is defined",
+    "clip": "attrs.clip if attrs.clip is defined else 0",
+    "activationAlpha": "attrs.activation_alpha if attrs.activation_alpha else []",
+    "activationBeta": "attrs.activation_beta if attrs.activation_beta else []",
+    "numDir": "dim(shapes.w, 0)",
+    "directionKind": "attrs.direction",
+    "hasSeqLens": "present.sequence_lens == true",
+    "hasInitialH": "present.initial_h == true",
+    "ycDirDim": "dim(shapes.y_c, 1) if layoutBatchMajor else dim(shapes.y_c, 0)",
+    "ycBatchDim": "dim(shapes.y_c, 0) if layoutBatchMajor else dim(shapes.y_c, 1)",
+    "hiddenSize": "dim(shapes.r, 2)",
+    "recurrentWorkgroupSize": "min(tunables.RECURRENT_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "xprojElements": "seqLength * batchSize * 4 * hiddenSize",
+    "xprojBytes": "xprojElements * 4",
+    "parallelStateBytes": "hiddenSize * 16",
+    "xprojFits": "xprojBytes <= device.limits.maxStorageBufferBindingSize and xprojBytes <= device.limits.maxBufferSize",
+    "shapeContract": "(attrs.hidden_size is undefined or attrs.hidden_size == hiddenSize) and (attrs.clip is undefined or attrs.clip >= 0) and ranks.x == 3 and ranks.w == 3 and ranks.r == 3 and ranks.b == 2 and ranks.y == 4 and ranks.y_h == 3 and ranks.y_c == 3 and dim(shapes.w, 0) <= 2 and dim(shapes.r, 0) == dim(shapes.w, 0) and dim(shapes.b, 0) == dim(shapes.w, 0) and yDirDim == dim(shapes.w, 0) and yhDirDim == dim(shapes.w, 0) and ycDirDim == dim(shapes.w, 0) and dim(shapes.w, 2) == inputSize and dim(shapes.w, 1) == dim(shapes.r, 1) and dim(shapes.w, 1) == 4 * hiddenSize and dim(shapes.b, 1) == 8 * hiddenSize and ySeqDim == seqLength and yBatchDim == batchSize and dim(shapes.y, 3) == hiddenSize and yhBatchDim == batchSize and dim(shapes.y_h, 2) == hiddenSize and ycBatchDim == batchSize and dim(shapes.y_c, 2) == hiddenSize",
+    "singleDirectionShapeContract": "shapeContract and dim(shapes.w, 0) == 1",
+    "fwdEitherLayoutContract": "attrs.direction == \"forward\" and not present.sequence_lens and not present.initial_h and not present.initial_c and not present.p and attrs.activations is undefined and singleDirectionShapeContract",
+    "fwdLayout0Contract": "attrs.layout == 0 and attrs.direction == \"forward\" and not present.sequence_lens and not present.initial_h and not present.initial_c and not present.p and attrs.activations is undefined and singleDirectionShapeContract",
+    "optionalInputShapeContract": "(not present.sequence_lens or (ranks.sequence_lens == 1 and dim(shapes.sequence_lens, 0) == batchSize)) and (not present.initial_h or (ranks.initial_h == 3 and dim(shapes.initial_h, 2) == hiddenSize and ((dim(shapes.initial_h, 0) == batchSize and dim(shapes.initial_h, 1) == dim(shapes.w, 0)) if layoutBatchMajor else (dim(shapes.initial_h, 0) == dim(shapes.w, 0) and dim(shapes.initial_h, 1) == batchSize)))) and (not present.initial_c or (ranks.initial_c == 3 and dim(shapes.initial_c, 2) == hiddenSize and ((dim(shapes.initial_c, 0) == batchSize and dim(shapes.initial_c, 1) == dim(shapes.w, 0)) if layoutBatchMajor else (dim(shapes.initial_c, 0) == dim(shapes.w, 0) and dim(shapes.initial_c, 1) == batchSize)))) and (not present.p or (ranks.p == 2 and dim(shapes.p, 0) == dim(shapes.w, 0) and dim(shapes.p, 1) == 3 * hiddenSize))",
+    "generalContract": "shapeContract and optionalInputShapeContract and batchDispatchFits and parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "fastSeqLensContract": "generalContract and attrs.direction == \"forward\" and present.sequence_lens and not present.initial_h and not present.initial_c and not present.p and attrs.activations is undefined and ranks.sequence_lens == 1 and dim(shapes.sequence_lens, 0) == batchSize and dim(shapes.w, 0) == 1",
+    "inputForget": "attrs.input_forget",
+    "gates": 4,
+    "hasInitialC": "present.initial_c == true",
+    "hasPeephole": "present.p == true",
+    "useSubgroups": "subgroupsWide32"
+  },
+  "bindings": {
+    "x": { "elementType": "$inputProjScalar" },
+    "w": { "elementType": "$inputProjScalar" },
+    "xproj": { "buffer": "storage", "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "inputSize", "type": "u32", "value": "inputSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    },
+    "r": { "elementType": "$subgroupScalar" },
+    "b": { "elementType": "$subgroupScalar" },
+    "xproj_recur_step": { "name": "xproj", "buffer": "read-only-storage", "elementType": "$subgroupScalar" },
+    "y": { "elementType": "$subgroupScalar" },
+    "y_h": { "elementType": "$subgroupScalar" },
+    "y_c": { "elementType": "$subgroupScalar" },
+    "cell_state": { "buffer": "storage", "elementType": "$subgroupScalar" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "t", "type": "u32", "value": "repeat.t" },
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    },
+    "sequence_lens": { "elementType": "i32" },
+    "y_f32": { "name": "y", "elementType": "f32" },
+    "y_h_f32": { "name": "y_h", "elementType": "f32" },
+    "y_c_f32": { "name": "y_c", "elementType": "f32" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    },
+    "params_recur_step": {
+      "name": "params",
+      "struct": [
+        { "name": "t", "type": "u32", "value": "repeat.t" },
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" },
+        { "name": "bStride", "type": "u32", "value": "rowStrideB" }
+      ]
+    },
+    "src": { "arg": "r", "elementType": "vec4<f32>" },
+    "dst": { "scratch": "rpack", "elementType": "vec4<f32>" },
+    "rpack": { "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "b_recur": { "name": "b", "elementType": "vec4<f32>" },
+    "xproj_recur": { "name": "xproj", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "y_recur": { "name": "y", "elementType": "vec4<f32>" },
+    "y_h_recur": { "name": "y_h", "elementType": "vec4<f32>" },
+    "y_c_recur": { "name": "y_c", "elementType": "vec4<f32>" },
+    "b_f32": { "name": "b", "elementType": "f32" },
+    "r_recur": { "name": "r", "elementType": "$recurScalar" },
+    "xproj_f32": { "name": "xproj", "buffer": "read-only-storage", "elementType": "f32" },
+    "x_main": { "name": "x", "elementType": "$set1Scalar" },
+    "w_main": { "name": "w", "elementType": "$set1Scalar" },
+    "r_main": { "name": "r", "elementType": "$set1RecurrentScalar" },
+    "r_f32": { "name": "r", "elementType": "f32" },
+    "initial_h": { "elementType": "f32" },
+    "initial_c": { "elementType": "f32" },
+    "p": { "elementType": "f32" },
+    "x_f32": { "name": "x", "elementType": "f32" },
+    "w_f32": { "name": "w", "elementType": "f32" },
+    "cell_history": { "buffer": "storage", "elementType": "$subgroupScalar" },
+    "cell_history_f32": { "name": "cell_history", "buffer": "read-only-storage", "elementType": "f32" },
+    "cell_state_recur": { "name": "cell_state", "buffer": "storage", "elementType": "vec4<f32>" },
+    "x_vec4": { "name": "x", "elementType": "vec4<f32>" },
+    "w_vec4": { "name": "w", "elementType": "vec4<f32>" },
+    "x_vector": { "name": "x", "elementType": "$vectorScalar" },
+    "w_vector": { "name": "w", "elementType": "$vectorScalar" },
+    "r_vector": { "name": "r", "elementType": "$vectorScalar" },
+    "scratch": { "buffer": "storage", "elementType": "f32" }
+  },
+  "variants": [
+    {
+      "id": "parallel_input_proj_recurrent_subgroup_gemv_seqlens",
+      "priority": 34,
+      "when": ["xprojFits", "fastSeqLensContract", "batchDispatchFits", "hiddenSize % 2 == 0", "seqLength >= 4", "hiddenSize / 2 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 32, "maxComputeWorkgroupSizeX": 32 } },
+      "derive": {
+        "useVec4": false,
+        "useInputVec4": "inputSize % 4 == 0",
+        "vec4Tail": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\" if inputSize % 4 == 0 else \"f32\"",
+        "subgroupWidth": "4 if hiddenSize >= 256 and hiddenSize % 4 == 0 else 2",
+        "subgroupScalar": "\"vec4<f32>\" if hiddenSize >= 256 and hiddenSize % 4 == 0 else \"vec2<f32>\""
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" },
+        { "id": "cell_state", "dtype": "float32", "shape": "[2 * batchSize * hiddenSize]" },
+        { "id": "cell_history", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjVector",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "LSTM.RecurSubgroupGemvStep",
+              "shader": "lstm-recur-subgroup-step.wgsl.jinja",
+              "bindings": ["r", "b", "xproj_recur_step", "y", "y_h", "y_c", "cell_state", "cell_history", "params__uniform"],
+              "dispatch": { "x": "hiddenSize / subgroupWidth", "y": "batchSize" }
+            }
+          ]
+        },
+        {
+          "id": "sequence_mask",
+          "name": "LSTM.SequenceMask",
+          "shader": "rnn-sequence-mask.wgsl.jinja",
+          "bindings": ["sequence_lens", "y_f32", "y_h_f32", "y_c_f32", "cell_history_f32", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "parallel_tiled_input_proj_recurrent_subgroup_batched",
+      "priority": 35,
+      "demoteWhen": ["variableSubgroup16To32 and hiddenSize > inputSize * batchSize"],
+      "when": ["xprojFits", "fwdEitherLayoutContract", "batchDispatchFits", "inputSize % 32 == 0", "hiddenSize % 4 == 0", "batchSize >= 4", "hiddenSize >= 256", "seqLength >= 4", "ceil((seqLength * batchSize) / 128) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil((4 * hiddenSize) / 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "hiddenSize / 4 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "limits": {
+          "maxComputeInvocationsPerWorkgroup": 256,
+          "maxComputeWorkgroupSizeX": 32,
+          "maxComputeWorkgroupSizeY": 16,
+          "maxComputeWorkgroupStorageSize": 12352
+        }
+      },
+      "tunables": { "RECURRENT_BATCH_TILE": { "default": 2 } },
+      "derive": {
+        "batchTile": "4 if hiddenSize >= 1024 and batchSize >= 4 else tunables.RECURRENT_BATCH_TILE",
+        "subgroupWidth": 4,
+        "subgroupScalar": "\"vec4<f32>\"",
+        "omitInputDot": true,
+        "scalar": "\"f32\"",
+        "M": "seqLength * batchSize",
+        "K": "inputSize",
+        "N": "4 * hiddenSize",
+        "blockRows": 128,
+        "blockCols": 64
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" },
+        { "id": "cell_state", "dtype": "float32", "shape": "[2 * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjTiledReg",
+          "shader": "matmul-notrans-vec4-tiled-reg.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "name": "a", "elementType": "vec4<f32>" },
+            { "arg": "w", "name": "b", "elementType": "vec4<f32>" },
+            { "scratch": "xproj", "name": "y", "elementType": "vec4<f32>" },
+            { "name": "params", "struct": [{ "name": "alpha", "type": "f32", "value": 1 }] }
+          ],
+          "dispatch": {
+            "x": "min(ceil(N / blockCols), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil(M / blockRows), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "LSTM.RecurSubgroupBatchedStep",
+              "shader": "lstm-recur-subgroup-batched-step.wgsl.jinja",
+              "bindings": ["r", "b", "xproj_recur_step", "y", "y_h", "y_c", "cell_state", "params_recur_step"],
+              "dispatch": { "x": "hiddenSize / 4", "y": "ceil(batchSize / batchTile)" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_subgroup_gemv",
+      "priority": 33,
+      "when": ["xprojFits", "fwdEitherLayoutContract", "batchDispatchFits", "hiddenSize % 2 == 0", "hiddenSize >= 256", "seqLength >= 4", "hiddenSize / 2 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 32, "maxComputeWorkgroupSizeX": 32 } },
+      "derive": {
+        "batchTile": "4 if hiddenSize % 4 != 0 and batchSize >= 4 else (2 if batchSize >= 2 else 1)",
+        "pinRecurSg32": "variableSubgroup16To32 and device.features.has(\"subgroup-size-control\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+        "useSubgroups": "subgroupsWide32 or pinRecurSg32",
+        "useVec4": false,
+        "useInputVec4": "inputSize % 4 == 0",
+        "vec4Tail": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\" if inputSize % 4 == 0 else \"f32\"",
+        "subgroupWidth": "4 if hiddenSize % 4 == 0 else 2",
+        "subgroupScalar": "\"vec4<f32>\" if hiddenSize % 4 == 0 else \"vec2<f32>\""
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" },
+        { "id": "cell_state", "dtype": "float32", "shape": "[2 * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjVector",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "LSTM.RecurSubgroupBatchedStep",
+              "shader": "lstm-recur-subgroup-batched-step.wgsl.jinja",
+              "bindings": ["r", "b", "xproj_recur_step", "y", "y_h", "y_c", "cell_state", "params_recur_step"],
+              "dispatch": { "x": "hiddenSize / subgroupWidth", "y": "ceilDiv(batchSize, batchTile)" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_packed_multiwg",
+      "priority": 32,
+      "when": ["xprojFits", "fwdLayout0Contract", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "hiddenSize >= 2048", "seqLength >= 2", "ceil(hiddenSize / (4 * recurrentWorkgroupSize)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(hiddenSize / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeWorkgroupSizeY": 32 } },
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\""
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" },
+        { "id": "rpack", "dtype": "float32", "shape": "[4 * hiddenSize * hiddenSize]" },
+        { "id": "cell_state", "dtype": "float32", "shape": "[2 * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjPackedRecur",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recurrent_transpose",
+          "name": "LSTM.RecurrentTranspose",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": { "rowCount": "hiddenSize", "cols": "hiddenSize" },
+          "bindings": ["src", "dst"],
+          "dispatch": { "x": "ceil(hiddenSize / 32)", "y": "ceil(hiddenSize / 32)", "z": 4 }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "LSTM.RecurPackedMultiWgStep",
+              "shader": "lstm-recur-step.wgsl.jinja",
+              "bindings": ["rpack", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "y_c_recur", "cell_state_recur", "params__uniform"],
+              "dispatch": { "x": "ceil(hiddenSize / (4 * recurrentWorkgroupSize))", "y": "batchSize" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_packed",
+      "priority": 31,
+      "when": ["xprojFits", "fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "hiddenSize >= 512", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384", "ceil(hiddenSize / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeWorkgroupStorageSize": 4224, "maxComputeWorkgroupSizeY": 32 } },
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "packedRecurrent": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\""
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" },
+        { "id": "rpack", "dtype": "float32", "shape": "[4 * hiddenSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjPackedRecur",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recurrent_transpose",
+          "name": "LSTM.RecurrentTranspose",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": { "rowCount": "hiddenSize", "cols": "hiddenSize" },
+          "bindings": ["src", "dst"],
+          "dispatch": { "x": "ceil(hiddenSize / 32)", "y": "ceil(hiddenSize / 32)", "z": 4 }
+        },
+        {
+          "id": "recur",
+          "name": "LSTM.RecurPacked",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 1 },
+          "bindings": ["rpack", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "y_c_recur", "params_main"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "general_attr_input_proj",
+      "priority": 22,
+      "when": ["xprojFits", "generalContract", "dim(shapes.w, 0) == 1", "not present.sequence_lens", "not present.initial_h", "not present.initial_c", "not present.p", "(attrs.direction != \"forward\") or (attrs.activations is defined)", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384"],
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "inputProjIncludesBias": true,
+        "projectedIncludesBias": true,
+        "fromInputProj": true
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralInputProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x_vec4", "w_vec4", "b_f32", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recur",
+          "name": "LSTM.GeneralProjected",
+          "shader": "lstm-general.wgsl.jinja",
+          "derive": { "recurScalar": "\"vec4<f32>\"" },
+          "bindings": ["r_recur", "xproj_f32", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": 1 }
+        }
+      ]
+    },
+    {
+      "id": "forward_layout0",
+      "when": ["fwdLayout0Contract", "not (parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize and batchDispatchFits)"],
+      "derive": {
+        "useVec4": "inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0",
+        "vectorScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0 else \"f32\"",
+        "scratchRegion": "batchSize * hiddenSize"
+      },
+      "intermediates": [{ "id": "scratch", "dtype": "float32", "shape": "[6 * batchSize * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.ForwardGlobal",
+          "shader": "lstm-parallel-global.wgsl.jinja",
+          "bindings": ["x_vector", "w_vector", "r_vector", "b_f32", "scratch", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "general_attr",
+      "priority": 16,
+      "when": ["generalContract", "not present.sequence_lens", "not present.initial_h", "not present.initial_c", "not present.p", "(attrs.direction != \"forward\") or (attrs.activations is defined) or layoutBatchMajor"],
+      "derive": {
+        "useVec4": "inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0",
+        "useInputVec4": "inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 != 0",
+        "vec4Tail": "not (inputElements >= 4 and inputSize % 4 == 0)",
+        "useRecurrentVec2": "not (inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0) and hiddenSize % 2 == 0",
+        "set1Scalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 else \"f32\"",
+        "set1RecurrentScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0 else (\"vec2<f32>\" if hiddenSize % 2 == 0 else \"f32\")",
+        "fromInputProj": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralAttr",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_main", "w_main", "r_main", "b_f32", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "parallel_batch_gates_vec4",
+      "priority": 25,
+      "when": ["fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputElements > 0", "inputSize % 4 == 0", "hiddenSize % 4 == 0"],
+      "derive": { "useVec4": true, "set1Scalar": "\"vec4<f32>\"", "set1RecurrentScalar": "\"vec4<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.ParallelBatchGatesVec4",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 0 },
+          "bindings": ["x_main", "w_main", "r_main", "b_f32", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_batch_gates_vec2_recur",
+      "priority": 24,
+      "when": ["fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "hiddenSize % 2 == 0", "hiddenSize % 4 != 0"],
+      "derive": {
+        "useVec4": false,
+        "useInputVec4": "inputElements >= 4 and inputSize % 4 == 0",
+        "vec4Tail": true,
+        "useRecurrentVec2": true,
+        "set1Scalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 else \"f32\"",
+        "set1RecurrentScalar": "\"vec2<f32>\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.ParallelBatchGatesVec2Recur",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 0 },
+          "bindings": ["x_main", "w_main", "r_main", "b_f32", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_batch_gates_vec4tail",
+      "priority": 23,
+      "when": ["fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits"],
+      "derive": { "useVec4": false, "vec4Tail": true, "set1Scalar": "\"f32\"", "set1RecurrentScalar": "\"f32\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.ParallelBatchGatesVec4Tail",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 0 },
+          "bindings": ["x_main", "w_main", "r_main", "b_f32", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inith_split",
+      "priority": 1,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "not present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false, "seedFromOutputs": true },
+      "passes": [
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inithc_split",
+      "priority": 2,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false, "seedFromOutputs": true },
+      "passes": [
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_initc_split",
+      "priority": 1,
+      "when": ["generalContract", "present.sequence_lens", "not present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false, "seedFromOutputs": true },
+      "passes": [
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_inithc_split",
+      "priority": 1,
+      "when": ["generalContract", "not present.sequence_lens", "present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false, "seedFromOutputs": true },
+      "passes": [
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeephole",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "initial_h", "initial_c", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_no_state",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "not present.sequence_lens", "not present.initial_h", "not present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeephole",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_seqlens",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "not present.initial_h", "not present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeSeqLens",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_inith",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "not present.sequence_lens", "present.initial_h", "not present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "initial_h", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_initc",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "not present.sequence_lens", "not present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "initial_c", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_inithc",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "not present.sequence_lens", "present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "initial_h", "initial_c", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_seqlens_inith",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "present.initial_h", "not present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeSeqLensInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "initial_h", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_seqlens_initc",
+      "priority": 20,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "not present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeSeqLensInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "initial_c", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_split",
+      "priority": 3,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true, "seedFromOutputs": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeephole",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_seqlens_inith_split",
+      "priority": 3,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "present.initial_h", "not present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true, "seedFromOutputs": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeSeqLensInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_seqlens_initc_split",
+      "priority": 3,
+      "when": ["xprojFits", "generalContract", "present.sequence_lens", "not present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true, "seedFromOutputs": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeSeqLensInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "sequence_lens", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_peephole_inithc_split",
+      "priority": 3,
+      "when": ["xprojFits", "generalContract", "not present.sequence_lens", "present.initial_h", "present.initial_c", "present.p", "dim(shapes.w, 0) == 1", "attrs.direction == \"forward\""],
+      "derive": { "useVec4": false, "fromInputProj": true, "omitInputDot": true, "seedFromOutputs": true },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.GeneralPeepholeProj",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "derive": { "inputProjScalar": "\"f32\"" },
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "seed_state",
+          "name": "LSTM.SeedState",
+          "shader": "lstm-seed-state.wgsl.jinja",
+          "derive": { "stateCount": "dim(shapes.w, 0) * batchSize * hiddenSize", "workgroupSize": 64 },
+          "bindings": ["initial_h", "initial_c", "y_h_f32", "y_c_f32"],
+          "dispatch": {
+            "x": "min(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((stateCount), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "LSTM.GeneralPeepholeInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["r_f32", "b_f32", "xproj_f32", "p", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens",
+      "priority": 17,
+      "when": ["generalContract", "present.sequence_lens", "not present.initial_h", "not present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLens",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inith",
+      "priority": 18,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "not present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "initial_h", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inithc",
+      "priority": 19,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "initial_h", "initial_c", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_inith",
+      "priority": 17,
+      "when": ["generalContract", "not present.sequence_lens", "present.initial_h", "not present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralInitH",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "initial_h", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_initc",
+      "priority": 17,
+      "when": ["generalContract", "not present.sequence_lens", "not present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "initial_c", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_inithc",
+      "priority": 18,
+      "when": ["generalContract", "not present.sequence_lens", "present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralInitHC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "initial_h", "initial_c", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_initc",
+      "priority": 18,
+      "when": ["generalContract", "present.sequence_lens", "not present.initial_h", "present.initial_c", "not present.p"],
+      "derive": { "useVec4": false, "fromInputProj": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LSTM.GeneralSeqLensInitC",
+          "shader": "lstm-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b_f32", "sequence_lens", "initial_c", "y_f32", "y_h_f32", "y_c_f32", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_vec4",
+      "priority": 30,
+      "when": ["xprojFits", "fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384"],
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "recurScalar": "\"vec4<f32>\""
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjVec4",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recur",
+          "name": "LSTM.RecurVec4",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 1 },
+          "bindings": ["r_recur", "b_f32", "xproj_f32", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_vec2_recur",
+      "priority": 29,
+      "when": ["xprojFits", "fwdLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "hiddenSize % 2 == 0", "hiddenSize % 4 != 0", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384"],
+      "derive": {
+        "useVec4": false,
+        "useInputVec4": "inputElements >= 4 and inputSize % 4 == 0",
+        "vec4Tail": true,
+        "useRecurrentVec2": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 else \"f32\"",
+        "recurScalar": "\"vec2<f32>\""
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * 4 * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "LSTM.InputProjVec4Tail",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * 4 * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recur",
+          "name": "LSTM.RecurVec2",
+          "shader": "lstm-timestep-body.wgsl.jinja",
+          "derive": { "precomputedInput": 1 },
+          "bindings": ["r_recur", "b_f32", "xproj_f32", "y_f32", "y_h_f32", "y_c_f32", "params_main"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    }
+  ]
+}

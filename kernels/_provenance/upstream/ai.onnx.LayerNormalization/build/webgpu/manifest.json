@@ -1,0 +1,822 @@
+{
+  "domain": "ai.onnx",
+  "name": "LayerNormalization",
+  "sinceVersion": 17,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "scale": { "onnx": "Scale", "dtype": "T" },
+    "b": { "onnx": "B", "dtype": "T", "optional": true }
+  },
+  "outputs": {
+    "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" },
+    "mean": { "onnx": "Mean", "dtype": "float32", "rank": "ranks.x", "optional": true },
+    "invStdDev": { "onnx": "InvStdDev", "dtype": "float32", "rank": "ranks.x", "optional": true }
+  },
+  "attributes": { "axis": { "default": -1 }, "epsilon": { "default": 0.00001 }, "stash_type": { "default": 1 } },
+  "attributeConstraints": { "stash_type": { "values": [1] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "MAX_WORKGROUP_SIZE": { "default": 256 }, "SCALAR_FAST_MAX_HIDDEN": { "default": 4096 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "normWorkgroupCap": "min(tunables.MAX_WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "hasSubgroupId": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "lastAxisWg": "min(normWorkgroupCap, pow2ceil(dim(shapes.x, -1)))",
+    "lastAxisWgVec4": "min(normWorkgroupCap, pow2ceil(dim(shapes.x, -1) / 4))",
+    "lastAxisContractOk": "ranks.x >= 1 and ranks.y == ranks.x and numel(shapes.x) == numel(shapes.y) and (attrs.axis == -1 or attrs.axis == ranks.x - 1)",
+    "suffixAxisContractOk": "ranks.x >= 2 and ranks.y == ranks.x and numel(shapes.x) == numel(shapes.y) and attrs.axis + ranks.x >= 0 and attrs.axis < ranks.x and not (attrs.axis == -1 or attrs.axis == ranks.x - 1)",
+    "axisNorm": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x",
+    "normRows": "numel(shapes.x) / max(1, dim(shapes.x, -1)) if lastAxisContractOk else outer(shapes.x, axisNorm)",
+    "normRowStride": "max(1, min(normRows, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))",
+    "suffixAxisSize": "numel(shapes.x) / max(1, outer(shapes.x, axisNorm))",
+    "suffixAxisWg": "min(normWorkgroupCap, pow2ceil(suffixAxisSize))",
+    "suffixAxisWgVec4": "min(normWorkgroupCap, pow2ceil(suffixAxisSize / 4))",
+    "genericHiddenSize": "dim(shapes.x, -1) if lastAxisContractOk else suffixAxisSize",
+    "genericWorkgroupSize": "lastAxisWg if lastAxisContractOk else suffixAxisWg",
+    "scaleExactOk": "ranks.x >= 1 and ranks.scale >= 1 and numel(shapes.scale) == dim(shapes.x, -1) and dim(shapes.scale, -1) == dim(shapes.x, -1)",
+    "scaleBroadcastOk": "ranks.scale >= 0 and ranks.scale <= ranks.x and broadcastable(shapes.scale, shapes.x)",
+    "biasExactOk": "present.b and ranks.x >= 1 and ranks.b >= 1 and numel(shapes.b) == dim(shapes.x, -1) and dim(shapes.b, -1) == dim(shapes.x, -1)",
+    "biasBroadcastOk": "present.b and ranks.b >= 0 and ranks.b <= ranks.x and broadcastable(shapes.b, shapes.x)",
+    "suffixScaleExactOk": "suffixAxisContractOk and scaleBroadcastOk and numel(shapes.scale) == suffixAxisSize",
+    "suffixBiasExactOk": "present.b and suffixAxisContractOk and biasBroadcastOk and numel(shapes.b) == suffixAxisSize",
+    "lastAxisExactScaleOk": "lastAxisContractOk and scaleExactOk",
+    "lastAxisBroadcastScaleOk": "lastAxisContractOk and scaleBroadcastOk",
+    "suffixAxisBroadcastScaleOk": "suffixAxisContractOk and scaleBroadcastOk",
+    "suffixAxisExactAffineOk": "suffixAxisContractOk and suffixScaleExactOk and suffixBiasExactOk",
+    "lastAxisScalarFastOk": "dtypes.T == \"f16\" or dim(shapes.x, -1) <= tunables.SCALAR_FAST_MAX_HIDDEN",
+    "noStatsOutputs": "not present.mean and not present.invStdDev",
+    "meanOnlyOutputs": "present.mean and not present.invStdDev",
+    "invStdOnlyOutputs": "not present.mean and present.invStdDev",
+    "fullStatsOutputs": "present.mean and present.invStdDev",
+    "statsRowsOk": "fullStatsOutputs and ranks.x >= 1 and numel(shapes.mean) == normRows and numel(shapes.invStdDev) == normRows",
+    "meanRowsOk": "present.mean and ranks.x >= 1 and numel(shapes.mean) == normRows",
+    "invStdRowsOk": "present.invStdDev and ranks.x >= 1 and numel(shapes.invStdDev) == normRows",
+    "statsOuterOk": "fullStatsOutputs and ranks.x >= 2 and numel(shapes.mean) == normRows and numel(shapes.invStdDev) == normRows"
+  },
+  "when": ["f16Ok(dtypes.T)"],
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "scale": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$vectorScalar" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "normRows" },
+        { "name": "rowStride", "type": "u32", "value": "normRowStride" }
+      ]
+    },
+    "bias": { "arg": "b", "elementType": "$vectorScalar" },
+    "mean_out": { "arg": "mean", "elementType": "f32" },
+    "inv_std_out": { "arg": "invStdDev", "elementType": "f32" },
+    "x_main": { "name": "x", "elementType": "$scalar" },
+    "scale_main": { "name": "scale", "elementType": "$scalar" },
+    "y_main": { "name": "y", "elementType": "$scalar" },
+    "bias_b": { "arg": "b", "name": "bias", "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "last_axis_row_vec2",
+      "priority": 105,
+      "when": ["dtypes.T == \"f32\"", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 2", "noStatsOutputs", "not present.b"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec2<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec2",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "min(normWorkgroupCap, pow2ceil(dim(shapes.x, -1) / 2))",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 2",
+            "vecType": "\"vec2<f32>\"",
+            "combineSubgroups": "hasSubgroupId",
+            "packedWidth": 2
+          },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ],
+      "demoteWhen": ["not lastAxisScalarFastOk"]
+    },
+    {
+      "id": "last_axis_bias_row_vec2",
+      "priority": 106,
+      "when": ["dtypes.T == \"f32\"", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 2", "noStatsOutputs", "present.b and biasExactOk"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec2<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec2",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "min(normWorkgroupCap, pow2ceil(dim(shapes.x, -1) / 2))",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 2",
+            "vecType": "\"vec2<f32>\"",
+            "combineSubgroups": "hasSubgroupId",
+            "packedWidth": 2
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ],
+      "demoteWhen": ["not lastAxisScalarFastOk"]
+    },
+    {
+      "id": "last_axis_row_vec4",
+      "priority": 110,
+      "when": ["not present.b and noStatsOutputs", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_row",
+      "priority": 100,
+      "when": ["not present.b and noStatsOutputs", "lastAxisExactScaleOk"],
+      "demoteWhen": ["not lastAxisScalarFastOk"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": false,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWg",
+            "epsilon": "attrs.epsilon",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias_row_vec4",
+      "priority": 111,
+      "when": ["present.b and noStatsOutputs and biasExactOk", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias_row",
+      "priority": 101,
+      "when": ["present.b and noStatsOutputs and biasExactOk", "lastAxisExactScaleOk"],
+      "demoteWhen": ["not lastAxisScalarFastOk"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": false,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWg",
+            "epsilon": "attrs.epsilon",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_stats_row_vec4",
+      "priority": 112,
+      "when": ["not present.b and fullStatsOutputs and statsRowsOk", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_stats_row",
+      "priority": 102,
+      "when": ["not present.b and fullStatsOutputs and statsRowsOk", "lastAxisExactScaleOk"],
+      "demoteWhen": ["not lastAxisScalarFastOk"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": false,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWg",
+            "epsilon": "attrs.epsilon",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias_stats_row_vec4",
+      "priority": 113,
+      "when": ["present.b and fullStatsOutputs and biasExactOk and statsRowsOk", "lastAxisExactScaleOk", "dim(shapes.x, -1) % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRowVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "bias", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias_stats_row",
+      "priority": 103,
+      "when": ["present.b and fullStatsOutputs and biasExactOk and statsRowsOk", "lastAxisExactScaleOk"],
+      "demoteWhen": ["not lastAxisScalarFastOk"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.LastAxisRow",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": false,
+            "hasBias": "present.b",
+            "writeStats": "fullStatsOutputs",
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWg",
+            "epsilon": "attrs.epsilon",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "bias", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "suffix_axis_bias_exact_row_vec4",
+      "priority": 121,
+      "when": ["present.b", "noStatsOutputs", "suffixAxisExactAffineOk", "suffixAxisSize % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.SuffixAxisRowVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "compensateHalfStats": true,
+            "vec4": true,
+            "hasBias": true,
+            "writeStats": false,
+            "hidden": "suffixAxisSize",
+            "wg": "suffixAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "suffixAxisSize / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis",
+      "priority": 0,
+      "when": ["not present.b", "noStatsOutputs", "lastAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": false,
+        "writeMean": false,
+        "writeInvStdDev": false,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "dim(shapes.x, -1)",
+        "workgroupSize": "lastAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias",
+      "priority": 10,
+      "when": ["present.b", "noStatsOutputs", "lastAxisBroadcastScaleOk", "biasBroadcastOk"],
+      "derive": {
+        "hasBias": true,
+        "writeMean": false,
+        "writeInvStdDev": false,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "dim(shapes.x, -1)",
+        "workgroupSize": "lastAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_stats",
+      "priority": 20,
+      "when": ["not present.b", "fullStatsOutputs", "lastAxisBroadcastScaleOk", "statsRowsOk"],
+      "derive": {
+        "hasBias": false,
+        "writeMean": true,
+        "writeInvStdDev": true,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "dim(shapes.x, -1)",
+        "workgroupSize": "lastAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x", "scale", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_bias_stats",
+      "priority": 30,
+      "when": ["present.b", "fullStatsOutputs", "lastAxisBroadcastScaleOk", "biasBroadcastOk", "statsRowsOk"],
+      "derive": {
+        "hasBias": true,
+        "writeMean": true,
+        "writeInvStdDev": true,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "dim(shapes.x, -1)",
+        "workgroupSize": "lastAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x", "scale", "bias", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "suffix_axis",
+      "priority": 40,
+      "when": ["not present.b", "noStatsOutputs", "suffixAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": false,
+        "writeMean": false,
+        "writeInvStdDev": false,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "suffixAxisSize",
+        "workgroupSize": "suffixAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.SuffixAxis",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "suffix_axis_bias",
+      "priority": 50,
+      "when": ["present.b", "noStatsOutputs", "suffixAxisBroadcastScaleOk", "biasBroadcastOk"],
+      "derive": {
+        "hasBias": true,
+        "writeMean": false,
+        "writeInvStdDev": false,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "suffixAxisSize",
+        "workgroupSize": "suffixAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.SuffixAxisBias",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "suffix_axis_stats",
+      "priority": 45,
+      "when": ["not present.b", "fullStatsOutputs", "suffixAxisBroadcastScaleOk", "statsOuterOk"],
+      "derive": {
+        "hasBias": false,
+        "writeMean": true,
+        "writeInvStdDev": true,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "suffixAxisSize",
+        "workgroupSize": "suffixAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.SuffixAxisStats",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x", "scale", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "suffix_axis_bias_stats",
+      "priority": 55,
+      "when": ["present.b", "fullStatsOutputs", "suffixAxisBroadcastScaleOk", "biasBroadcastOk", "statsOuterOk"],
+      "derive": {
+        "hasBias": true,
+        "writeMean": true,
+        "writeInvStdDev": true,
+        "scalar": "dtypes.T",
+        "vectorScalar": "dtypes.T",
+        "hiddenSize": "suffixAxisSize",
+        "workgroupSize": "suffixAxisWg",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.SuffixAxisBiasStats",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x", "scale", "bias", "y", "mean_out", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "mean_only",
+      "priority": 31,
+      "when": ["not present.b and meanOnlyOutputs and meanRowsOk", "lastAxisBroadcastScaleOk or suffixAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": "present.b",
+        "writeMean": "present.mean",
+        "writeInvStdDev": "present.invStdDev",
+        "scalar": "dtypes.T",
+        "hiddenSize": "genericHiddenSize",
+        "workgroupSize": "genericWorkgroupSize",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.MeanOnly",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x_main", "scale_main", "y_main", "mean_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_mean_only",
+      "priority": 32,
+      "when": ["present.b and meanOnlyOutputs and biasBroadcastOk and meanRowsOk", "lastAxisBroadcastScaleOk or suffixAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": "present.b",
+        "writeMean": "present.mean",
+        "writeInvStdDev": "present.invStdDev",
+        "scalar": "dtypes.T",
+        "hiddenSize": "genericHiddenSize",
+        "workgroupSize": "genericWorkgroupSize",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BiasMeanOnly",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x_main", "scale_main", "bias_b", "y_main", "mean_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "inv_std_dev_only",
+      "priority": 33,
+      "when": ["not present.b and invStdOnlyOutputs and invStdRowsOk", "lastAxisBroadcastScaleOk or suffixAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": "present.b",
+        "writeMean": "present.mean",
+        "writeInvStdDev": "present.invStdDev",
+        "scalar": "dtypes.T",
+        "hiddenSize": "genericHiddenSize",
+        "workgroupSize": "genericWorkgroupSize",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.InvStdDevOnly",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale" },
+          "bindings": ["x_main", "scale_main", "y_main", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_inv_std_dev_only",
+      "priority": 34,
+      "when": ["present.b and invStdOnlyOutputs and biasBroadcastOk and invStdRowsOk", "lastAxisBroadcastScaleOk or suffixAxisBroadcastScaleOk"],
+      "derive": {
+        "hasBias": "present.b",
+        "writeMean": "present.mean",
+        "writeInvStdDev": "present.invStdDev",
+        "scalar": "dtypes.T",
+        "hiddenSize": "genericHiddenSize",
+        "workgroupSize": "genericWorkgroupSize",
+        "epsilon": "attrs.epsilon"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BiasInvStdDevOnly",
+          "shader": "layer-normalization.wgsl.jinja",
+          "derive": { "xShape": "shapes.x", "scaleShape": "shapes.scale", "biasShape": "shapes.b" },
+          "bindings": ["x_main", "scale_main", "bias_b", "y_main", "inv_std_out", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_broadcast_row_vec4",
+      "priority": 90,
+      "when": ["dtypes.T == \"f32\"", "lastAxisBroadcastScaleOk", "dim(shapes.x, -1) >= 4", "dim(shapes.x, -1) % 4 == 0", "ranks.scale >= 1", "dim(shapes.scale, -1) == dim(shapes.x, -1)", "noStatsOutputs", "not present.b", "true"],
+      "demoteWhen": ["false"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BroadcastRowsVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId",
+            "affineRowBroadcast": true,
+            "xRowShape": "prefix(shapes.x, ranks.x - 1)",
+            "scaleRowShape": "prefix(shapes.scale, ranks.scale - 1)",
+            "biasRowShape": "prefix(shapes.b, ranks.b - 1) if present.b else []",
+            "batchRows": "1",
+            "batchLanes": "lastAxisWgVec4"
+          },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_broadcast_bias_row_vec4",
+      "priority": 91,
+      "when": ["dtypes.T == \"f32\"", "lastAxisBroadcastScaleOk", "dim(shapes.x, -1) >= 4", "dim(shapes.x, -1) % 4 == 0", "ranks.scale >= 1", "dim(shapes.scale, -1) == dim(shapes.x, -1)", "noStatsOutputs", "present.b and biasBroadcastOk and ranks.b >= 1 and dim(shapes.b, -1) == dim(shapes.x, -1)", "true"],
+      "demoteWhen": ["false"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BroadcastRowsVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId",
+            "affineRowBroadcast": true,
+            "xRowShape": "prefix(shapes.x, ranks.x - 1)",
+            "scaleRowShape": "prefix(shapes.scale, ranks.scale - 1)",
+            "biasRowShape": "prefix(shapes.b, ranks.b - 1) if present.b else []",
+            "batchRows": "1",
+            "batchLanes": "lastAxisWgVec4"
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": { "x": "min(normRows, 65535)", "y": "ceilDiv(normRows, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_broadcast_rows_vec4",
+      "priority": 95,
+      "when": ["dtypes.T == \"f32\"", "lastAxisBroadcastScaleOk", "dim(shapes.x, -1) >= 4", "dim(shapes.x, -1) % 4 == 0", "ranks.scale >= 1", "dim(shapes.scale, -1) == dim(shapes.x, -1)", "noStatsOutputs", "not present.b", "floor(normWorkgroupCap / lastAxisWgVec4) > 1 and normWorkgroupCap * 8 <= device.limits.maxComputeWorkgroupStorageSize"],
+      "demoteWhen": ["normRows < floor(normWorkgroupCap / lastAxisWgVec4)"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BroadcastRowsVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4 * floor(normWorkgroupCap / lastAxisWgVec4)",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "false",
+            "affineRowBroadcast": true,
+            "xRowShape": "prefix(shapes.x, ranks.x - 1)",
+            "scaleRowShape": "prefix(shapes.scale, ranks.scale - 1)",
+            "biasRowShape": "prefix(shapes.b, ranks.b - 1) if present.b else []",
+            "batchRows": "floor(normWorkgroupCap / lastAxisWgVec4)",
+            "batchLanes": "lastAxisWgVec4"
+          },
+          "bindings": ["x", "scale", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv(normRows, floor(normWorkgroupCap / lastAxisWgVec4)), 65535)",
+            "y": "ceilDiv(ceilDiv(normRows, floor(normWorkgroupCap / lastAxisWgVec4)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_broadcast_bias_rows_vec4",
+      "priority": 96,
+      "when": ["dtypes.T == \"f32\"", "lastAxisBroadcastScaleOk", "dim(shapes.x, -1) >= 4", "dim(shapes.x, -1) % 4 == 0", "ranks.scale >= 1", "dim(shapes.scale, -1) == dim(shapes.x, -1)", "noStatsOutputs", "present.b and biasBroadcastOk and ranks.b >= 1 and dim(shapes.b, -1) == dim(shapes.x, -1)", "floor(normWorkgroupCap / lastAxisWgVec4) > 1 and normWorkgroupCap * 8 <= device.limits.maxComputeWorkgroupStorageSize"],
+      "demoteWhen": ["normRows < floor(normWorkgroupCap / lastAxisWgVec4)"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LayerNormalization.BroadcastRowsVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"layer\"",
+            "vec4": true,
+            "hasBias": "present.b",
+            "writeStats": false,
+            "hidden": "dim(shapes.x, -1)",
+            "wg": "lastAxisWgVec4 * floor(normWorkgroupCap / lastAxisWgVec4)",
+            "epsilon": "attrs.epsilon",
+            "hiddenVec": "dim(shapes.x, -1) / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "false",
+            "affineRowBroadcast": true,
+            "xRowShape": "prefix(shapes.x, ranks.x - 1)",
+            "scaleRowShape": "prefix(shapes.scale, ranks.scale - 1)",
+            "biasRowShape": "prefix(shapes.b, ranks.b - 1) if present.b else []",
+            "batchRows": "floor(normWorkgroupCap / lastAxisWgVec4)",
+            "batchLanes": "lastAxisWgVec4"
+          },
+          "bindings": ["x", "scale", "bias", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv(normRows, floor(normWorkgroupCap / lastAxisWgVec4)), 65535)",
+            "y": "ceilDiv(ceilDiv(normRows, floor(normWorkgroupCap / lastAxisWgVec4)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

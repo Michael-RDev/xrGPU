@@ -1,0 +1,68 @@
+{
+  "domain": "com.microsoft",
+  "name": "BiasAdd",
+  "sinceVersion": 1,
+  "inputs": {
+    "X": { "dtype": "T", "rank": 3 },
+    "bias": { "dtype": "T", "rank": 1 },
+    "skip": { "dtype": "T", "rank": 3 }
+  },
+  "outputs": { "Y": { "dtype": "T", "rank": 3, "shape": "shapes.X" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T", "hidden": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 1" },
+  "when": ["ranks.X == 3", "ranks.skip == 3", "ranks.Y == 3", "sameShape(shapes.X, shapes.skip)", "sameShape(shapes.X, shapes.Y)", "f16Ok(dtypes.T)", "ranks.bias == 1", "dim(shapes.bias, 0) == dim(shapes.X, 2)"],
+  "bindings": { "x": { "arg": "X", "elementType": "$scalar" } },
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 30,
+      "when": ["numel(shapes.X) > 0", "numel(shapes.X) % 4 == 0", "dim(shapes.X, 2) % 4 == 0"],
+      "derive": { "vec4": true, "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasAdd.Vec4",
+          "shader": "bias-add.wgsl.jinja",
+          "bindings": [
+            "x",
+            { "arg": "bias", "elementType": "$scalar", "length": "$hidden" },
+            "skip",
+            { "arg": "Y", "name": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "priority": 0,
+      "derive": { "vec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasAdd.Scalar",
+          "shader": "bias-add.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            "bias",
+            "skip",
+            { "arg": "Y", "name": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.X), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

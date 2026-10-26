@@ -1,0 +1,364 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "mrope-f32-smoke-b1h4s64d64",
+      "preset": "smoke",
+      "attrs": {
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [16, 8, 8],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 16384, "rotPairs": 8192 },
+      "inputs": {
+        "x": { "shape": [1, 4, 64, 64], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 1, 64], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 127 },
+        "cos": { "shape": [128, 32], "dtype": "float32", "dist": "uniform", "seed": 1002, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [128, 32], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 4, 64, 64], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "qwen3-vl-2b-decode-q-h16-d128",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [24, 20, 20],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 2048, "rotPairs": 1024 },
+      "provenance": {
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "notes": "Qwen3-VL interleaved M-RoPE over the query projection: 16 heads x head_dim 128, mrope_section [24, 20, 20] summing to head_dim/2. Cache rows cover the model's position budget."
+      },
+      "inputs": {
+        "x": { "shape": [1, 16, 1, 128], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 1, 1], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 32767 },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 16, 1, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "qwen3-vl-2b-prefill-t512-q-h16-d128",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [24, 20, 20],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 1048576, "rotPairs": 524288 },
+      "provenance": {
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "notes": "Qwen3-VL interleaved M-RoPE over the query projection: 16 heads x head_dim 128, mrope_section [24, 20, 20] summing to head_dim/2. Cache rows cover the model's position budget."
+      },
+      "inputs": {
+        "x": { "shape": [1, 16, 512, 128], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": {
+          "shape": [3, 1, 512],
+          "dtype": "int32",
+          "dist": "uniform",
+          "seed": 1001,
+          "min": 0,
+          "max": 32767
+        },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 16, 512, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "qwen3-vl-2b-decode-k-h8-d128",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [24, 20, 20],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 1024, "rotPairs": 512 },
+      "provenance": {
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "notes": "Same layer's key projection: 8 kv heads, so half the query work and the smallest dispatch M-RoPE sees in decode."
+      },
+      "inputs": {
+        "x": { "shape": [1, 8, 1, 128], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 1, 1], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 32767 },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 8, 1, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "qwen2-5-vl-3b-prefill-t512-q-h16-d128",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [16, 24, 24],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 1048576, "rotPairs": 524288 },
+      "provenance": {
+        "model": "Qwen/Qwen2.5-VL-3B-Instruct",
+        "notes": "Qwen2.5-VL sectioned M-RoPE, mrope_section [16, 24, 24]. The sectioned branch reads three contiguous chunks where the interleaved branch strides by 3, so the two layouts have different cache access patterns at the same shape."
+      },
+      "inputs": {
+        "x": { "shape": [1, 16, 512, 128], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": {
+          "shape": [3, 1, 512],
+          "dtype": "int32",
+          "dist": "uniform",
+          "seed": 1001,
+          "min": 0,
+          "max": 32767
+        },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 16, 512, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "qwen3-vl-2b-prefill-t512-q-h16-d128-f16",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [24, 20, 20],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 1048576, "rotPairs": 524288 },
+      "provenance": {
+        "model": "Qwen/Qwen3-VL-2B-Instruct",
+        "notes": "f16 activations at the same Qwen3-VL prefill shape."
+      },
+      "inputs": {
+        "x": { "shape": [1, 16, 512, 128], "dtype": "float16", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": {
+          "shape": [3, 1, 512],
+          "dtype": "int32",
+          "dist": "uniform",
+          "seed": 1001,
+          "min": 0,
+          "max": 32767
+        },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float16", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 16, 512, 128], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 2 * 2 + args.rotPairs * 2 * 2" }]
+      }
+    },
+    {
+      "name": "mrope-f32-stress-b4h32s2048d128",
+      "preset": "stress",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [24, 20, 20],
+        "rotary_embedding_dim": 0,
+        "scale": 1
+      },
+      "vars": { "elems": 33554432, "rotPairs": 16777216 },
+      "inputs": {
+        "x": { "shape": [4, 32, 2048, 128], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": {
+          "shape": [3, 4, 2048],
+          "dtype": "int32",
+          "dist": "uniform",
+          "seed": 1001,
+          "min": 0,
+          "max": 32767
+        },
+        "cos": {
+          "shape": [32768, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 1002,
+          "scale": 0.1,
+          "offset": 0.9
+        },
+        "sin": { "shape": [32768, 64], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [4, 32, 2048, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "args.elems * 4 * 2 + args.rotPairs * 4 * 2" }]
+      }
+    },
+    {
+      "name": "mrope-vector-neighbor-rank3-d136-float32",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [1, 7, 60],
+        "rotary_embedding_dim": 136,
+        "scale": 0.5,
+        "num_heads": 5
+      },
+      "vars": { "elems": 349520, "rotPairs": 174760, "dtype": "float32" },
+      "provenance": {
+        "notes": "Aligned non-power-of-two head width, multiple batches, odd sequence, section-crossing vectors and non-unit cache scale. Counts logical input/output plus coefficient loads, excluding position indices and cache reuse."
+      },
+      "inputs": {
+        "x": { "shape": [2, 257, 680], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 2, 257], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 512 },
+        "cos": { "shape": [513, 68], "dtype": "float32", "dist": "uniform", "seed": 1002, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [513, 68], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [2, 257, 680], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.rotPairs * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "mrope-vector-neighbor-rank4-d136-float32",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [1, 7, 60],
+        "rotary_embedding_dim": 136,
+        "scale": 0.5,
+        "num_heads": 5
+      },
+      "vars": { "elems": 349520, "rotPairs": 174760, "dtype": "float32" },
+      "provenance": {
+        "notes": "Aligned non-power-of-two head width, multiple batches, odd sequence, section-crossing vectors and non-unit cache scale. Counts logical input/output plus coefficient loads, excluding position indices and cache reuse."
+      },
+      "inputs": {
+        "x": { "shape": [2, 5, 257, 136], "dtype": "float32", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 2, 257], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 512 },
+        "cos": { "shape": [513, 68], "dtype": "float32", "dist": "uniform", "seed": 1002, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [513, 68], "dtype": "float32", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [2, 5, 257, 136], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.rotPairs * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "mrope-vector-neighbor-rank3-d136-float16",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [1, 7, 60],
+        "rotary_embedding_dim": 136,
+        "scale": 0.5,
+        "num_heads": 5
+      },
+      "vars": { "elems": 349520, "rotPairs": 174760, "dtype": "float16" },
+      "provenance": {
+        "notes": "Aligned non-power-of-two head width, multiple batches, odd sequence, section-crossing vectors and non-unit cache scale. Counts logical input/output plus coefficient loads, excluding position indices and cache reuse."
+      },
+      "inputs": {
+        "x": { "shape": [2, 257, 680], "dtype": "float16", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 2, 257], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 512 },
+        "cos": { "shape": [513, 68], "dtype": "float16", "dist": "uniform", "seed": 1002, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [513, 68], "dtype": "float16", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [2, 257, 680], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.rotPairs * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "mrope-vector-neighbor-rank4-d136-float16",
+      "preset": "model",
+      "attrs": {
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "mrope_section": [1, 7, 60],
+        "rotary_embedding_dim": 136,
+        "scale": 0.5,
+        "num_heads": 5
+      },
+      "vars": { "elems": 349520, "rotPairs": 174760, "dtype": "float16" },
+      "provenance": {
+        "notes": "Aligned non-power-of-two head width, multiple batches, odd sequence, section-crossing vectors and non-unit cache scale. Counts logical input/output plus coefficient loads, excluding position indices and cache reuse."
+      },
+      "inputs": {
+        "x": { "shape": [2, 5, 257, 136], "dtype": "float16", "dist": "normal", "seed": 1000, "scale": 0.2 },
+        "positionIds": { "shape": [3, 2, 257], "dtype": "int32", "dist": "uniform", "seed": 1001, "min": 0, "max": 512 },
+        "cos": { "shape": [513, 68], "dtype": "float16", "dist": "uniform", "seed": 1002, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [513, 68], "dtype": "float16", "dist": "uniform", "seed": 1003, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [2, 5, 257, 136], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.rotPairs * 2) * dtypeBytes(args.dtype)" }]
+      }
+    }
+  ]
+}

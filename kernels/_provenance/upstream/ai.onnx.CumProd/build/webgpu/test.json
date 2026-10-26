@@ -1,0 +1,988 @@
+{
+  "fixtureArrays": {
+    "axis2_3d_f32_input_x": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+  },
+  "cases": [
+    {
+      "name": "dispatch_cliff_thread_row_scan_f32",
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [16776961, 1], "data": { "kind": "constant", "value": 1.0 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16776961, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "many_short_rows_axis1_portable_tiled_f32",
+      "provenance": {
+        "notes": "Many independent 64-element rows with nontrivial signed products check inclusive CumProd across device tiers."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4096, 64], "data": { "kind": "cycle", "values": [1.01, 0.99, -1.0, 0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4096, 64], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "tiled_short_rows_reverse_int32",
+      "provenance": {
+        "notes": "Reverse cumulative product on the short-row tiled path uses an int32 accumulator and the `1i` identity. A seven-value cycle over six-wide rows phase-shifts every row, exposing reverse indexing errors while keeping all partial products within int32."
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [4096, 6], "data": { "kind": "cycle", "values": [1, -1, 2, 3, -2, 1, 5] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [4096, 6], "tolerance": 0 } }
+    },
+    {
+      "name": "tiled_short_rows_exclusive_uint32",
+      "provenance": {
+        "notes": "Exclusive cumulative product over six-element rows uses an unsigned accumulator and the uint32 identity value 1. A seven-value cycle phase-shifts successive rows, and all products remain exactly representable without uint32 wraparound."
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "uint32", "shape": [4096, 6], "data": { "kind": "cycle", "values": [1, 2, 3, 1, 4, 1, 5] } }
+      },
+      "outputs": { "y": { "dtype": "uint32", "shape": [4096, 6], "tolerance": 0 } }
+    },
+    {
+      "name": "tiled_short_rows_reverse_exclusive_f16",
+      "provenance": {
+        "notes": "float16 on the short-row tiled path combines reverse and exclusive scanning. Signed powers of two keep every six-element product within 2^-4 .. 2^3, making both the f32 accumulator and float16 store exact; a seven-value cycle phase-shifts each row."
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4096, 6],
+          "data": { "kind": "cycle", "values": [1.0, 0.5, 2.0, -1.0, 0.25, 4.0, -0.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4096, 6], "tolerance": 0 } }
+    },
+    {
+      "name": "axis0_1d_f32",
+      "provenance": { "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc", "test": "CumProdTest._1DTest" },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "negative_axis_1d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestNegAxis"
+      },
+      "args": { "axis": -1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "exclusive_1d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestExclusive"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "reverse_1d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestReverse"
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "reverse_exclusive_1d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "axis0_2d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestAxis0"
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3] } }
+    },
+    {
+      "name": "axis1_2d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestAxis1"
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3] } }
+    },
+    {
+      "name": "axis2_3d_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis2"
+      },
+      "args": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/axis2_3d_f32_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4] } }
+    },
+    {
+      "name": "axis1_3d_reverse_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis1ReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/axis2_3d_f32_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4] } }
+    },
+    {
+      "name": "axis1_3d_reverse_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis1Reverse"
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/axis2_3d_f32_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "exclusive_single_axis_dim_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestExclusiveAxisHasSingleValue"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [3.0, 4.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2] } }
+    },
+    {
+      "name": "ort_exclusive_single_axis_dim_reverse_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestExclusiveAxisHasSingleValue"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [3.0, 4.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_axis2_3d_reverse_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis2ReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/axis2_3d_f32_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int32_1d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestInt32"
+      },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [1, 2, 3, 4, 5] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [5] } }
+    },
+    {
+      "name": "uint32_1d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestUint32"
+      },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "uint32", "shape": [5], "data": { "kind": "values", "values": [1, 2, 3, 4, 5] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [5] } }
+    },
+    {
+      "name": "f16_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestAxis1"
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 0.5, -2.0, 3.0, -1.0, -2.0, 0.25, 4.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4] } },
+      "tolerance": 0.002
+    },
+    {
+      "name": "ort_spec_example_default",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._OnnxSpecExample"
+      },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_spec_example_exclusive",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._OnnxSpecExampleExclusive"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_spec_example_reverse",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._OnnxSpecExampleReverse"
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_spec_example_reverse_exclusive",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._OnnxSpecExampleReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_exclusive_axis_dim_one_forward",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestExclusiveAxisHasSingleValue"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [3.0, 4.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_exclusive_axis_dim_one_reverse",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestExclusiveAxisHasSingleValue"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [3.0, 4.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_1d_int32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestInt32"
+      },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [1, 2, 3, 4, 5] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_1d_uint32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestUint32"
+      },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "uint32", "shape": [5], "data": { "kind": "values", "values": [1, 2, 3, 4, 5] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_3d_axis0_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis0"
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis1_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis1"
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis0_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis0Exclusive"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis1_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis1Exclusive"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis0_reverse_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis0Reverse"
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis2_reverse_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis2Reverse"
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis0_reverse_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis0ReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis1_reverse_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis1ReverseExclusive"
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 4], "data": { "kind": "linspace", "start": 1.0, "end": 24.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_cumprod_1d_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_1d",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_cumprod_1d_exclusive_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_1d_exclusive",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } },
+      "attrs": { "exclusive": 1 }
+    },
+    {
+      "name": "onnx_backend_cumprod_1d_int32_exclusive",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_1d_int32_exclusive" },
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "int32", "shape": [5], "data": { "kind": "values", "values": [1, 2, 3, 4, 5] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [5], "tolerance": 0 } },
+      "attrs": { "exclusive": 1 }
+    },
+    {
+      "name": "onnx_backend_cumprod_1d_reverse_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_1d_reverse",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } },
+      "attrs": { "reverse": 1 }
+    },
+    {
+      "name": "onnx_backend_cumprod_1d_reverse_exclusive_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_1d_reverse_exclusive",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } },
+      "attrs": { "exclusive": 1, "reverse": 1 }
+    },
+    {
+      "name": "onnx_backend_cumprod_2d_axis_0_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_2d_axis_0",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_cumprod_2d_axis_1_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_2d_axis_1",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_cumprod_2d_int32",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_2d_int32" },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 2, 3, 4, 5, 6] } }
+      },
+      "outputs": { "y": { "dtype": "int32", "shape": [2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_cumprod_2d_negative_axis_f32_projection",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_cumprod_2d_negative_axis",
+        "notes": "The official ONNX backend fixture uses float64; this case preserves its values in supported float32 storage."
+      },
+      "args": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_2d_axis0_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestExclusiveAxis0"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_2d_axis1_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestExclusiveAxis1"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_3d_axis2_exclusive_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._3DTestAxis2Exclusive"
+      },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/axis2_3d_f32_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "zero_propagation_axis1_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "notes": "Additional CumProd edge: zeros should only zero subsequent inclusive products along the selected axis."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [2.0, 0.0, 3.0, 4.0, -1.0, 2.0, 0.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "zero_reverse_exclusive_axis1_f32",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "notes": "Additional reverse/exclusive zero-propagation case not covered by ORT's positive-only examples."
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [2.0, 0.0, 3.0, 4.0, -1.0, 2.0, 0.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_axis1_pow2_f32",
+      "provenance": {
+        "notes": "Power-of-two values keep every partial product exact under any association; exercises the workgroup row-scan variant."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [8, 64], "data": { "kind": "cycle", "values": [1.0, 2.0, 1.0, 0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_zero_propagation_f32",
+      "provenance": {
+        "notes": "Zeros mid-row must zero all later (inclusive) products within the row but not cross row boundaries."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 80],
+          "data": { "kind": "cycle", "values": [2.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 80], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_zero_reverse_f32",
+      "provenance": {
+        "notes": "Reverse zero-propagation through the workgroup row-scan: zeros propagate toward lower indices."
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 80],
+          "data": { "kind": "cycle", "values": [2.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 80], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_exclusive_pow2_f32",
+      "provenance": { "notes": "Exclusive workgroup row-scan; power-of-two data stays exact." },
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [4, 64], "data": { "kind": "cycle", "values": [0.5, 2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_multichunk_pow2_f32",
+      "provenance": {
+        "notes": "Axis length 600 (last axis) spans three 256-element chunks, two full and one of 88, requiring the running product to carry across chunk boundaries. Exact powers of two (2.0, 0.5) keep the cumulative product exact in float32."
+      },
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [2, 600], "data": { "kind": "cycle", "values": [2.0, 0.5] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 600], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_axis1_u32_cycle",
+      "provenance": { "notes": "uint32 workgroup row-scan; products stay within 2^16 so no wrap, exact." },
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "uint32", "shape": [2, 64], "data": { "kind": "cycle", "values": [1, 1, 1, 2] } } },
+      "outputs": { "y": { "dtype": "uint32", "shape": [2, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_axis1_int32_cycle_vec4",
+      "provenance": {
+        "notes": "An int32 workgroup row scan over a vec4-aligned axis checks the signed multiplicative identity. A five-value cycle over 64 columns leaves each row at a different phase, and products stay below 2^13."
+      },
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "int32", "shape": [3, 64], "data": { "kind": "cycle", "values": [1, 2, -1, 1, 1] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [3, 64], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_reverse_exclusive_int32",
+      "provenance": {
+        "notes": "Reverse+exclusive int32 workgroup row-scan; products bounded by 2^12, sign flips via -1."
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "int32", "shape": [2, 48], "data": { "kind": "cycle", "values": [1, 2, -1, 1] } } },
+      "outputs": { "y": { "dtype": "int32", "shape": [2, 48], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_scan_axis1_f16_pow2",
+      "provenance": { "notes": "f16 workgroup row-scan; power-of-two products within f16 range stay exact." },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 40], "data": { "kind": "cycle", "values": [1.0, 2.0, 1.0, 0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 40], "tolerance": 0 } }
+    },
+    {
+      "name": "thread_rows_axis0_pow2_f32",
+      "provenance": {
+        "notes": "Wide-inner axis-0 cumprod exercising the thread-per-row serial variant (bit-identical accumulation order to the fallback)."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8, 2048],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 1.0, 0.5, 1.0, 1.0, 2.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 2048], "tolerance": 0 } }
+    },
+    {
+      "name": "thread_rows_axis1_3d_reverse_exclusive_f32",
+      "provenance": {
+        "notes": "A three-dimensional middle-axis scan exercises reverse and exclusive handling in the thread-per-row CumProd path."
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4, 16, 512], "data": { "kind": "cycle", "values": [1.0, 0.5, 2.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 16, 512], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_normal_inputs_subnormal_cumulative_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._2DTestAxis1",
+        "notes": "Normal float32 inputs can produce valid subnormal cumulative products; flushing the intermediate product zeroes the rest of the row."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1e-20, 1e-20, 2.0, -1e-20, 1e-20, 2.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [1e-20, 1e-40, 2e-40, -1e-20, -1e-40, -2e-40] }
+        }
+      }
+    },
+    {
+      "name": "f32_normal_inputs_subnormal_reverse_exclusive_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; bit-exact subnormal preservation is unattainable on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/cumprod_test.cc",
+        "test": "CumProdTest._1DTestReverseExclusive",
+        "notes": "Reverse-exclusive CumProd should also preserve subnormal cumulative products formed from normal inputs."
+      },
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [2.0, 1e-20, 1e-20, 1.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [1e-40, 1e-20, 1.0, 1.0] }
+        }
+      }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "args": { "axis": 0 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "clean_f16_last_axis_dim48_wg_scan",
+      "provenance": {
+        "notes": "Float16 innermost-axis cumulative product over 48 values cycling through 1, 0.5, and 2; the running product stays at 1 or 0.5, so every output is exact in float16."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4, 48],
+          "data": { "kind": "cycle", "values": [1.0, 0.5, 2.0, 1.0, 1.0, 0.5, 2.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 48], "tolerance": 0.01 } }
+    },
+    {
+      "name": "clean_f32_last_axis_nonmult4_dim50_scalar",
+      "provenance": { "notes": "A 50-element innermost axis checks a partial four-lane tail in inclusive CumProd." },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8, 50],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 0.5, 1.0, 1.0, 0.5, 2.0, 1.0, 0.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8, 50], "tolerance": 0 } }
+    },
+    {
+      "name": "clean_rank4_middle_axis_reverse_f32",
+      "provenance": {
+        "notes": "A rank-4 reverse cumulative product over axis 1, with inner size 32 (the product of the two trailing dimensions), decomposes indices into outer, axis, and inner components. Powers-of-two values (1, 2, 0.5) give an exact expected result in float32."
+      },
+      "attrs": { "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 8, 4],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 0.5, 1.0, 1.0, 0.5, 2.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 8, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "clean_f16_axis0_thread_row_scan",
+      "provenance": {
+        "notes": "A float16 CumProd over axis 0 with inner=32 exercises the strided thread-row scan, including float32 accumulation and narrowing on store."
+      },
+      "args": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [6, 32],
+          "data": { "kind": "cycle", "values": [1.0, 0.5, 2.0, 1.0, 1.0, 2.0, 0.5, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [6, 32], "tolerance": 0.01 } }
+    },
+    {
+      "name": "empty_scan_axis_zero_dim",
+      "args": { "axis": 1 },
+      "inputs": { "x": { "dtype": "float32", "shape": [4, 0, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "exclusive_nonmult4_dim_large_wg_row_scan",
+      "attrs": { "exclusive": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4098],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 0.5, 1.0, 1.0, 0.5, 2.0, 1.0, 0.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4098], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "reverse_exclusive_nonmult4_dim_wg_row_scan",
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4098],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 0.5, 1.0, 1.0, 0.5, 2.0, 1.0, 0.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4098], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "alignment_mismatch_dim4094_axis1_scalar",
+      "provenance": {
+        "notes": "A 4,094-element row prevents vec4-aligned tails while retaining the large-row workgroup scan path."
+      },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 4094], "data": { "kind": "cycle", "values": [1.0, 1.001, 0.999, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4094], "tolerance": 0.001 } }
+    },
+    {
+      "name": "thread_row_scan_f16_inner_nonunit_exclusive_reverse",
+      "attrs": { "exclusive": 1, "reverse": 1 },
+      "args": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [3, 8, 4],
+          "data": { "kind": "cycle", "values": [1.0, 0.5, 2.0, 1.0, 1.0, 2.0, 0.5, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 8, 4], "tolerance": 0.01 } }
+    },
+    {
+      "name": "rank7_last_axis",
+      "args": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "cycle", "values": [1.0, 0.5, 1.5, 0.75] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank8_last_axis",
+      "args": { "axis": -1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "cycle", "values": [1.0, -0.5, 2.0, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 1, 2, 1, 2, 1, 2, 3], "tolerance": 0.000001 } }
+    }
+  ]
+}

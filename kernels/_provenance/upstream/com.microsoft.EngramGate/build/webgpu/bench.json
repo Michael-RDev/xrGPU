@@ -1,0 +1,924 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256, 512], "LANE_WORDS": [1, 2, 4, 8] },
+  "cases": [
+    {
+      "name": "engram-nanowhale-decode-h320-f32",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 nanowhale Engram block",
+        "notes": "One decoded token: four hyper-connection streams of 320 channels. The whole operator moves 21 KB, so the measurement is launch latency rather than bandwidth."
+      },
+      "vars": { "dtype": "float32", "rows": 4, "tokens": 1, "hcMult": 4, "hidden": 320 },
+      "inputs": {
+        "keyT": { "shape": [1, 1, 4, 320], "dtype": "float32", "dist": "normal", "seed": 601, "scale": 1 },
+        "queryT": { "shape": [1, 1, 4, 320], "dtype": "float32", "dist": "normal", "seed": 602, "scale": 1 },
+        "valueT": { "shape": [1, 1, 320], "dtype": "float32", "dist": "normal", "seed": 603, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 604,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 605,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 4, 320], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-nanowhale-decode-h320-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 nanowhale Engram block",
+        "notes": "The float16 decode step at the same geometry."
+      },
+      "vars": { "dtype": "float16", "rows": 4, "tokens": 1, "hcMult": 4, "hidden": 320 },
+      "inputs": {
+        "keyT": { "shape": [1, 1, 4, 320], "dtype": "float16", "dist": "normal", "seed": 611, "scale": 1 },
+        "queryT": { "shape": [1, 1, 4, 320], "dtype": "float16", "dist": "normal", "seed": 612, "scale": 1 },
+        "valueT": { "shape": [1, 1, 320], "dtype": "float16", "dist": "normal", "seed": 613, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 614,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 615,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 4, 320], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-nanowhale-prefill-s64-h320-f32",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 nanowhale Engram block",
+        "notes": "A 64-token prefill: 256 rows of 320, still small enough to sit inside cache."
+      },
+      "vars": { "dtype": "float32", "rows": 256, "tokens": 64, "hcMult": 4, "hidden": 320 },
+      "inputs": {
+        "keyT": { "shape": [1, 64, 4, 320], "dtype": "float32", "dist": "normal", "seed": 621, "scale": 1 },
+        "queryT": { "shape": [1, 64, 4, 320], "dtype": "float32", "dist": "normal", "seed": 622, "scale": 1 },
+        "valueT": { "shape": [1, 64, 320], "dtype": "float32", "dist": "normal", "seed": 623, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 624,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 625,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 64, 4, 320], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-nanowhale-prefill-s512-h320-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 nanowhale Engram block",
+        "notes": "Measures the DeepSeek-V4 nanowhale Engram gate over a 512-token prefill: 2048 rows (512 tokens x 4 heads) of width 320 in float16."
+      },
+      "vars": { "dtype": "float16", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 320 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 320], "dtype": "float16", "dist": "normal", "seed": 631, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 320], "dtype": "float16", "dist": "normal", "seed": 632, "scale": 1 },
+        "valueT": { "shape": [1, 512, 320], "dtype": "float16", "dist": "normal", "seed": 633, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 634,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 635,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 320], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-v4flash-decode-h4096-f32",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 v4flash Engram block",
+        "notes": "One decoded token of the wide configuration: four rows of 4096, the fewest rows this operator ever runs with at a non-trivial row width."
+      },
+      "vars": { "dtype": "float32", "rows": 4, "tokens": 1, "hcMult": 4, "hidden": 4096 },
+      "inputs": {
+        "keyT": { "shape": [1, 1, 4, 4096], "dtype": "float32", "dist": "normal", "seed": 641, "scale": 1 },
+        "queryT": { "shape": [1, 1, 4, 4096], "dtype": "float32", "dist": "normal", "seed": 642, "scale": 1 },
+        "valueT": { "shape": [1, 1, 4096], "dtype": "float32", "dist": "normal", "seed": 643, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 644,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 645,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 4, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-v4flash-decode-h4096-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 v4flash Engram block",
+        "notes": "The float16 half of the wide decode step."
+      },
+      "vars": { "dtype": "float16", "rows": 4, "tokens": 1, "hcMult": 4, "hidden": 4096 },
+      "inputs": {
+        "keyT": { "shape": [1, 1, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 651, "scale": 1 },
+        "queryT": { "shape": [1, 1, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 652, "scale": 1 },
+        "valueT": { "shape": [1, 1, 4096], "dtype": "float16", "dist": "normal", "seed": 653, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 654,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 655,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 4, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-v4flash-prefill-s512-h4096-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "DeepSeek-V4 v4flash Engram block",
+        "notes": "A 512-token prefill of the wide configuration: 8192 rows of 4096, a 55 MB working set well past cache, so the bandwidth figure is a DRAM figure."
+      },
+      "vars": { "dtype": "float16", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 4096 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 661, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 662, "scale": 1 },
+        "valueT": { "shape": [1, 512, 4096], "dtype": "float16", "dist": "normal", "seed": 663, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 664,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 665,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 4096], "dtype": "float16" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-narrow-h64-f32",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "64 channels per row: 2048 rows each narrower than a subgroup, where a workgroup-per-row schedule would leave most of every workgroup idle."
+      },
+      "vars": { "dtype": "float32", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 64 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 64], "dtype": "float32", "dist": "normal", "seed": 671, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 64], "dtype": "float32", "dist": "normal", "seed": 672, "scale": 1 },
+        "valueT": { "shape": [1, 512, 64], "dtype": "float32", "dist": "normal", "seed": 673, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 674,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 675,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 64], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-narrow-h128-f16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "128 channels per row in float16, the other narrow width the hyper-connection family uses."
+      },
+      "vars": { "dtype": "float16", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 128 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 128], "dtype": "float16", "dist": "normal", "seed": 681, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 128], "dtype": "float16", "dist": "normal", "seed": 682, "scale": 1 },
+        "valueT": { "shape": [1, 512, 128], "dtype": "float16", "dist": "normal", "seed": 683, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 128],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 684,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 128],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 685,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 128], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-scalar-h130-f32",
+      "preset": "smoke",
+      "provenance": { "notes": "A 130-channel row is not divisible by four and exercises a narrow scalar-width tail." },
+      "vars": { "dtype": "float32", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 130 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 130], "dtype": "float32", "dist": "normal", "seed": 691, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 130], "dtype": "float32", "dist": "normal", "seed": 692, "scale": 1 },
+        "valueT": { "shape": [1, 512, 130], "dtype": "float32", "dist": "normal", "seed": 693, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 130],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 694,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 130],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 695,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 130], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-batched-rows-h320-f16",
+      "preset": "scale",
+      "provenance": {
+        "model": "DeepSeek-V4 nanowhale Engram block",
+        "notes": "65536 rows of 320 from a batched prefill, past the point where a one-dimensional workgroup grid would need the folded row index."
+      },
+      "vars": { "dtype": "float16", "rows": 65536, "tokens": 16384, "hcMult": 4, "hidden": 320 },
+      "inputs": {
+        "keyT": { "shape": [32, 512, 4, 320], "dtype": "float16", "dist": "normal", "seed": 701, "scale": 1 },
+        "queryT": { "shape": [32, 512, 4, 320], "dtype": "float16", "dist": "normal", "seed": 702, "scale": 1 },
+        "valueT": { "shape": [32, 512, 320], "dtype": "float16", "dist": "normal", "seed": 703, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 704,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 320],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 705,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [32, 512, 4, 320], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-v4flash-prefill-s512-h4096-f32",
+      "preset": "model",
+      "provenance": {
+        "model": "DeepSeek-V4 v4flash Engram block",
+        "notes": "The float32 counterpart of the wide prefill, a 110 MB working set."
+      },
+      "vars": { "dtype": "float32", "rows": 2048, "tokens": 512, "hcMult": 4, "hidden": 4096 },
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 4096], "dtype": "float32", "dist": "normal", "seed": 711, "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 4096], "dtype": "float32", "dist": "normal", "seed": 712, "scale": 1 },
+        "valueT": { "shape": [1, 512, 4096], "dtype": "float32", "dist": "normal", "seed": 713, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 714,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 715,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "engram-v4flash-prefill-s1024-h4096-f16",
+      "preset": "model",
+      "provenance": {
+        "model": "DeepSeek-V4 v4flash Engram block",
+        "notes": "A 1024-token prefill of the wide configuration: 110 MB in float16."
+      },
+      "vars": { "dtype": "float16", "rows": 4096, "tokens": 1024, "hcMult": 4, "hidden": 4096 },
+      "inputs": {
+        "keyT": { "shape": [1, 1024, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 721, "scale": 1 },
+        "queryT": { "shape": [1, 1024, 4, 4096], "dtype": "float16", "dist": "normal", "seed": 722, "scale": 1 },
+        "valueT": { "shape": [1, 1024, 4096], "dtype": "float16", "dist": "normal", "seed": 723, "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 724,
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 4096],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 725,
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1024, 4, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(3 * args.rows * args.hidden + args.tokens * args.hidden + 2 * args.hcMult * args.hidden) * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "neighbor_float32_h63_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 63], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 63], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 63], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 63],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 63],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 63], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h65_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 65], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 65], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 65], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 65],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 65],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 65], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h127_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 127], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 127], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 127], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 127],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 127],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 127], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h129_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 129], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 129], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 129], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 129],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 129],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 129], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h131_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 131], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 131], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 131], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 131],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 131],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 131], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h255_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 255], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 255], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 255], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 255],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 255],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 255], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h257_r3",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 1, 3, 257], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 1, 3, 257], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 1, 257], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [3, 257],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [3, 257],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 3, 257], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float32_h257_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 257], "dtype": "float32", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 257], "dtype": "float32", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 257], "dtype": "float32", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 257],
+          "dtype": "float32",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 257],
+          "dtype": "float32",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 257], "dtype": "float32" } }
+    },
+    {
+      "name": "neighbor_float16_h63_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 63], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 63], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 63], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 63],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 63],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 63], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h65_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 65], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 65], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 65], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 65],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 65],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 65], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h127_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 127], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 127], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 127], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 127],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 127],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 127], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h129_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 129], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 129], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 129], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 129],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 129],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 129], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h131_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 131], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 131], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 131], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 131],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 131],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 131], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h255_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 255], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 255], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 255], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 255],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 255],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 255], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h257_r3",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 1, 3, 257], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 1, 3, 257], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 1, 257], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [3, 257],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [3, 257],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1, 3, 257], "dtype": "float16" } }
+    },
+    {
+      "name": "neighbor_float16_h257_r2048",
+      "preset": "all",
+      "inputs": {
+        "keyT": { "shape": [1, 512, 4, 257], "dtype": "float16", "seed": 691, "dist": "normal", "scale": 1 },
+        "queryT": { "shape": [1, 512, 4, 257], "dtype": "float16", "seed": 692, "dist": "normal", "scale": 1 },
+        "valueT": { "shape": [1, 512, 257], "dtype": "float16", "seed": 693, "dist": "normal", "scale": 1 },
+        "keyNormScaleT": {
+          "shape": [4, 257],
+          "dtype": "float16",
+          "seed": 694,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        },
+        "queryNormScaleT": {
+          "shape": [4, 257],
+          "dtype": "float16",
+          "seed": 695,
+          "dist": "uniform",
+          "min": 0.2,
+          "max": 1.8
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 512, 4, 257], "dtype": "float16" } }
+    }
+  ]
+}

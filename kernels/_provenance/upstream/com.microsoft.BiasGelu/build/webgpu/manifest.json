@@ -1,0 +1,75 @@
+{
+  "domain": "com.microsoft",
+  "name": "BiasGelu",
+  "sinceVersion": 1,
+  "inputs": { "A": { "dtype": "T" }, "B": { "dtype": "T", "rank": 1 } },
+  "outputs": { "C": { "dtype": "T", "rank": "ranks.A", "shape": "shapes.A" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "workgroupOk": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "baseOk": "workgroupOk and ranks.A >= 1 and ranks.C == ranks.A and sameShape(shapes.A, shapes.C) and f16Ok(dtypes.T) and ranks.B == 1 and dim(shapes.B, 0) == dim(shapes.A, ranks.A - 1)",
+    "vec4Ok": "numel(shapes.A) > 0 and numel(shapes.A) % 4 == 0 and dim(shapes.A, ranks.A - 1) % 4 == 0",
+    "scalar": "dtypes.T"
+  },
+  "when": ["baseOk"],
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 20,
+      "when": ["vec4Ok"],
+      "derive": {
+        "vec4": true,
+        "vec4Tail": false,
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "hidden": "dim(shapes.A, ranks.A - 1) if dim(shapes.A, ranks.A - 1) > 0 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasGelu.Vec4",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "A", "name": "x", "elementType": "$vectorScalar" },
+            { "arg": "B", "name": "bias", "elementType": "$scalar", "length": "$hidden" },
+            { "arg": "C", "name": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.A) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.A) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.A) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail",
+      "priority": 10,
+      "derive": {
+        "vec4": false,
+        "vec4Tail": "numel(shapes.A) > 0",
+        "hidden": "dim(shapes.A, ranks.A - 1) if dim(shapes.A, ranks.A - 1) > 0 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasGelu.Vec4Tail",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "A", "name": "x", "elementType": "$scalar" },
+            { "arg": "B", "name": "bias", "elementType": "$scalar" },
+            { "arg": "C", "name": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.A)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.A), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.A), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

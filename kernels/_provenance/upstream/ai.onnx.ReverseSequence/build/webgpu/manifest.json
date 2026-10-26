@@ -1,0 +1,124 @@
+{
+  "domain": "ai.onnx",
+  "name": "ReverseSequence",
+  "sinceVersion": 10,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "sequence_lens": { "dtype": "I", "rank": 1, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "batch_axis": { "default": 1 }, "time_axis": { "default": 0 } },
+  "attributeConstraints": { "batch_axis": { "values": [0, 1] }, "time_axis": { "values": [0, 1] } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool"],
+    "I": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "scalar": "dtypes.T",
+    "indexScalar": "dtypes.I",
+    "rank": "ranks.input",
+    "batchAxis": "attrs.batch_axis",
+    "timeAxis": "attrs.time_axis",
+    "shape": "shapes.input",
+    "outputWg": "max(1, min(tunables.WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX))"
+  },
+  "when": ["ranks.input >= 2", "ranks.y == ranks.input", "ranks.sequence_lens == 1", "numel(shapes.input) == numel(shapes.y)", "attrs.batch_axis != attrs.time_axis", "dim(shapes.sequence_lens, 0) == dim(shapes.input, attrs.batch_axis)", "f16Ok(dtypes.T)"],
+  "bindings": { "sequence_lens": { "elementType": "$indexScalar" } },
+  "variants": [
+    {
+      "id": "rankn_output_packed8",
+      "priority": 6,
+      "when": ["dtypes.T == \"f16\"", "numel(shapes.input) % 8 == 0"],
+      "derive": { "packedOutput": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReverseSequence.OutputPacked8",
+          "shader": "reverse-sequence-output.wgsl.jinja",
+          "bindings": [
+            { "arg": "input", "elementType": "u32" },
+            "sequence_lens",
+            { "arg": "y", "elementType": "vec4<u32>" },
+            { "name": "params", "struct": [{ "name": "count8", "type": "u32", "value": "numel(shapes.y) / 8" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 8), (outputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 8), (outputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rankn_output_vec4",
+      "priority": 5,
+      "when": ["numel(shapes.input) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "packedOutput": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReverseSequence.OutputVec4",
+          "shader": "reverse-sequence-output.wgsl.jinja",
+          "bindings": [
+            { "arg": "input", "elementType": "$scalar" },
+            "sequence_lens",
+            { "arg": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count4", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (outputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (outputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rankn_vec4",
+      "priority": 10,
+      "when": ["attrs.time_axis != ranks.input - 1", "attrs.batch_axis != ranks.input - 1", "dim(shapes.input, ranks.input - 1) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReverseSequence.Vec4",
+          "shader": "reverse-sequence-vec4.wgsl.jinja",
+          "bindings": [
+            { "arg": "input", "elementType": "$vectorScalar" },
+            "sequence_lens",
+            { "arg": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count4", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rankn",
+      "priority": 0,
+      "passes": [
+        {
+          "id": "main",
+          "name": "ReverseSequence",
+          "shader": "reverse-sequence.wgsl.jinja",
+          "bindings": [
+            "input",
+            "sequence_lens",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

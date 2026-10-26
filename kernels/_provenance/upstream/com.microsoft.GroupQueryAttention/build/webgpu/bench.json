@@ -1,0 +1,2178 @@
+{
+  "tunableSpace": {
+    "PREFILL_QUERY_TILE": [16, 32],
+    "PREFILL_LANES_PER_QUERY": [4, 8],
+    "CLUSTER_TILE_K_F32": [8, 16, 32],
+    "NO_SG_TILE_K_MAX": [8, 16]
+  },
+  "cases": [
+    {
+      "name": "gqa-f32-1x64x64-h4kv2d16",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 64, "kvSeq": 64, "heads": 4, "kvHeads": 2, "headDim": 16 },
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "scale": 0.25, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 64, 64], "dtype": "float32", "dist": "normal", "seed": 209, "scale": 0.2 },
+        "keyT": { "shape": [1, 64, 32], "dtype": "float32", "dist": "normal", "seed": 210, "scale": 0.2 },
+        "valueT": { "shape": [1, 64, 32], "dtype": "float32", "dist": "normal", "seed": 211, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [63] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [64] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 64, 64], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 2, 64, 16], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 2, 64, 16], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "qwen3-prefill-32h8kv-d128-s512",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 512, "kvSeq": 512, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 512, 4096], "dtype": "float32", "dist": "normal", "seed": 370, "scale": 0.2 },
+        "keyT": { "shape": [1, 512, 1024], "dtype": "float32", "dist": "normal", "seed": 371, "scale": 0.2 },
+        "valueT": { "shape": [1, 512, 1024], "dtype": "float32", "dist": "normal", "seed": 372, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 512, 4096], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 8, 512, 128], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 8, 512, 128], "dtype": "float32" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "decode-h4kv1-d64-kv512",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 1, "kvSeq": 512, "heads": 4, "kvHeads": 1, "headDim": 64 },
+      "attrs": { "num_heads": 4, "kv_num_heads": 1, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 1, 256], "dtype": "float32", "dist": "normal", "seed": 376, "scale": 0.2 },
+        "keyT": { "shape": [1, 512, 64], "dtype": "float32", "dist": "normal", "seed": 377, "scale": 0.2 },
+        "valueT": { "shape": [1, 512, 64], "dtype": "float32", "dist": "normal", "seed": 378, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1, 256], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 512, 64], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 512, 64], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(4 * args.kvSeq * args.kvHeads * args.headDim + 2 * args.qSeq * args.heads * args.headDim) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "llama-decode-32h8kv-d128-kv2048",
+      "preset": "model",
+      "vars": { "batch": 1, "qSeq": 1, "kvSeq": 2048, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 1, 4096], "dtype": "float32", "dist": "normal", "seed": 373, "scale": 0.2 },
+        "keyT": { "shape": [1, 2048, 1024], "dtype": "float32", "dist": "normal", "seed": 374, "scale": 0.2 },
+        "valueT": { "shape": [1, 2048, 1024], "dtype": "float32", "dist": "normal", "seed": 375, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1, 4096], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 8, 2048, 128], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 8, 2048, 128], "dtype": "float32" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(4 * args.kvSeq * args.kvHeads * args.headDim + 2 * args.qSeq * args.heads * args.headDim) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "llama-decode-32h8kv-d128-kv8192",
+      "preset": "stress",
+      "vars": { "batch": 1, "qSeq": 1, "kvSeq": 8192, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 1, 4096], "dtype": "float32", "dist": "normal", "seed": 373, "scale": 0.2 },
+        "keyT": { "shape": [1, 8192, 1024], "dtype": "float32", "dist": "normal", "seed": 374, "scale": 0.2 },
+        "valueT": { "shape": [1, 8192, 1024], "dtype": "float32", "dist": "normal", "seed": 375, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [8191] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [8192] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1, 4096], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 8, 8192, 128], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 8, 8192, 128], "dtype": "float32" }
+      },
+      "bench": {
+        "primary": false,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(4 * args.kvSeq * args.kvHeads * args.headDim + 2 * args.qSeq * args.heads * args.headDim) * 4"
+          }
+        ]
+      },
+      "provenance": {
+        "notes": "Long-context decode yields 64 candidate K partitions, exceeding the 16-partition cap and exercising capped split parallelism plus its merge at head size 128."
+      }
+    },
+    {
+      "name": "qwen3-prefill-32h8kv-d128-s512-f16",
+      "preset": "model",
+      "vars": { "batch": 1, "qSeq": 512, "kvSeq": 512, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 512, 4096], "dtype": "float16", "dist": "normal", "seed": 370, "scale": 0.2 },
+        "keyT": { "shape": [1, 512, 1024], "dtype": "float16", "dist": "normal", "seed": 371, "scale": 0.2 },
+        "valueT": { "shape": [1, 512, 1024], "dtype": "float16", "dist": "normal", "seed": 372, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 512, 4096], "dtype": "float16" },
+        "presentKeyT": { "shape": [1, 8, 512, 128], "dtype": "float16" },
+        "presentValueT": { "shape": [1, 8, 512, 128], "dtype": "float16" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "llama-decode-32h8kv-d128-kv2048-f16",
+      "preset": "model",
+      "vars": { "batch": 1, "qSeq": 1, "kvSeq": 2048, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 1, 4096], "dtype": "float16", "dist": "normal", "seed": 373, "scale": 0.2 },
+        "keyT": { "shape": [1, 2048, 1024], "dtype": "float16", "dist": "normal", "seed": 374, "scale": 0.2 },
+        "valueT": { "shape": [1, 2048, 1024], "dtype": "float16", "dist": "normal", "seed": 375, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1, 4096], "dtype": "float16" },
+        "presentKeyT": { "shape": [1, 8, 2048, 128], "dtype": "float16" },
+        "presentValueT": { "shape": [1, 8, 2048, 128], "dtype": "float16" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(4 * args.kvSeq * args.kvHeads * args.headDim + 2 * args.qSeq * args.heads * args.headDim) * 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-decode-32h8kv-d128-kv2048",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 2048, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 2048, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 1) * dim(shapes.pastKeyT, 2) * (dim(shapes.queryT, 2) / attrs.num_heads) * attrs.num_heads"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-32h8kv-d128-s64",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 64, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 64, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 64, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [63] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [64] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 64, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 64, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 64, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-32h8kv-d128-s128",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 128, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 128, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 128, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 128, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 128, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 128, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-32h8kv-d128-s256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 256, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 256, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 256, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [255] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [256] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 256, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 256, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 256, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-32h8kv-d128-s512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-rotary-32h8kv-d128-s512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "do_rotary": 1 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "cosCacheT": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "sinCacheT": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.013, "cosStep": 0.037 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-decode-f16-32h8kv-d128-kv2048",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float16",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float16",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 8, 2048, 128] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 8, 2048, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 1) * dim(shapes.pastKeyT, 2) * (dim(shapes.queryT, 2) / attrs.num_heads) * attrs.num_heads"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-f16-32h8kv-d128-s512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-prefill-rotary-f16-32h8kv-d128-s512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "do_rotary": 1 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float16", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "cosCacheT": {
+          "dtype": "float16",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "sinCacheT": {
+          "dtype": "float16",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.013, "cosStep": 0.037 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "newkv-past-decode-q1p2048",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.017 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.023 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2049] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 2049, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 2049, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 1) * dim(shapes.presentKeyT, 2) * (dim(shapes.queryT, 2) / attrs.num_heads) * attrs.num_heads"
+          }
+        ]
+      }
+    },
+    {
+      "name": "newkv-past-prefill-q512p512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.017 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.019, "cosStep": 0.023 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1023] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1024] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.presentKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "quant-int8-decode-h8kv2-d128-kv2048",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Buffer-sharing INT8 decode. The bandwidth metric counts the portable physical minimum: WebGPU exposes each logical INT8 cache element through i32 storage, the past cache is preserved into present K/V, and attention reads K/V once per KV head. It intentionally does not credit duplicate cache reads across grouped query heads."
+      },
+      "attrs": {
+        "num_heads": 8,
+        "kv_num_heads": 2,
+        "kv_cache_bit_width": 8,
+        "k_quant_type": "PER_TENSOR",
+        "v_quant_type": "PER_TENSOR"
+      },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.031 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.015, "cosStep": 0.033 }
+        },
+        "pastKeyT": { "dtype": "int8", "shape": [1, 2, 2048, 128], "dist": "uniform", "seed": 880, "min": -8, "max": 8 },
+        "pastValueT": {
+          "dtype": "int8",
+          "shape": [1, 2, 2048, 128],
+          "dist": "uniform",
+          "seed": 881,
+          "min": -8,
+          "max": 8
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } },
+        "kScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } },
+        "vScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 1024] },
+        "presentKeyT": { "dtype": "int8", "shape": [1, 2, 2048, 128] },
+        "presentValueT": { "dtype": "int8", "shape": [1, 2, 2048, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (6 * numel(shapes.pastKeyT) + 4 * numel(shapes.keyT) + 2 * numel(shapes.queryT))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "quant-int8-prefill-h32kv8-d128-s512-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Measures GroupQueryAttention over a 512-token Llama-sized prefill (32 query heads grouped 4:1 over 8 key/value heads, head width 128) with an int8 quantized key/value cache."
+      },
+      "attrs": {
+        "num_heads": 32,
+        "kv_num_heads": 8,
+        "kv_cache_bit_width": 8,
+        "k_quant_type": "PER_TENSOR",
+        "v_quant_type": "PER_TENSOR"
+      },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.031 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.015, "cosStep": 0.033 }
+        },
+        "pastKeyT": { "dtype": "int8", "shape": [1, 8, 512, 128], "dist": "uniform", "seed": 882, "min": -8, "max": 8 },
+        "pastValueT": {
+          "dtype": "int8",
+          "shape": [1, 8, 512, 128],
+          "dist": "uniform",
+          "seed": 883,
+          "min": -8,
+          "max": 8
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "kScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } },
+        "vScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "int8", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "int8", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "quant-int4-prefill-h32kv8-d128-s512-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Measures GroupQueryAttention over a 512-token Llama-sized prefill (32 query heads grouped 4:1 over 8 key/value heads, head width 128) with a packed int4 quantized key/value cache."
+      },
+      "attrs": {
+        "num_heads": 32,
+        "kv_num_heads": 8,
+        "kv_cache_bit_width": 4,
+        "k_quant_type": "PER_TENSOR",
+        "v_quant_type": "PER_TENSOR"
+      },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.013, "cosStep": 0.031 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 512, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.015, "cosStep": 0.033 }
+        },
+        "pastKeyT": { "dtype": "uint8", "shape": [1, 8, 512, 64], "dist": "uniform", "seed": 884, "min": 0, "max": 256 },
+        "pastValueT": {
+          "dtype": "uint8",
+          "shape": [1, 8, 512, 64],
+          "dist": "uniform",
+          "seed": 885,
+          "min": 0,
+          "max": 256
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "kScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } },
+        "vScaleT": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.0625] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "uint8", "shape": [1, 8, 512, 64] },
+        "presentValueT": { "dtype": "uint8", "shape": [1, 8, 512, 64] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bias-prefill-cliff-h32kv8-d128-s512",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "attentionBiasT": {
+          "dtype": "float32",
+          "shape": [1, 32, 512, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.007, "cosStep": 0.009 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "hd16-belowfloor-decode-h8kv2-kv2048",
+      "preset": "smoke",
+      "attrs": { "num_heads": 8, "kv_num_heads": 2 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 32], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 32], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 2048, 16],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 2048, 16],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 128] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 2048, 16] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 2048, 16] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * dim(shapes.pastKeyT, 1) * dim(shapes.pastKeyT, 2) * dim(shapes.pastKeyT, 3) * 4 + 2 * dim(shapes.queryT, 2) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sliding-window-decode-h8kv2-d128-kv2048-w256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 8, "kv_num_heads": 2, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 256], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 256], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 2048, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2047] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [2048] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 1024] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 2048, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 2048, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * dim(shapes.pastKeyT, 1) * dim(shapes.pastKeyT, 2) * dim(shapes.pastKeyT, 3) * 4 + 2 * dim(shapes.queryT, 2) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "scalar-fallback-decode-hd32-h8kv8-kv4096",
+      "preset": "stress",
+      "vars": { "batch": 1, "qSeq": 1, "kvSeq": 4096, "heads": 8, "kvHeads": 8, "headDim": 32 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 8, "scale": 0.17677669529663687, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 1, 256], "dtype": "float32", "dist": "normal", "seed": 911, "scale": 0.2 },
+        "keyT": { "shape": [1, 4096, 256], "dtype": "float32", "dist": "normal", "seed": 912, "scale": 0.2 },
+        "valueT": { "shape": [1, 4096, 256], "dtype": "float32", "dist": "normal", "seed": 913, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [4095] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [4096] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 1, 256], "dtype": "float32", "dist": "empty" },
+        "presentKeyT": { "shape": [1, 8, 4096, 32], "dtype": "float32", "dist": "empty" },
+        "presentValueT": { "shape": [1, 8, 4096, 32], "dtype": "float32", "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(4 * dim(shapes.keyT, 1) * attrs.kv_num_heads * (dim(shapes.queryT, 2) / attrs.num_heads) + 2 * dim(shapes.queryT, 2)) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "scalar-fallback-prefill-hd32-h8kv8-s512",
+      "preset": "stress",
+      "vars": { "batch": 1, "qSeq": 512, "kvSeq": 512, "heads": 8, "kvHeads": 8, "headDim": 32 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 8, "scale": 0.17677669529663687, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 512, 256], "dtype": "float32", "dist": "normal", "seed": 901, "scale": 0.2 },
+        "keyT": { "shape": [1, 512, 256], "dtype": "float32", "dist": "normal", "seed": 902, "scale": 0.2 },
+        "valueT": { "shape": [1, 512, 256], "dtype": "float32", "dist": "normal", "seed": 903, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 512, 256], "dtype": "float32", "dist": "empty" },
+        "presentKeyT": { "shape": [1, 8, 512, 32], "dtype": "float32", "dist": "empty" },
+        "presentValueT": { "shape": [1, 8, 512, 32], "dtype": "float32", "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 0) * dim(shapes.queryT, 1) * dim(shapes.keyT, 1) * attrs.num_heads * (dim(shapes.queryT, 2) / attrs.num_heads)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "gqa-f32-q31-kv511-h8-kv2-d64-double-threshold-cliff",
+      "preset": "stress",
+      "vars": { "batch": 1, "qSeq": 31, "kvSeq": 511, "heads": 8, "kvHeads": 2, "headDim": 64 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 2, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 31, 512], "dtype": "float32", "dist": "normal", "seed": 921, "scale": 0.2 },
+        "keyT": { "shape": [1, 511, 128], "dtype": "float32", "dist": "normal", "seed": 922, "scale": 0.2 },
+        "valueT": { "shape": [1, 511, 128], "dtype": "float32", "dist": "normal", "seed": 923, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [510] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 31, 512], "dtype": "float32", "dist": "empty" },
+        "presentKeyT": { "shape": [1, 2, 511, 64], "dtype": "float32", "dist": "empty" },
+        "presentValueT": { "shape": [1, 2, 511, 64], "dtype": "float32", "dist": "empty" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "gqa-f32-q32-kv512-h8-kv2-d64-threshold-control",
+      "preset": "stress",
+      "vars": { "batch": 1, "qSeq": 32, "kvSeq": 512, "heads": 8, "kvHeads": 2, "headDim": 64 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 2, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 32, 512], "dtype": "float32", "dist": "normal", "seed": 924, "scale": 0.2 },
+        "keyT": { "shape": [1, 512, 128], "dtype": "float32", "dist": "normal", "seed": 925, "scale": 0.2 },
+        "valueT": { "shape": [1, 512, 128], "dtype": "float32", "dist": "normal", "seed": 926, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 32, 512], "dtype": "float32", "dist": "empty" },
+        "presentKeyT": { "shape": [1, 2, 512, 64], "dtype": "float32", "dist": "empty" },
+        "presentValueT": { "shape": [1, 2, 512, 64], "dtype": "float32", "dist": "empty" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "headsink-prefill-h32kv8-d128-s512-generic-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Measures GroupQueryAttention over a 512-token Llama-sized prefill (32 query heads grouped 4:1 over 8 key/value heads, head width 128) with per-head attention sink logits."
+      },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "headSinkT": { "dtype": "float32", "shape": [32], "dist": "normal", "seed": 927, "scale": 0.2 }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bias-headsink-prefill-h32kv8-d128-s512-generic-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Measures GroupQueryAttention over a 512-token Llama-sized prefill (32 query heads grouped 4:1 over 8 key/value heads, head width 128) with an additive attention bias and per-head attention sink logits."
+      },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } },
+        "attentionBiasT": {
+          "dtype": "float32",
+          "shape": [1, 32, 512, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.007, "cosStep": 0.009 }
+        },
+        "headSinkT": { "dtype": "float32", "shape": [32], "dist": "normal", "seed": 928, "scale": 0.2 }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "softcap-prefill-h32kv8-d128-s512-generic-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Measures GroupQueryAttention over a 512-token Llama-sized prefill (32 query heads grouped 4:1 over 8 key/value heads, head width 128) with a logit softcap of 30."
+      },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "softcap": 30 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 512, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "valueT": { "dtype": "float32", "shape": [1, 0, 1024], "data": { "kind": "values", "values": [] } },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 512, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "4 * dim(shapes.queryT, 2) * (dim(shapes.queryT, 1) * (dim(shapes.pastKeyT, 2) - dim(shapes.queryT, 1)) + dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) / 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "qkv-prefill-f32-h4kv1-d64-s128",
+      "preset": "model",
+      "provenance": {
+        "notes": "Lower f32 register-topology boundary comparing the Q32-broadcast and subgroup-cluster routes."
+      },
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 128, "heads": 4, "kvHeads": 1, "headDim": 64 },
+      "attrs": { "num_heads": 4, "kv_num_heads": 1, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 128, 256], "dtype": "float32", "dist": "normal", "seed": 1075, "scale": 0.2 },
+        "keyT": { "shape": [1, 128, 64], "dtype": "float32", "dist": "normal", "seed": 1076, "scale": 0.2 },
+        "valueT": { "shape": [1, 128, 64], "dtype": "float32", "dist": "normal", "seed": 1077, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 128, 256], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 128, 64], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 128, 64], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "qkv-prefill-f32-h4kv1-d256-s128",
+      "preset": "model",
+      "provenance": {
+        "notes": "Upper f32 register-topology boundary comparing Q32-broadcast, subgroup-cluster, and generic online routes."
+      },
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 128, "heads": 4, "kvHeads": 1, "headDim": 256 },
+      "attrs": { "num_heads": 4, "kv_num_heads": 1, "scale": 0.0625, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 128, 1024], "dtype": "float32", "dist": "normal", "seed": 1081, "scale": 0.2 },
+        "keyT": { "shape": [1, 128, 256], "dtype": "float32", "dist": "normal", "seed": 1082, "scale": 0.2 },
+        "valueT": { "shape": [1, 128, 256], "dtype": "float32", "dist": "normal", "seed": 1083, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [127] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 128, 1024], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 128, 256], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 128, 256], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "window-decode-32h8kv-d128-cap1024-w1024",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "sliding_window_cache": 1, "local_window_size": 1024 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "window-decode-32h8kv-d128-cap1024-unfilled",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "sliding_window_cache": 1, "local_window_size": 1024 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "window-decode-32h8kv-d128-cap256-w256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 256, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 256, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 256, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 256, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "window-chunk-prefill-32h8kv-d128-cap1024-q128",
+      "preset": "smoke",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "sliding_window_cache": 1, "local_window_size": 1024 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 128, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 128, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" },
+          {
+            "type": "bandwidth",
+            "name": "cache traffic",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      },
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 1024, "heads": 32, "headDim": 128 }
+    },
+    {
+      "name": "window-decode-32h8kv-d128-cap4096-w4096",
+      "preset": "model",
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "sliding_window_cache": 1, "local_window_size": 4096 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 4096, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 4096, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 4096, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 4096, 128] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "window-headsink-rotary-decode-gptoss-64h8kv-d64-cap384-w128",
+      "preset": "smoke",
+      "attrs": {
+        "num_heads": 64,
+        "kv_num_heads": 8,
+        "do_rotary": 1,
+        "sliding_window_cache": 1,
+        "local_window_size": 128
+      },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 384, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 384, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [4095] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [4096] } },
+        "cosCacheT": {
+          "dtype": "float32",
+          "shape": [4096, 32],
+          "data": { "kind": "rotaryCos", "thetaStart": 0.0, "thetaStep": 0.017 }
+        },
+        "sinCacheT": {
+          "dtype": "float32",
+          "shape": [4096, 32],
+          "data": { "kind": "rotarySin", "thetaStart": 0.0, "thetaStep": 0.017 }
+        },
+        "headSinkT": {
+          "dtype": "float32",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "scale": 0.5, "sinStep": 0.041, "cosStep": 0.011 }
+        }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 384, 64] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 384, 64] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-chunk-append-32h8kv-d128-cap1024-q128",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 1024, "heads": 32, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 128, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1023] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1024] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 128, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "sharedkv-chunk-append-8h2kv-d256-cap1024-q128",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 1024, "heads": 8, "headDim": 256 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 2 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 128, 2048],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 128, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 128, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 1024, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 1024, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1023] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1024] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 128, 2048] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 1024, 256] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 1024, 256] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      },
+      "provenance": {
+        "source": "register-geometry gate asymmetry",
+        "notes": "Measures cached float32 prefill that appends 128 tokens after 896 cached ones, filling a 1024-slot key/value buffer, with 8 query heads over 2 key/value heads of width 256."
+      }
+    },
+    {
+      "name": "bidirectional-share-append-32h8kv-d128-cap1024-q128",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 128, "kvSeq": 1024, "heads": 32, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "causal": 0 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 128, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 128, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 8, 1024, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1023] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1024] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 128, 4096] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 8, 1024, 128] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 8, 1024, 128] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "bidirectional-share-append-f16-32h8kv-d128-cap512-q64",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 64, "kvSeq": 512, "heads": 32, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "causal": 0 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 64, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 64, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 64, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float16",
+          "shape": [1, 8, 512, 128],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 64, 4096] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 8, 512, 128] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 8, 512, 128] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "qwen3-prefill-32h8kv-d128-s256",
+      "preset": "smoke",
+      "vars": { "batch": 1, "qSeq": 256, "kvSeq": 256, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8, "scale": 0.08838834764831845, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 256, 4096], "dtype": "float32", "dist": "normal", "seed": 960, "scale": 0.2 },
+        "keyT": { "shape": [1, 256, 1024], "dtype": "float32", "dist": "normal", "seed": 961, "scale": 0.2 },
+        "valueT": { "shape": [1, 256, 1024], "dtype": "float32", "dist": "normal", "seed": 962, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [255] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [256] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 256, 4096], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 8, 256, 128], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 8, 256, 128], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "causal-prefill-f16-h4kv2-d64-q64",
+      "provenance": {
+        "source": "synthetic",
+        "test": "Causal half-precision prompt prefill",
+        "notes": "Each query attends only itself and earlier key positions. Verify the complete attention output and exact retention of both key/value inputs in the present caches."
+      },
+      "attrs": { "num_heads": 4, "kv_num_heads": 2 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.0625 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.0625 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 64, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.0625 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [63] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [64] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 64, 256] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 2, 64, 64] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 2, 64, 64] }
+      },
+      "preset": "model",
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * dim(shapes.queryT, 0) * dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) * dim(shapes.queryT, 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "causal-prefill-f16-h4kv2-d128-q65",
+      "provenance": {
+        "source": "synthetic",
+        "test": "Causal half-precision prompt prefill",
+        "notes": "Each query attends only itself and earlier key positions. Verify the complete attention output and exact retention of both key/value inputs in the present caches."
+      },
+      "attrs": { "num_heads": 4, "kv_num_heads": 2 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 65, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.0625 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 65, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.0625 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 65, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.0625 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [64] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 65, 512] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 2, 65, 128] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 2, 65, 128] }
+      },
+      "preset": "model",
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * dim(shapes.queryT, 0) * dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) * dim(shapes.queryT, 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "causal-prefill-f16-h8kv2-d64-q512",
+      "provenance": {
+        "source": "synthetic",
+        "test": "Causal half-precision prompt prefill",
+        "notes": "Each query attends only itself and earlier key positions. Verify the complete attention output and exact retention of both key/value inputs in the present caches."
+      },
+      "attrs": { "num_heads": 8, "kv_num_heads": 2 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float16",
+          "shape": [1, 512, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.0625 }
+        },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [1, 512, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.0625 }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [1, 512, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.031, "scale": 0.0625 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [511] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [512] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [1, 512, 512] },
+        "presentKeyT": { "dtype": "float16", "shape": [1, 2, 512, 64] },
+        "presentValueT": { "dtype": "float16", "shape": [1, 2, 512, 64] }
+      },
+      "preset": "model",
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * dim(shapes.queryT, 0) * dim(shapes.queryT, 1) * (dim(shapes.queryT, 1) + 1) * dim(shapes.queryT, 2)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefill-f32-h8kv1-d32-q33",
+      "preset": "model",
+      "provenance": { "notes": "Small bidirectional prefill with query tails and varying head widths." },
+      "vars": { "batch": 1, "qSeq": 33, "kvSeq": 33, "heads": 8, "kvHeads": 1, "headDim": 32 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 1, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 33, 256], "dtype": "float32", "dist": "normal", "seed": 1075, "scale": 0.2 },
+        "keyT": { "shape": [1, 33, 32], "dtype": "float32", "dist": "normal", "seed": 1076, "scale": 0.2 },
+        "valueT": { "shape": [1, 33, 32], "dtype": "float32", "dist": "normal", "seed": 1077, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [32] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [33] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 33, 256], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 33, 32], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 33, 32], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "prefill-f32-h8kv1-d128-q33",
+      "preset": "model",
+      "provenance": { "notes": "Small bidirectional prefill with query tails and varying head widths." },
+      "vars": { "batch": 1, "qSeq": 33, "kvSeq": 33, "heads": 8, "kvHeads": 1, "headDim": 128 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 1, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 33, 1024], "dtype": "float32", "dist": "normal", "seed": 1075, "scale": 0.2 },
+        "keyT": { "shape": [1, 33, 128], "dtype": "float32", "dist": "normal", "seed": 1076, "scale": 0.2 },
+        "valueT": { "shape": [1, 33, 128], "dtype": "float32", "dist": "normal", "seed": 1077, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [32] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [33] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 33, 1024], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 33, 128], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 33, 128], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "prefill-f32-h8kv1-d256-q32",
+      "preset": "model",
+      "provenance": { "notes": "Small bidirectional prefill with query tails and varying head widths." },
+      "vars": { "batch": 1, "qSeq": 32, "kvSeq": 32, "heads": 8, "kvHeads": 1, "headDim": 256 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 1, "scale": 0.125, "causal": 0 },
+      "inputs": {
+        "queryT": { "shape": [1, 32, 2048], "dtype": "float32", "dist": "normal", "seed": 1075, "scale": 0.2 },
+        "keyT": { "shape": [1, 32, 256], "dtype": "float32", "dist": "normal", "seed": 1076, "scale": 0.2 },
+        "valueT": { "shape": [1, 32, 256], "dtype": "float32", "dist": "normal", "seed": 1077, "scale": 0.2 },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [31] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [32] } }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 32, 2048], "dtype": "float32" },
+        "presentKeyT": { "shape": [1, 1, 32, 256], "dtype": "float32" },
+        "presentValueT": { "shape": [1, 1, 32, 256], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "4 * args.batch * args.qSeq * args.kvSeq * args.heads * args.headDim" }
+        ]
+      }
+    },
+    {
+      "name": "cooperative-window-h4kv2-d122-cap256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 488],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 244],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 244],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 122],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 122],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 488] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 256, 122] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 256, 122] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cooperative-window-h4kv2-d124-cap256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 496],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 248],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 248],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 124],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 124],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 496] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 256, 124] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 256, 124] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cooperative-window-h4kv2-d246-cap256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 984],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 492],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 492],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 246],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 246],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 984] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 256, 246] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 256, 246] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cooperative-window-h4kv2-d248-cap256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 992],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 496],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 496],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 248],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 248],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 992] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 256, 248] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 256, 248] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cooperative-window-h4kv2-d256-cap256",
+      "preset": "smoke",
+      "attrs": { "num_heads": 4, "kv_num_heads": 2, "sliding_window_cache": 1, "local_window_size": 256 },
+      "inputs": {
+        "queryT": {
+          "dtype": "float32",
+          "shape": [1, 1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.011, "cosStep": 0.029 }
+        },
+        "keyT": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.031, "cosStep": 0.007 }
+        },
+        "valueT": {
+          "dtype": "float32",
+          "shape": [1, 1, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.037, "cosStep": 0.005 }
+        },
+        "pastKeyT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.017, "cosStep": 0.019 }
+        },
+        "pastValueT": {
+          "dtype": "float32",
+          "shape": [1, 2, 256, 256],
+          "data": { "kind": "fillFloat32", "scale": 0.2, "sinStep": 0.023, "cosStep": 0.013 }
+        },
+        "seqlensKT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65535] } },
+        "totalSequenceLengthT": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [65536] } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float32", "shape": [1, 1, 1024] },
+        "presentKeyT": { "dtype": "float32", "shape": [1, 2, 256, 256] },
+        "presentValueT": { "dtype": "float32", "shape": [1, 2, 256, 256] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * 2 * numel(shapes.pastKeyT) * 4 + numel(shapes.queryT) * 4 + numel(shapes.outputT) * 4"
+          }
+        ]
+      }
+    }
+  ]
+}

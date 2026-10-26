@@ -1,0 +1,930 @@
+{
+  "tunableSpace": { "workgroupSize": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "qwen3-qproj-decode-m1-q8g32-zero-bias-gemv",
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 2560, "N": 4096, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 360, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 362,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "randint",
+          "seed": 363,
+          "min": 120,
+          "max": 140
+        },
+        "biasT": { "shape": [4096], "dtype": "float32", "dist": "normal", "seed": 364, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + numel(shapes.zeroPointsT) * 4 + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.biasT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 4096, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-decode-m1-q8g32-zero-bias-gemv-ncols8",
+      "tunables": { "GEMV_N_COLS": 8 },
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 2560, "N": 4096, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 360, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 362,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "randint",
+          "seed": 363,
+          "min": 120,
+          "max": 140
+        },
+        "biasT": { "shape": [4096], "dtype": "float32", "dist": "normal", "seed": 364, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + numel(shapes.zeroPointsT) * 4 + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.biasT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 4096, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "matmul-nbits-q4-64x128x128",
+      "preset": "smoke",
+      "vars": { "M": 64, "K": 128, "N": 128, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [64, 128], "dtype": "float32", "dist": "normal", "seed": 210, "scale": 0.2 },
+        "bT": { "shape": [128, 4, 16], "dtype": "uint8", "dist": "q4pair", "seed": 211 },
+        "scalesT": {
+          "shape": [128, 4],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 212,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [64, 128], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 128, "N": 128, "block_size": 32 }
+    },
+    {
+      "name": "matmul-nbits-q4-zero-bias-64x128x128",
+      "preset": "smoke",
+      "vars": { "M": 64, "K": 128, "N": 128, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [64, 128], "dtype": "float32", "dist": "normal", "seed": 211, "scale": 0.2 },
+        "bT": { "shape": [128, 4, 16], "dtype": "uint8", "dist": "q4pair", "seed": 212 },
+        "scalesT": {
+          "shape": [128, 4],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 213,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [128, 4], "dtype": "float32", "dist": "randint", "seed": 214, "min": 6, "max": 10 },
+        "biasT": { "shape": [128], "dtype": "float32", "dist": "normal", "seed": 215, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [64, 128], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 128, "N": 128, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-mlp-gate-decode-m1-q4g64",
+      "preset": "model",
+      "vars": { "M": 1, "K": 2560, "N": 9728, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 350, "scale": 0.2 },
+        "bT": { "shape": [9728, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 351 },
+        "scalesT": {
+          "shape": [9728, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 352,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 9728], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 9728, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q4g64",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q4g64-zero-bias",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 359, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 360 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 361,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [4096, 40], "dtype": "float32", "dist": "randint", "seed": 362, "min": 6, "max": 10 },
+        "biasT": { "shape": [4096], "dtype": "float32", "dist": "normal", "seed": 363, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "llama-qproj-decode-m1-q4g32",
+      "preset": "model",
+      "vars": { "M": 1, "K": 4096, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 4096], "dtype": "float32", "dist": "normal", "seed": 356, "scale": 0.2 },
+        "bT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "q4pair", "seed": 357 },
+        "scalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 358,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 4096, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-decode-m1-q8g32",
+      "preset": "model",
+      "vars": { "M": 1, "K": 2560, "N": 4096, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 350, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 352,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 4096, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q8g32",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 350, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 352,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-prefill-m512-q8g32-unaligned-n2052",
+      "preset": "edge",
+      "vars": { "M": 512, "K": 2560, "N": 2052, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 350, "scale": 0.2 },
+        "bT": { "shape": [2052, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [2052, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 352,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [512, 2052], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 2052, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q4g32-f16",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float16", "dist": "normal", "seed": 350, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 16], "dtype": "uint8", "dist": "q4pair", "seed": 351 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 352,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-mlp-gate-decode-m1-q4g64-zero-bias-generic",
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 2560, "N": 9728, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 410, "scale": 0.2 },
+        "bT": { "shape": [9728, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 411 },
+        "scalesT": {
+          "shape": [9728, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 412,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [9728, 40], "dtype": "float32", "dist": "randint", "seed": 413, "min": 6, "max": 10 },
+        "biasT": { "shape": [9728], "dtype": "float32", "dist": "normal", "seed": 414, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [1, 9728], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + numel(shapes.zeroPointsT) * 4 + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.biasT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 9728, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m8-q4g64-zero-bias-floor-generic",
+      "preset": "smoke",
+      "vars": { "M": 8, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [8, 2560], "dtype": "float32", "dist": "normal", "seed": 420, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 421 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 422,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [4096, 40], "dtype": "float32", "dist": "randint", "seed": 423, "min": 6, "max": 10 },
+        "biasT": { "shape": [4096], "dtype": "float32", "dist": "normal", "seed": 424, "scale": 0.05 }
+      },
+      "outputs": { "yT": { "shape": [8, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m8-q4g64-default-zero-tile4x4",
+      "preset": "smoke",
+      "vars": { "M": 8, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [8, 2560], "dtype": "float32", "dist": "normal", "seed": 420, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 421 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 422,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [8, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m32-q4g64-default-zero",
+      "preset": "model",
+      "vars": { "M": 32, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [32, 2560], "dtype": "float32", "dist": "normal", "seed": 430, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 431 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 432,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [32, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m64-q4g64-default-zero",
+      "preset": "model",
+      "vars": { "M": 64, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [64, 2560], "dtype": "float32", "dist": "normal", "seed": 440, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 441 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 442,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [64, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m128-q4g64-default-zero",
+      "preset": "model",
+      "vars": { "M": 128, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [128, 2560], "dtype": "float32", "dist": "normal", "seed": 450, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 451 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 452,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [128, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-decode-m1-q4g32-f16-gemv",
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 4096, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 4096], "dtype": "float16", "dist": "normal", "seed": 430, "scale": 0.2 },
+        "bT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "q4pair", "seed": 431 },
+        "scalesT": {
+          "shape": [4096, 128],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 432,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 2"
+          }
+        ]
+      },
+      "attrs": { "K": 4096, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-decode-m1-q4g32-f16-gemv-ncols8",
+      "tunables": { "GEMV_N_COLS": 8 },
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 4096, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 4096], "dtype": "float16", "dist": "normal", "seed": 430, "scale": 0.2 },
+        "bT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "q4pair", "seed": 431 },
+        "scalesT": {
+          "shape": [4096, 128],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 432,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 2"
+          }
+        ]
+      },
+      "attrs": { "K": 4096, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "matmul-nbits-q4-naive-fallback-tailK-m32-k2561-n4096",
+      "preset": "stress",
+      "vars": { "M": 32, "K": 2561, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [32, 2561], "dtype": "float32", "dist": "normal", "seed": 610, "scale": 0.2 },
+        "bT": { "shape": [4096, 81, 16], "dtype": "uint8", "dist": "q4pair", "seed": 611 },
+        "scalesT": {
+          "shape": [4096, 81],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 612,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [32, 4096], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2561, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "matmul-nbits-q8-naive-fallback-tailK-m48-k2561-n1021",
+      "preset": "stress",
+      "vars": { "M": 48, "K": 2561, "N": 1021, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [48, 2561], "dtype": "float32", "dist": "normal", "seed": 620, "scale": 0.2 },
+        "bT": { "shape": [1021, 81, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [1021, 81],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 622,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [48, 1021], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2561, "N": 1021, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "matmul-nbits-q8-oddN-compact-fallback-m8-k64-n17",
+      "preset": "smoke",
+      "vars": { "M": 8, "K": 64, "N": 17, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [8, 64], "dtype": "float32", "dist": "normal", "seed": 630, "scale": 0.2 },
+        "bT": { "shape": [17, 2, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [17, 2],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 632,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [8, 17], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 64, "N": 17, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "rfdetr-qkvo-m1300-q4g64",
+      "preset": "smoke",
+      "vars": { "M": 1300, "K": 384, "N": 384, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [1300, 384], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [384, 6, 32], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [384, 6],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1300, 384], "dtype": "float32" } },
+      "tunableSpace": { "REGISTER_TILE_TALL_MIN_N": [256, 1024] },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 384, "N": 384, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "rfdetr-fc1-m1300-q4g64",
+      "preset": "smoke",
+      "vars": { "M": 1300, "K": 384, "N": 1536, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [1300, 384], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [1536, 6, 32], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [1536, 6],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1300, 1536], "dtype": "float32" } },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 384, "N": 1536, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "rfdetr-fc2-m1300-q4g64",
+      "preset": "smoke",
+      "vars": { "M": 1300, "K": 1536, "N": 384, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [1300, 1536], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [384, 24, 32], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [384, 24],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1300, 384], "dtype": "float32" } },
+      "tunableSpace": { "REGISTER_TILE_TALL_MIN_N": [256, 1024] },
+      "bench": { "primary": true, "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 1536, "N": 384, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-decode-m1-q8g32-zero-only-gemv",
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 2560, "N": 4096, "bits": 8, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2560], "dtype": "float32", "dist": "normal", "seed": 360, "scale": 0.2 },
+        "bT": { "shape": [4096, 80, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 362,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": {
+          "shape": [4096, 80],
+          "dtype": "float32",
+          "dist": "randint",
+          "seed": 363,
+          "min": 120,
+          "max": 140
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + numel(shapes.zeroPointsT) * 4 + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 2560, "N": 4096, "bits": 8, "block_size": 32 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q4g64-zero-only",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 359, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 360 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 361,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [4096, 40], "dtype": "float32", "dist": "randint", "seed": 362, "min": 6, "max": 10 }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64 }
+    },
+    {
+      "name": "qwen3-qproj-prefill-m512-q4g64-al4-dp4a",
+      "preset": "model",
+      "vars": { "M": 512, "K": 2560, "N": 4096, "bits": 4, "blockSize": 64, "accuracyLevel": 4 },
+      "inputs": {
+        "aT": { "shape": [512, 2560], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [4096, 40, 32], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [4096, 40],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [512, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 2560, "N": 4096, "bits": 4, "block_size": 64, "accuracy_level": 4 }
+    },
+    {
+      "name": "mmnb-q4-dp4a-prefill-smoke-m128-k1024-n1024-al4",
+      "preset": "smoke",
+      "vars": { "M": 128, "K": 1024, "N": 1024, "bits": 4, "blockSize": 32, "accuracyLevel": 4 },
+      "inputs": {
+        "aT": { "shape": [128, 1024], "dtype": "float32", "dist": "normal", "seed": 353, "scale": 0.2 },
+        "bT": { "shape": [1024, 32, 16], "dtype": "uint8", "dist": "q4pair", "seed": 354 },
+        "scalesT": {
+          "shape": [1024, 32],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 355,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [128, 1024], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 1024, "N": 1024, "bits": 4, "block_size": 32, "accuracy_level": 4 }
+    },
+    {
+      "name": "gemma-lmhead-decode-m1-q4g32-n262144-gemv-fold",
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 128, "N": 262144, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 128], "dtype": "float32", "dist": "normal", "seed": 470, "scale": 0.2 },
+        "bT": { "shape": [262144, 4, 16], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [262144, 4],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 472,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 262144], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 128, "N": 262144, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "gemma-lmhead-decode-m1-q4g32-n262144-gemv-fold-ncols8",
+      "tunables": { "GEMV_N_COLS": 8 },
+      "preset": "smoke",
+      "vars": { "M": 1, "K": 128, "N": 262144, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 128], "dtype": "float32", "dist": "normal", "seed": 470, "scale": 0.2 },
+        "bT": { "shape": [262144, 4, 16], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [262144, 4],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 472,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [1, 262144], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 128, "N": 262144, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "mmnb-prefill-m4-q4g32-n262144-tile4x4-fold",
+      "preset": "smoke",
+      "vars": { "M": 4, "K": 128, "N": 262144, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [4, 128], "dtype": "float32", "dist": "normal", "seed": 470, "scale": 0.2 },
+        "bT": { "shape": [262144, 4, 16], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [262144, 4],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 472,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [4, 262144], "dtype": "float32" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "numel(shapes.bT) + (numel(shapes.aT) + numel(shapes.scalesT) + numel(shapes.yT)) * 4"
+          }
+        ]
+      },
+      "attrs": { "K": 128, "N": 262144, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "mmnb-q4g32-m47-k4096-n4096-one-below-register-tile-floor-pathology",
+      "preset": "model",
+      "vars": { "M": 47, "K": 4096, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [47, 4096], "dtype": "float32", "dist": "normal", "seed": 643, "scale": 0.2 },
+        "bT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "q4pair", "seed": 644 },
+        "scalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 645,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [47, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 4096, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "mmnb-q4g32-m48-k4096-n4096-register-tile-floor-control",
+      "preset": "model",
+      "vars": { "M": 48, "K": 4096, "N": 4096, "bits": 4, "blockSize": 32 },
+      "inputs": {
+        "aT": { "shape": [48, 4096], "dtype": "float32", "dist": "normal", "seed": 646, "scale": 0.2 },
+        "bT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "q4pair", "seed": 647 },
+        "scalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 648,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        }
+      },
+      "outputs": { "yT": { "shape": [48, 4096], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 4096, "N": 4096, "bits": 4, "block_size": 32 }
+    },
+    {
+      "name": "bonsai2-ffn-gate-prefill-m128-q2g128-k5120-n17408-zero1-f16",
+      "preset": "model",
+      "vars": { "M": 128, "K": 5120, "N": 17408, "bits": 2, "blockSize": 128 },
+      "inputs": {
+        "aT": { "shape": [128, 5120], "dtype": "float16", "dist": "normal", "seed": 721, "scale": 0.2 },
+        "bT": { "shape": [17408, 40, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [17408, 40],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 722,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [17408, 40], "dtype": "float16", "dist": "constant", "value": 1 }
+      },
+      "outputs": { "yT": { "shape": [128, 17408], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 5120, "N": 17408, "bits": 2, "block_size": 128 }
+    },
+    {
+      "name": "bonsai2-ffn-down-prefill-m128-q2g128-k17408-n5120-zero1-f16",
+      "preset": "model",
+      "vars": { "M": 128, "K": 17408, "N": 5120, "bits": 2, "blockSize": 128 },
+      "inputs": {
+        "aT": { "shape": [128, 17408], "dtype": "float16", "dist": "normal", "seed": 721, "scale": 0.2 },
+        "bT": { "shape": [5120, 136, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [5120, 136],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 722,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [5120, 136], "dtype": "float16", "dist": "constant", "value": 1 }
+      },
+      "outputs": { "yT": { "shape": [128, 5120], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 17408, "N": 5120, "bits": 2, "block_size": 128 }
+    },
+    {
+      "name": "bonsai2-attn-qkv-prefill-m128-q2g128-k5120-n10240-zero1-f16",
+      "preset": "model",
+      "vars": { "M": 128, "K": 5120, "N": 10240, "bits": 2, "blockSize": 128 },
+      "inputs": {
+        "aT": { "shape": [128, 5120], "dtype": "float16", "dist": "normal", "seed": 721, "scale": 0.2 },
+        "bT": { "shape": [10240, 40, 32], "dtype": "uint8", "dist": "linearMod", "mod": 256, "step": 7 },
+        "scalesT": {
+          "shape": [10240, 40],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 722,
+          "offset": 0.04,
+          "scale": 0.01,
+          "signed": false
+        },
+        "zeroPointsT": { "shape": [10240, 40], "dtype": "float16", "dist": "constant", "value": 1 }
+      },
+      "outputs": { "yT": { "shape": [128, 10240], "dtype": "float16" } },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * args.M * args.K * args.N" }] },
+      "attrs": { "K": 5120, "N": 10240, "bits": 2, "block_size": 128 }
+    }
+  ]
+}

@@ -1,0 +1,248 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-3.0, -1.0, 0.0, 0.5, 1.0, 3.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "large_inputs_no_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [50.0, 100.0, 200.0, -100.0, 3.0, -3.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f32_extreme_finite_tail_and_saturation",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [9],
+          "data": { "kind": "values", "values": [-80.0, -40.0, -20.0, -10.0, 0.0, 10.0, 20.0, 40.0, 80.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [9], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_negative_tail_preserves_tiny_values",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Focused tail-stability extension of the ONNX Mish sweep: log1p-style softplus should preserve tiny finite negative outputs instead of rounding the softplus term to zero."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-19.0, -18.0, -17.0, -16.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-10 } }
+    },
+    {
+      "name": "f32_negative_tail_scalar_preserves_tiny_values",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "A non-multiple-of-four shape exercises log1p-style softplus on the scalar path for tiny finite negative-tail outputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-19.0, -18.0, -17.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-10 } }
+    },
+    {
+      "name": "f32_extreme_negative_tail_subnormal_softplus_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Extreme negative Mish inputs depend on a subnormal softplus tail; after multiplying by x, the result can still be a meaningful finite value."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-80.0, -88.0, -90.0, -80.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-44, "relTolerance": 0.0002 } }
+    },
+    {
+      "name": "f32_extreme_negative_tail_subnormal_softplus_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "On the scalar path, Mish inputs with a subnormal softplus term must still produce the finite expected product."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-80.0, -88.0, -90.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-44, "relTolerance": 0.0002 } }
+    },
+    {
+      "name": "f32_rank2_mixed_tail_values",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Mixed activation tensor with normal values and large negative tail values; stable softplus must preserve the small finite tail entries."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-19.0, -2.0, 0.0, 2.0, -18.0, 4.0, -17.0, 8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 1e-10 } }
+    },
+    {
+      "name": "f32_nan_propagates",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": ["NaN", -2.0, 0.0, 2.0, "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "f32_nonfinite_endpoints",
+      "provenance": {
+        "notes": "Nonfinite edge: -Infinity follows the literal formula into NaN, +Infinity stays +Infinity."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 0.0, 1.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "rank0_scalar",
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_large_positive_scalar",
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [80.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-5.0, -1.0, 0.0, 1.0, 5.0, 10.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [6], "tolerance": 0.002 } }
+    },
+    {
+      "name": "f16_extreme_finite_tail_and_saturation",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-16.0, -12.0, -8.0, 0.0, 8.0, 12.0, 16.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 0.002 } }
+    },
+    {
+      "name": "f16_negative_tail_preserves_subnormals",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Float16 projection of the Mish negative-tail stability edge: log1p-style softplus keeps representable subnormal outputs for large negative inputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [-19.0, -18.0, -17.0, -16.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4], "tolerance": 1e-7 } }
+    },
+    {
+      "name": "f16_negative_tail_scalar_preserves_subnormals",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Scalar-path float16 projection of the Mish negative-tail stability edge."
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [-18.0, -17.0, -16.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3], "tolerance": 1e-7 } }
+    },
+    {
+      "name": "onnx_backend_empty_rank3",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/case/node/mish.py",
+        "test": "Mish.export",
+        "notes": "Elementwise empty tensor edge: preserve a zero middle dimension without reading input data."
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [2, 0, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 0, 3] } }
+    },
+    {
+      "name": "onnx_backend_expanded_rank3_f16",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish_expanded",
+        "test": "test_mish_expanded",
+        "notes": "Compact float16 rank-3 projection of the ONNX expanded Mish formula."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [-12.0, -4.0, -1.0, 0.0, 0.5, 1.0, 4.0, 12.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 4], "tolerance": 0.002 } }
+    },
+    {
+      "name": "onnx_backend_linspace_sweep",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_mish",
+        "test": "test_mish",
+        "notes": "Official ONNX backend Mish sweep from -10 to 10 represented with a compact linspace generator."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [10000], "data": { "kind": "linspace", "start": -10.0, "end": 10.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [10000], "tolerance": 0.000003 } }
+    },
+    {
+      "name": "softplus_branch_boundary",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-9.0, -8.001, -8.0, -7.999] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } },
+      "tolerance": 0.000001
+    },
+    {
+      "name": "tanh_safe_clamp_boundary",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-10.001, -10.0, 10.0, 10.001] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } },
+      "tolerance": 0.000001
+    }
+  ]
+}

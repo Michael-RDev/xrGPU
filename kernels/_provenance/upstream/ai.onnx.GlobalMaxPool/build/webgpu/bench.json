@@ -1,0 +1,68 @@
+{
+  "cases": [
+    {
+      "name": "nchw_1x2048x7x7",
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2048, 7, 7] } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2048, 1, 1] } }
+    },
+    {
+      "name": "nchw_16x512x64x64_wg_parallel",
+      "preset": "smoke",
+      "vars": { "batch": 16, "channels": 512, "spatial": 4096 },
+      "inputs": { "x": { "dtype": "float32", "shape": [16, 512, 64, 64], "dist": "normal", "seed": 202 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 512, 1, 1], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.batch * args.channels * args.spatial * 4" }]
+      }
+    },
+    {
+      "name": "nchw_f16_8x256x32x32_wg_parallel",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "batch": 8, "channels": 256, "spatial": 1024 },
+      "inputs": { "x": { "dtype": "float16", "shape": [8, 256, 32, 32], "dist": "normal", "seed": 207 } },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 256, 1, 1], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "args.batch * args.channels * args.spatial * dtypeBytes(args.dtype)" }
+        ]
+      }
+    },
+    {
+      "name": "nchw_1x2048x7x7_smallspatial_serial",
+      "provenance": {
+        "notes": "2048 planes of 49 elements: below the plane-parallel floor, so the scalar serial kernel owns this shape."
+      },
+      "preset": "edge",
+      "vars": { "batch": 1, "channels": 2048, "spatial": 49 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2048, 7, 7], "dist": "normal", "seed": 501 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2048, 1, 1], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.batch * args.channels * args.spatial * 4" }]
+      }
+    },
+    {
+      "name": "nchw_1x8x512x512_lowoccupancy_8planes",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "Measures global max pooling over 8 channels of a 512x512 (262,144-element) plane."
+      },
+      "vars": { "batch": 1, "channels": 8, "spatial": 262144 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 8, 512, 512], "dist": "normal", "seed": 502 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 1, 1], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.channels * args.spatial * 4" }] }
+    },
+    {
+      "name": "nchw_1x1024x14x14_portable_gate_window",
+      "provenance": { "notes": "Measures global max pooling over 1024 channels of a 14x14 (196-element) plane." },
+      "preset": "smoke",
+      "vars": { "batch": 1, "channels": 1024, "spatial": 196 },
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 1024, 14, 14], "dist": "normal", "seed": 503 } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1024, 1, 1], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.channels * args.spatial * 4" }] }
+    }
+  ],
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256] }
+}

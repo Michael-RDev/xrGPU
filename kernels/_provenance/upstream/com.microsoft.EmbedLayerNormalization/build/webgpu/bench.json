@@ -1,0 +1,107 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "eln-bert-base-b8-s384-h768",
+      "preset": "smoke",
+      "vars": { "dtype": "float32" },
+      "inputs": {
+        "inputIdsT": { "shape": [8, 384], "dtype": "int32", "dist": "randint", "seed": 9301, "min": 0, "max": 30521 },
+        "wordEmbeddingT": { "shape": [30522, 768], "dtype": "float32", "dist": "normal", "seed": 9302, "scale": 0.02 },
+        "positionEmbeddingT": { "shape": [512, 768], "dtype": "float32", "dist": "normal", "seed": 9303, "scale": 0.02 },
+        "gammaT": { "shape": [768], "dtype": "float32", "dist": "normal", "seed": 9304, "scale": 1 },
+        "betaT": { "shape": [768], "dtype": "float32", "dist": "normal", "seed": 9305, "scale": 0.1 }
+      },
+      "outputs": { "outputT": { "shape": [8, 384, 768], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "8 * 384 * 768 * 3 * 4" }] }
+    },
+    {
+      "name": "eln-bert-base-b1-s512-h768",
+      "preset": "model",
+      "provenance": {
+        "notes": "BERT class defaults (vocab_size 30522, hidden_size 768, max_position_embeddings 512, type_vocab_size 2) at a single full-length sequence."
+      },
+      "vars": { "batch": 1, "seq": 512, "hidden": 768, "vocab": 30522 },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputIdsT": { "shape": [1, 512], "dtype": "int32", "dist": "randint", "seed": 5100, "min": 0, "max": 30521 },
+        "segmentIdsT": { "shape": [1, 512], "dtype": "int32", "dist": "randint", "seed": 5101, "min": 0, "max": 1 },
+        "wordEmbeddingT": { "shape": [30522, 768], "dtype": "float32", "dist": "normal", "seed": 5102, "scale": 0.1 },
+        "positionEmbeddingT": { "shape": [512, 768], "dtype": "float32", "dist": "normal", "seed": 5103, "scale": 0.1 },
+        "segmentEmbeddingT": { "shape": [2, 768], "dtype": "float32", "dist": "normal", "seed": 5104, "scale": 0.1 },
+        "gammaT": { "shape": [768], "dtype": "float32", "dist": "uniform", "seed": 5105, "scale": 0.1, "offset": 1 },
+        "betaT": { "shape": [768], "dtype": "float32", "dist": "normal", "seed": 5106, "scale": 0.05 },
+        "maskT": { "shape": [1, 512], "dtype": "int32", "dist": "randint", "seed": 5107, "min": 0, "max": 1 }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 512, 768], "dtype": "float32" },
+        "maskIndexT": { "shape": [1], "dtype": "int32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.seq * args.hidden * 3 * 4" }] }
+    },
+    {
+      "name": "eln-bert-base-b32-s128-h768",
+      "preset": "model",
+      "provenance": {
+        "notes": "BERT class defaults at a 32-sequence serving batch of 128 tokens, the shape short-text classification actually runs."
+      },
+      "vars": { "batch": 32, "seq": 128, "hidden": 768, "vocab": 30522 },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputIdsT": { "shape": [32, 128], "dtype": "int32", "dist": "randint", "seed": 5200, "min": 0, "max": 30521 },
+        "segmentIdsT": { "shape": [32, 128], "dtype": "int32", "dist": "randint", "seed": 5201, "min": 0, "max": 1 },
+        "wordEmbeddingT": { "shape": [30522, 768], "dtype": "float32", "dist": "normal", "seed": 5202, "scale": 0.1 },
+        "positionEmbeddingT": { "shape": [512, 768], "dtype": "float32", "dist": "normal", "seed": 5203, "scale": 0.1 },
+        "segmentEmbeddingT": { "shape": [2, 768], "dtype": "float32", "dist": "normal", "seed": 5204, "scale": 0.1 },
+        "gammaT": { "shape": [768], "dtype": "float32", "dist": "uniform", "seed": 5205, "scale": 0.1, "offset": 1 },
+        "betaT": { "shape": [768], "dtype": "float32", "dist": "normal", "seed": 5206, "scale": 0.05 },
+        "maskT": { "shape": [32, 128], "dtype": "int32", "dist": "randint", "seed": 5207, "min": 0, "max": 1 }
+      },
+      "outputs": {
+        "outputT": { "shape": [32, 128, 768], "dtype": "float32" },
+        "maskIndexT": { "shape": [32], "dtype": "int32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.seq * args.hidden * 3 * 4" }] }
+    },
+    {
+      "name": "eln-distilbert-b8-s512-h768",
+      "preset": "model",
+      "provenance": {
+        "notes": "DistilBERT class defaults (vocab_size 30522, dim 768, max_position_embeddings 512); DistilBERT has no token-type embedding, so the segment inputs are absent."
+      },
+      "vars": { "batch": 8, "seq": 512, "hidden": 768, "vocab": 30522 },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputIdsT": { "shape": [8, 512], "dtype": "int32", "dist": "randint", "seed": 5300, "min": 0, "max": 30521 },
+        "wordEmbeddingT": { "shape": [30522, 768], "dtype": "float32", "dist": "normal", "seed": 5302, "scale": 0.1 },
+        "positionEmbeddingT": { "shape": [512, 768], "dtype": "float32", "dist": "normal", "seed": 5303, "scale": 0.1 },
+        "gammaT": { "shape": [768], "dtype": "float32", "dist": "uniform", "seed": 5305, "scale": 0.1, "offset": 1 },
+        "betaT": { "shape": [768], "dtype": "float32", "dist": "normal", "seed": 5306, "scale": 0.05 },
+        "maskT": { "shape": [8, 512], "dtype": "int32", "dist": "randint", "seed": 5307, "min": 0, "max": 1 }
+      },
+      "outputs": {
+        "outputT": { "shape": [8, 512, 768], "dtype": "float32" },
+        "maskIndexT": { "shape": [8], "dtype": "int32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.seq * args.hidden * 3 * 4" }] }
+    },
+    {
+      "name": "eln-deberta-v2-b8-s512-h1536",
+      "preset": "model",
+      "provenance": {
+        "notes": "DeBERTa-v2 class defaults (vocab_size 128100, hidden_size 1536, max_position_embeddings 512, type_vocab_size 0) -- the widest embedding table in this set."
+      },
+      "vars": { "batch": 8, "seq": 512, "hidden": 1536, "vocab": 128100 },
+      "attrs": { "epsilon": 1e-12 },
+      "inputs": {
+        "inputIdsT": { "shape": [8, 512], "dtype": "int32", "dist": "randint", "seed": 5400, "min": 0, "max": 128099 },
+        "wordEmbeddingT": { "shape": [128100, 1536], "dtype": "float32", "dist": "normal", "seed": 5402, "scale": 0.1 },
+        "positionEmbeddingT": { "shape": [512, 1536], "dtype": "float32", "dist": "normal", "seed": 5403, "scale": 0.1 },
+        "gammaT": { "shape": [1536], "dtype": "float32", "dist": "uniform", "seed": 5405, "scale": 0.1, "offset": 1 },
+        "betaT": { "shape": [1536], "dtype": "float32", "dist": "normal", "seed": 5406, "scale": 0.05 }
+      },
+      "outputs": { "outputT": { "shape": [8, 512, 1536], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.batch * args.seq * args.hidden * 3 * 4" }] }
+    }
+  ]
+}

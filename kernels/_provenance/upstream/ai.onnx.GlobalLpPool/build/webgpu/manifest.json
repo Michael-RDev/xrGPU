@@ -1,0 +1,101 @@
+{
+  "domain": "ai.onnx",
+  "name": "GlobalLpPool",
+  "sinceVersion": 2,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x" } },
+  "attributes": { "p": { "default": 2 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "PLANE_PARALLEL_AMORTIZED_SPATIAL": { "default": 768 },
+    "PLANE_PARALLEL_STARVED_PLANES": { "default": 1024 }
+  },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["ranks.x >= 3", "ranks.y == ranks.x", "dim(shapes.y, 0) == dim(shapes.x, 0)", "dim(shapes.y, 1) == dim(shapes.x, 1)", "attrs.p > 0"],
+  "bindings": {
+    "x": { "elementType": "$xElem" },
+    "params": { "struct": [{ "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" }] }
+  },
+  "variants": [
+    {
+      "id": "wg_plane_parallel_f16_wg128",
+      "priority": 40,
+      "when": ["dtypes.T == \"f16\"", "numel(shapes.y) == dim(shapes.x, 0) * dim(shapes.x, 1)", "numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "demoteWhen": ["inner(shapes.x, 1) < tunables.PLANE_PARALLEL_AMORTIZED_SPATIAL and numel(shapes.y) > tunables.PLANE_PARALLEL_STARVED_PLANES"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": { "xElem": "\"vec4<f16>\" if inner(shapes.x, 1) % 4 == 0 else dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GlobalLpPool.WgPlaneParallelF16Wg128",
+          "shader": "pool-global-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "vec4": "inner(shapes.x, 1) % 4 == 0",
+            "p": "attrs.p",
+            "workgroupSizeSpec": 128,
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": ["x", "y", "params"],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "wg_plane_parallel",
+      "priority": 30,
+      "when": ["numel(shapes.y) == dim(shapes.x, 0) * dim(shapes.x, 1)", "numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "f16Ok(dtypes.T)"],
+      "demoteWhen": ["inner(shapes.x, 1) < tunables.PLANE_PARALLEL_AMORTIZED_SPATIAL and numel(shapes.y) > tunables.PLANE_PARALLEL_STARVED_PLANES"],
+      "derive": {
+        "xElem": "(\"vec4<f16>\" if dtypes.T == \"f16\" else \"vec4<f32>\") if inner(shapes.x, 1) % 4 == 0 else dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GlobalLpPool.WgPlaneParallel",
+          "shader": "pool-global-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "vec4": "inner(shapes.x, 1) % 4 == 0",
+            "p": "attrs.p",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": ["x", "y", "params"],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "nchw",
+      "when": ["inner(shapes.y, 1) == 1", "f16Ok(dtypes.T)"],
+      "derive": { "pIs1": "attrs.p == 1", "pIs2": "attrs.p == 2" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GlobalLpPool.Nchw",
+          "shader": "global-lp-pool.wgsl.jinja",
+          "bindings": [
+            { "arg": "x" },
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" },
+                { "name": "p", "type": "f32", "value": "attrs.p" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

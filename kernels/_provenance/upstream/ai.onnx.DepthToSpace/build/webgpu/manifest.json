@@ -1,0 +1,110 @@
+{
+  "domain": "ai.onnx",
+  "name": "DepthToSpace",
+  "sinceVersion": 13,
+  "inputs": { "input": { "dtype": "T", "rank": 4 } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": 4,
+      "shape": ["dim(shapes.input, 0)", "dim(shapes.input, 1) / (attrs.blocksize * attrs.blocksize)", "dim(shapes.input, 2) * attrs.blocksize", "dim(shapes.input, 3) * attrs.blocksize"]
+    }
+  },
+  "attributes": { "mode": { "default": "DCR" }, "blocksize": {} },
+  "attributeConstraints": { "blocksize": { "required": true }, "mode": { "values": ["DCR", "CRD"] } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8", "bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "shapeContract": "attrs.blocksize > 0 and ranks.input == 4 and ranks.output == 4 and dim(shapes.output, 0) == dim(shapes.input, 0) and dim(shapes.output, 1) * attrs.blocksize * attrs.blocksize == dim(shapes.input, 1) and dim(shapes.output, 2) == dim(shapes.input, 2) * attrs.blocksize and dim(shapes.output, 3) == dim(shapes.input, 3) * attrs.blocksize and f16Ok(dtypes.T)",
+    "scalar": "dtypes.T",
+    "modeSpec": "attrs.mode",
+    "blocksize": "attrs.blocksize",
+    "inC": "dim(shapes.input, 1)",
+    "inH": "dim(shapes.input, 2)",
+    "inW": "dim(shapes.input, 3)"
+  },
+  "when": ["shapeContract"],
+  "bindings": { "output": { "elementType": "$outputElement" } },
+  "variants": [
+    {
+      "id": "nchw_vec4",
+      "priority": 20,
+      "when": ["dim(shapes.output, 3) % 4 == 0"],
+      "demoteWhen": ["variableSubgroup16To32 and dtypes.T == \"f16\""],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DepthToSpace",
+          "shader": "space-depth-permute.wgsl.jinja",
+          "derive": {
+            "vectorizedSpec": true,
+            "count": "numel(shapes.output) / 4",
+            "outWUnits": "dim(shapes.output, 3) / 4",
+            "outH": "dim(shapes.output, 2)",
+            "outC": "dim(shapes.output, 1)"
+          },
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_const",
+      "priority": 10,
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DepthToSpace",
+          "shader": "space-depth-permute.wgsl.jinja",
+          "derive": {
+            "vectorizedSpec": false,
+            "count": "numel(shapes.output)",
+            "outWUnits": "dim(shapes.output, 3)",
+            "outC": "dim(shapes.output, 1)",
+            "outH": "dim(shapes.output, 2)",
+            "outW": "dim(shapes.output, 3)"
+          },
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_coarsened4",
+      "priority": 15,
+      "when": ["dim(shapes.output, 3) % 4 != 0", "numel(shapes.output) >= 4096"],
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DepthToSpace.Coarsened4",
+          "shader": "depth-to-space-nchw-coarsened4.wgsl.jinja",
+          "derive": {
+            "groups": "dim(shapes.output, 0) * dim(shapes.output, 1) * dim(shapes.output, 2) * ceil(dim(shapes.output, 3) / 4)",
+            "outWGroups": "ceil(dim(shapes.output, 3) / 4)",
+            "outC": "dim(shapes.output, 1)",
+            "outH": "dim(shapes.output, 2)",
+            "outW": "dim(shapes.output, 3)"
+          },
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.output, 0) * dim(shapes.output, 1) * dim(shapes.output, 2) * ceil(dim(shapes.output, 3) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.output, 0) * dim(shapes.output, 1) * dim(shapes.output, 2) * ceil(dim(shapes.output, 3) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

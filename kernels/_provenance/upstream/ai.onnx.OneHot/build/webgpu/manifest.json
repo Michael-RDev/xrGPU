@@ -1,0 +1,141 @@
+{
+  "domain": "ai.onnx",
+  "name": "OneHot",
+  "sinceVersion": 11,
+  "inputs": { "indices": { "dtype": "I" }, "depth": { "dtype": "D" }, "values": { "dtype": "T", "rank": 1 } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.indices + 1" } },
+  "attributes": { "axis": { "default": -1 } },
+  "typeConstraints": {
+    "I": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8"],
+    "D": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8"],
+    "T": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8", "bool"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "oneHotContractOk": "(dtypes.I == \"u32\" or dtypes.I == \"i32\" or dtypes.I == \"f32\" or dtypes.I == \"f16\") and ranks.indices >= 1 and ranks.output == ranks.indices + 1 and (ranks.depth == 0 or (ranks.depth == 1 and dim(shapes.depth, 0) == 1)) and ranks.values == 1 and dim(shapes.values, 0) == 2 and numel(shapes.output) >= numel(shapes.indices) and f16Ok(dtypes.T) and f16Ok(dtypes.I)",
+    "oneHotLastAxisCovered": "oneHotContractOk and (attrs.axis == ranks.output - 1 or attrs.axis == -1) and dim(shapes.output, -1) % 4 == 0",
+    "oneHotLastAxisVecCount": "dim(shapes.output, -1) / 4",
+    "oneHotRowWorkgroup": "min(tunables.WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX, max(1, pow2ceil(oneHotLastAxisVecCount)))",
+    "oneHotCooperativeMinVecs": "device.adapterInfo.subgroupMinSize if has(device.adapterInfo, \"subgroupMinSize\") else 32",
+    "oneHotRowCooperative": "oneHotLastAxisCovered and oneHotLastAxisVecCount >= oneHotCooperativeMinVecs",
+    "scalar": "dtypes.T",
+    "indexScalar": "dtypes.I",
+    "usesI32": "dtypes.I == \"i32\"",
+    "floatIndices": "dtypes.I == \"f32\" or dtypes.I == \"f16\"",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\""
+  },
+  "bindings": { "values": { "elementType": "$scalar", "length": 2 }, "output": { "elementType": "$vectorScalar" } },
+  "variants": [
+    {
+      "id": "last_axis_row_vec4",
+      "priority": 20,
+      "when": ["oneHotRowCooperative"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "OneHot.LastAxisRowVec4",
+          "shader": "one-hot-last-axis-vec4.wgsl.jinja",
+          "derive": {
+            "depth": "dim(shapes.output, -1)",
+            "rowCount": "numel(shapes.indices)",
+            "wg": "oneHotRowWorkgroup",
+            "cooperative": true
+          },
+          "bindings": ["indices", "values", "output"],
+          "dispatch": { "x": "min(numel(shapes.indices), 65535)", "y": "ceilDiv(numel(shapes.indices), 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_vec4",
+      "priority": 10,
+      "when": ["oneHotLastAxisCovered"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "OneHot.LastAxisVec4",
+          "shader": "one-hot-last-axis-vec4.wgsl.jinja",
+          "derive": { "depth": "dim(shapes.output, -1)", "cooperative": false },
+          "bindings": [
+            "indices",
+            "values",
+            "output",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_axis",
+      "when": ["oneHotContractOk", "attrs.axis + ranks.output >= 0", "attrs.axis < ranks.output"],
+      "derive": {
+        "depthAxis": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.output",
+        "depthInner": "max(1, inner(shapes.output, depthAxis))",
+        "outputVecCount": "floor(numel(shapes.output) / 4)",
+        "outputTailCount": "numel(shapes.output) % 4"
+      },
+      "passes": [
+        {
+          "id": "fill_vec4",
+          "name": "OneHot.FillVec4",
+          "shader": "one-hot-fill.wgsl.jinja",
+          "derive": { "vectorizedSpec": true },
+          "bindings": [
+            "values",
+            "output",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "outputVecCount" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((outputVecCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputVecCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "fill_tail",
+          "name": "OneHot.FillTail",
+          "shader": "one-hot-fill.wgsl.jinja",
+          "derive": { "vectorizedSpec": false },
+          "bindings": [
+            "values",
+            { "arg": "output" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "outputTailCount" },
+                { "name": "offset", "type": "u32", "value": "outputVecCount * 4" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((outputTailCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((outputTailCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "scatter",
+          "name": "OneHot.Scatter",
+          "shader": "one-hot-scatter.wgsl.jinja",
+          "derive": { "depth": "dim(shapes.output, depthAxis)", "innerSize": "depthInner" },
+          "bindings": [
+            "indices",
+            "values",
+            { "arg": "output" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.indices)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.indices)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.indices)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

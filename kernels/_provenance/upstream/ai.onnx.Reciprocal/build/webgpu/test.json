@@ -1,0 +1,186 @@
+{
+  "cases": [
+    {
+      "name": "vector_positive",
+      "inputs": { "x": { "dtype": "float32", "shape": [32], "data": { "kind": "constant", "value": 2.5 } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [32], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_scalar_negative",
+      "inputs": { "x": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "special_values_inf_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0.0, 5.0, -2.0, "Infinity", "NaN", "-Infinity"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [-8.0, -2.0, 0.5, 2.0, 8.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5], "tolerance": 0.00098 } }
+    },
+    {
+      "name": "tiny_normal_and_large_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [1.17549435e-38, -1.17549435e-38, 1e+38, -1e+38, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "finite_reciprocal_of_subnormal_values_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Reciprocal",
+        "notes": "These positive subnormal inputs have finite float32 reciprocals; flushing them to zero incorrectly produces infinities."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-38, -1e-38, 4e-39, -4e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "finite_reciprocal_of_subnormal_values_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Reciprocal",
+        "notes": "On the scalar path, these subnormal inputs still have finite float32 reciprocals."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-38, -1e-38, 4e-39] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_float_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Reciprocal"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, -1.0, -2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_float16_2x2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Reciprocal"
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, -1.0, -2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2], "tolerance": 0.00098 } }
+    },
+    {
+      "name": "signed_zero_infinity_nan_boundaries",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Reciprocal",
+        "notes": "Additional node-level IEEE boundary edge: reciprocal preserves the sign across zero and infinity, and propagates NaN."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-0.0, 0.0, "-Infinity", "Infinity", -2.0, "NaN"] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [6],
+          "tolerance": 0,
+          "allowNaN": true,
+          "data": { "kind": "values", "values": ["-Infinity", "Infinity", -0.0, 0.0, -0.5, "NaN"] }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reciprocal_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [-4.0, 2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_reciprocal",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reciprocal" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.0488135814666748, 1.2151893377304077, 1.1027634143829346, 1.0448832511901855, 0.9236547946929932, 1.1458940505981445, 0.9375872015953064, 1.391772985458374, 1.4636627435684204, 0.8834415078163147, 1.2917250394821167, 1.0288949012756348, 1.0680445432662964, 1.4255967140197754, 0.5710360407829285, 0.5871292948722839, 0.5202183723449707, 1.3326199054718018, 1.2781567573547363, 1.3700121641159058, 1.4786183834075928, 1.2991585731506348, 0.9614793658256531, 1.280529260635376, 0.618274450302124, 1.139920949935913, 0.643353283405304, 1.4446688890457153, 1.0218483209609985, 0.9146619439125061, 0.7645555734634399, 1.2742336988449097, 0.9561502933502197, 1.0684340000152588, 0.5187898278236389, 1.1176354885101318, 1.1120957136154175, 1.116934061050415, 1.4437479972839355, 1.181820273399353, 0.8595079183578491, 0.9370319843292236, 1.1976311206817627, 0.5602254867553711, 1.16676664352417, 1.170637845993042, 0.7103825807571411, 0.6289262771606445, 0.8154283761978149, 0.8637107610702515, 1.0701967477798462, 0.9386014938354492, 1.4883737564086914, 0.6020448207855225, 0.7088767290115356, 0.6613094806671143, 1.1531083583831787, 0.7532916069030762, 0.9663107395172119, 0.7444255948066711]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_reciprocal_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reciprocal_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [-4.0, 2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "vec4_f32_tiny_normal_and_large",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1.17549435e-38, -1.17549435e-38, 1e+38, -1e+38] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4] } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "vec4_signed_zeros_and_infinities",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-0.0, 0.0, "-Infinity", "Infinity"] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": ["-Infinity", "Infinity", -0.0, 0.0] }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,976 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_clip_input": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+  },
+  "cases": [
+    {
+      "name": "f32_relu_style_positive_subnormal_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Relu",
+        "notes": "Clip with min=0 is ReLU-like: positive subnormal inputs should pass through instead of flushing to zero."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40, 1e-39] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_relu_style_positive_subnormal_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Relu",
+        "notes": "On an unaligned scalar path, Clip with min=0 must preserve positive subnormal inputs."
+      },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "input_bounds_f32_small",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-3.0, -1.0, 0.5, 1.5, 3.0, 9.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.5] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [6] } }
+    },
+    {
+      "name": "input_bounds_f32_1024",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [1024], "data": { "kind": "linspace", "start": -4.0, "end": 4.0 } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.5] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "input_bounds_f32_nonfinite",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 1.0, "Infinity"] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": ["-Infinity"] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": ["Infinity"] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 1.0, "Infinity"] }
+        }
+      }
+    },
+    {
+      "name": "f16_relu6_style",
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [-1.0, 0.5, 7.0, 3.0] } },
+        "min": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [6.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4] } },
+      "tolerance": 0.001
+    },
+    {
+      "name": "input_bounds_float32",
+      "provenance": {
+        "source": "onnx/onnx/backend/test/case/node/clip.py",
+        "notes": "Clip-13 expresses min/max as optional scalar inputs; this fixture exercises both tensor-bound inputs."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-3.0, -1.0, 0.5, 2.0, 9.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "input_bounds_float16",
+      "inputs": {
+        "input": {
+          "dtype": "float16",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 2.0, 8.0] }
+        },
+        "min": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float16",
+          "shape": [5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-1.0, -1.0, 0.5, 2.0, 2.0] }
+        }
+      }
+    },
+    {
+      "name": "input_bounds_int8",
+      "inputs": {
+        "input": { "dtype": "int8", "shape": [6], "data": { "kind": "values", "values": [-128, -12, -3, 4, 17, 127] } },
+        "min": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-3] } },
+        "max": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [17] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int8",
+          "shape": [6],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-3, -3, -3, 4, 17, 17] }
+        }
+      }
+    },
+    {
+      "name": "input_bounds_uint8",
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [6], "data": { "kind": "values", "values": [0, 5, 17, 18, 199, 255] } },
+        "min": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [17] } },
+        "max": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [199] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint8",
+          "shape": [6],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [17, 17, 17, 18, 199, 199] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_float16",
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 8.0] } },
+        "min": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [-1.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float16",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-1.0, -1.0, 0.5, 8.0] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_float16",
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 8.0] } },
+        "max": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float16",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 2.0] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_int8",
+      "inputs": {
+        "input": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-128, -3, 4, 127] } },
+        "min": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-3] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int8",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-3, -3, 4, 127] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_int8",
+      "inputs": {
+        "input": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-128, -3, 17, 127] } },
+        "max": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [17] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int8",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-128, -3, 17, 17] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_uint8",
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 17, 18, 255] } },
+        "min": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [17] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint8",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [17, 17, 18, 255] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_uint8",
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 17, 199, 255] } },
+        "max": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [199] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint8",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 17, 199, 199] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_float32",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 8.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-1.0, -1.0, 0.5, 8.0] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_float32",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 8.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-4.0, -1.0, 0.5, 2.0] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_int32",
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-2147483648, -16777217, 0, 2147483647] }
+        },
+        "min": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [-16777217] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-16777217, -16777217, 0, 2147483647] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_int32",
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-2147483648, 0, 16777217, 2147483647] }
+        },
+        "max": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [16777217] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-2147483648, 0, 16777217, 16777217] }
+        }
+      }
+    },
+    {
+      "name": "input_min_only_uint32",
+      "inputs": {
+        "input": {
+          "dtype": "uint32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 16777216, 16777217, 4000000001] }
+        },
+        "min": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [16777217] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [16777217, 16777217, 16777217, 4000000001] }
+        }
+      }
+    },
+    {
+      "name": "input_max_only_uint32",
+      "inputs": {
+        "input": {
+          "dtype": "uint32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [0, 16777217, 16777218, 4000000001] }
+        },
+        "max": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [16777217] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint32",
+          "shape": [4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 16777217, 16777217, 16777217] }
+        }
+      }
+    },
+    {
+      "name": "nan_input_propagates",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": ["NaN", -2.0, 0.0, 3.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "default_max_only",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-3.0, -0.5, 0.0, 2.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "default_min_only",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-3.0, 0.0, 0.5, 2.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_example_input_bounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-2.0, 0.0, 2.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3], "tolerance": 0 } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_example" }
+    },
+    {
+      "name": "default_no_bounds_uses_float_limits",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["-Infinity", -3.0, 3.0, "Infinity"] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "default_int32_vec4_full_range",
+      "provenance": {
+        "source": "ONNX Clip-13 specification",
+        "test": "omitted integer bounds use the dtype range on the packed path"
+      },
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-2147483648, -1, 1, 2147483647] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "zero_size_noop",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [0, 3], "data": { "kind": "values", "values": [] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int32_input_bounds",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_int32",
+        "notes": "ORT supplies min/max as scalar tensor inputs; the input_bounds route consumes both values directly."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1, 0, 1, -16, 12, -6, -5, 2, 16] }
+        },
+        "min": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [-10] } },
+        "max": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [10] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_uint32_input_bounds",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_uint32",
+        "notes": "ORT supplies min/max as scalar tensor inputs; the input_bounds route consumes both values directly."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "uint32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [0, 0, 1, 5, 12, 3, 2, 7, 16] }
+        },
+        "min": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [3] } },
+        "max": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [10] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "int32_exact_above_float24_no_float_cast",
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-16777218, -16777217, -16777216, 16777216, 16777217, 16777218] }
+        },
+        "min": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [-16777217] } },
+        "max": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [16777217] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [6], "tolerance": 0 } }
+    },
+    {
+      "name": "uint32_exact_above_float24_no_float_cast",
+      "inputs": {
+        "input": {
+          "dtype": "uint32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [16777215, 16777216, 16777217, 16777218, 20000000] }
+        },
+        "min": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [16777216] } },
+        "max": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [16777217] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_input_bounds_f32_m10_p10",
+      "provenance": { "source": "onnxruntime/test/providers/cpu/math/clip_test.cc", "test": "MathOpTest.Clip_6" },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [11.0, 4.4, 432.3, -1.3, 3.5, 64.0, -5.4, 9.3, 82.4] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-10.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [10.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_default_f32_3x3",
+      "provenance": { "source": "onnxruntime/test/providers/cpu/math/clip_test.cc", "test": "MathOpTest.Clip_Default" },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [11.0, 4.4, 432.3, -1.3, 3.5, 64.0, -5.4, 9.3, 82.4] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_default_int8_3x3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Default_int8"
+      },
+      "inputs": {
+        "input": {
+          "dtype": "int8",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [11, 4, 127, -1, 3, 64, -5, 9, 82] }
+        }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_default_uint8_3x3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Default_uint8"
+      },
+      "inputs": {
+        "input": {
+          "dtype": "uint8",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [11, 4, 255, 1, 3, 64, 5, 9, 82] }
+        }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_f16_input_bounds",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_MLFloat16"
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float16",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -3.0, -4.0, 0.0, 2.0, 4.0, 6.0, 8.0] }
+        },
+        "min": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [6.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_input_bounds_f32_3x3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip",
+        "notes": "ORT supplies min/max as scalar inputs; this fixture supplies both bounds through Clip-13 scalar tensor inputs."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -6.0, 0.0, 6.0, -5.4, 2.0, 6.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-5.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [5.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_f16_default_bounds",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_MLFloat16_NoMin_NoMax"
+      },
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [-1.0, -2.0, 3.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_f16_min_only",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_MLFloat16_NoMax"
+      },
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [-1.0, -2.0, 3.0] } },
+        "min": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_f16_max_only",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_MLFloat16_NoMin"
+      },
+      "inputs": {
+        "input": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [-1.0, -2.0, 3.0] } },
+        "max": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_relu6_f32_3x3",
+      "provenance": { "source": "onnxruntime/test/providers/cpu/math/clip_test.cc", "test": "MathOpTest.Clip_Relu6" },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -6.0, 3.5, 6.0, -5.4, 2.0, 8.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [6.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_relu_min_only_f32_3x3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Relu",
+        "notes": "ORT supplies the lower bound as a scalar input; this fixture exercises the same Clip-13 input directly."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -6.0, 3.5, 6.0, -5.4, 2.0, 8.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 0.0, 1.0, 0.0, 3.5, 6.0, 0.0, 2.0, 8.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_relu1_bounds_f32_3x3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.Clip_Relu1",
+        "notes": "ORT supplies both bounds as scalar inputs; this fixture exercises the same Clip-13 inputs directly."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -6.0, 3.5, 6.0, -5.4, 2.0, 8.0] }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_empty_dim_input_bounds",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/clip_test.cc",
+        "test": "MathOpTest.ClipDimWithZero"
+      },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3, 0], "data": { "kind": "values", "values": [] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-5.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [5.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_clip",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_clip_input" } }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 4, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_inbounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_inbounds",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_int8_inbounds",
+      "inputs": { "input": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [-1, 0, 1] } } },
+      "outputs": { "output": { "dtype": "int8", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_int8_inbounds",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_int8_max",
+      "inputs": {
+        "input": {
+          "dtype": "int8",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [0, 0, 0, -1, 0, 0, -1, 0, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 0, 0, -1, 0, 0, -1, 1, 1, 1, 0, -1, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, -1, -1, 0, -1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+          }
+        },
+        "max": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [3, 4, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_int8_max",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_int8_min",
+      "inputs": {
+        "input": {
+          "dtype": "int8",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -2, 0, 0, 0, 2, -1, 0, 0, 1, 1, 0, 0, 0, -1, 0, 0, 1, 1, 0, 0, -1, -1, -1, 1, 0, 0, -1, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0]
+          }
+        },
+        "min": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [3, 4, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_int8_min",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_max",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [-0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235, 1.1394007205963135, -1.234825849533081, 0.4023416340351105, -0.6848101019859314, -0.8707971572875977, -0.5788496732711792, -0.3115525245666504, 0.056165341287851334, -1.1651498079299927, 0.9008265137672424, 0.4656624495983124, -1.5362436771392822, 1.4882521629333496, 1.895889163017273, 1.1787796020507812, -0.1799248307943344, -1.0707526206970215, 1.0544517040252686, -0.4031769335269928, 1.222445011138916, 0.2082749754190445, 0.9766390323638916, 0.3563663959503174, 0.7065731883049011, 0.01050002034753561, 1.7858705520629883, 0.12691208720207214, 0.4019893705844879, 1.8831506967544556, -1.3477590084075928, -1.2704850435256958, 0.969396710395813, -1.1731233596801758, 1.9436211585998535, -0.4136189818382263, -0.747454822063446, 1.922942042350769, 1.4805147647857666, 1.8675589561462402, 0.9060446619987488, -0.8612256646156311, 1.910064935684204, -0.26800337433815, 0.8024563789367676, 0.9472519755363464, -0.15501008927822113, 0.6140793561935425, 0.922206699848175]
+          }
+        },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 4, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_max",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_default_min",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_clip_input" } }
+        },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 4, 5] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_default_min",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_example",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-2.0, 0.0, 2.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_example",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_inbounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-5.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [5.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_inbounds",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_min_greater_than_max",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": -2.0 } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_min_greater_than_max",
+        "notes": "Diverges from the upstream test's inputs (inputs.input values [-2.0, 0.0, 6.0] -> constant -2.0); the expected output is recomputed by the CPU reference for the new inputs. ONNX Clip min/max bounds are supplied as scalar tensor inputs. With min above max every element becomes max whatever the input holds, so the input is uniform at a value below both bounds: min(x,max) would return -2 and max(x,min) would return 2."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_outbounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-6.0, 0.0, 6.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-5.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [5.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_outbounds",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "onnx_backend_clip_splitbounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 6.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-5.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [5.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_clip_splitbounds",
+        "notes": "ONNX Clip min/max bounds are supplied as scalar tensor inputs."
+      }
+    },
+    {
+      "name": "vec4_u32_lanes",
+      "inputs": {
+        "input": {
+          "dtype": "uint32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0, 1, 5, 7, 100, 200, 201, 250] }
+        },
+        "min": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [5] } },
+        "max": { "dtype": "uint32", "shape": [], "data": { "kind": "values", "values": [200] } }
+      },
+      "outputs": { "output": { "dtype": "uint32", "shape": [8] } }
+    },
+    {
+      "name": "vec4_f32_nan_passthrough",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": ["NaN", 0.2, 5.0, -5.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "vec4_i32_lanes",
+      "inputs": {
+        "input": {
+          "dtype": "int32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-2147483648, -100, -50, -1, 0, 49, 50, 2147483647] }
+        },
+        "min": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [-50] } },
+        "max": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [50] } }
+      },
+      "outputs": { "output": { "dtype": "int32", "shape": [8] } }
+    },
+    {
+      "name": "vec4_u8_lanes",
+      "inputs": {
+        "input": {
+          "dtype": "uint8",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0, 1, 5, 7, 100, 200, 201, 255] }
+        },
+        "min": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [5] } },
+        "max": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [200] } }
+      },
+      "outputs": { "output": { "dtype": "uint8", "shape": [8] } }
+    },
+    {
+      "name": "input_bounds_i32_min_greater_than_max",
+      "inputs": {
+        "input": { "dtype": "int32", "shape": [6], "data": { "kind": "constant", "value": -2147483648 } },
+        "min": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [5] } },
+        "max": { "dtype": "int32", "shape": [], "data": { "kind": "values", "values": [-5] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "int32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-5, -5, -5, -5, -5, -5] },
+          "tolerance": 0
+        }
+      },
+      "provenance": {
+        "notes": "With min above max every element becomes max whatever the input holds, so the input is uniform at int32 min: clamping in the wrong order returns -2147483648 or 5 instead of -5."
+      }
+    },
+    {
+      "name": "f32_nan_passthrough_with_input_bounds",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": ["NaN", -3.0, 0.5, 3.0] } },
+        "min": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.0] } },
+        "max": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": ["NaN", -1.0, 0.5, 1.0] },
+          "tolerance": 0,
+          "allowNaN": true
+        }
+      }
+    },
+    {
+      "name": "uint8_input_bounds_min_greater_than_max",
+      "inputs": {
+        "input": { "dtype": "uint8", "shape": [5], "data": { "kind": "constant", "value": 0 } },
+        "min": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [200] } },
+        "max": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [100] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "uint8",
+          "shape": [5],
+          "data": { "kind": "values", "values": [100, 100, 100, 100, 100] },
+          "tolerance": 0
+        }
+      },
+      "provenance": {
+        "notes": "With min above max every element becomes max whatever the input holds, so the input is uniform at 0: clamping in the wrong order returns 0 or 200 instead of 100."
+      }
+    }
+  ]
+}

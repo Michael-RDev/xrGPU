@@ -1,0 +1,3575 @@
+{
+  "domain": "com.microsoft",
+  "name": "QAttention",
+  "sinceVersion": 1,
+  "inputs": {
+    "input": { "dtype": "T1" },
+    "weight": { "dtype": "T2" },
+    "bias": { "dtype": "T3" },
+    "input_scale": { "dtype": "T3" },
+    "weight_scale": { "dtype": "T3" },
+    "mask_index": { "dtype": "T4", "optional": true },
+    "input_zero_point": { "dtype": "T1", "optional": true },
+    "weight_zero_point": { "dtype": "T2", "optional": true },
+    "past": { "dtype": "T3", "optional": true }
+  },
+  "outputs": {
+    "output": {
+      "dtype": "T3",
+      "rank": 3,
+      "shape": ["dim(shapes.input, 0)", "dim(shapes.input, 1)", "dim(shapes.weight, 1) / 3"]
+    },
+    "present": {
+      "dtype": "T3",
+      "rank": 5,
+      "optional": true,
+      "shape": [2, "dim(shapes.input, 0)", "attrs.num_heads", "(dim(shapes.past, 3) if present.past else 0) + dim(shapes.input, 1)", "dim(shapes.weight, 1) / 3 / attrs.num_heads"]
+    }
+  },
+  "attributes": {
+    "num_heads": {},
+    "unidirectional": { "default": 0 },
+    "do_rotary": { "default": 0 },
+    "mask_filter_value": { "default": -10000 },
+    "past_present_share_buffer": {},
+    "scale": {}
+  },
+  "attributeConstraints": {
+    "num_heads": { "required": true },
+    "do_rotary": { "values": [0] },
+    "past_present_share_buffer": { "values": [0] }
+  },
+  "typeConstraints": { "T1": ["uint8"], "T2": ["uint8", "int8"], "T3": ["float32"], "T4": ["int32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "ATTEND_WORKGROUP": { "default": 64 },
+    "ATTEND_QUERY_TILE": { "default": 4 },
+    "ATTEND_MIN_WORKGROUPS": { "default": 1024 },
+    "DP4A_TILE_M": { "default": 32 },
+    "DP4A_TILE_N": { "default": 64 },
+    "DP4A_GEMV_TILE_N": { "default": 32 },
+    "DP4A_GEMV_K_UNROLL": { "default": 8 },
+    "DP4A_K_TILE_WORDS": { "default": 32 },
+    "EXACT_MATRIX_MIN_INVOCATIONS": { "default": 16384 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "batchSize": "dim(shapes.input, 0)",
+    "seqLen": "dim(shapes.input, 1)",
+    "inputHidden": "dim(shapes.input, 2)",
+    "hiddenX3": "dim(shapes.weight, 1)",
+    "numHeads": "attrs.num_heads",
+    "hidden": "hiddenX3 / 3",
+    "headSize": "hidden / max(1, numHeads)",
+    "headPad": "ceilDiv(headSize, 4) * 4",
+    "headPadV4": "headPad / 4",
+    "qkvHidden": "numHeads * headPad",
+    "gemmRows": "batchSize * seqLen",
+    "pastLen": "dim(shapes.past, 3) if present.past else 0",
+    "totalLen": "pastLen + seqLen",
+    "causal": "attrs.unidirectional != 0 and seqLen > 1",
+    "maskRank": "ranks.mask_index if present.mask_index else 0",
+    "maskCount": "numel(shapes.mask_index) if present.mask_index else 0",
+    "maskKind": "\"none\" if not present.mask_index else (\"raw3d\" if maskRank == 3 else (\"raw2d\" if maskRank == 2 else (\"endpos\" if (maskRank == 1 and maskCount == batchSize) else (\"endstart\" if (maskRank == 1 and maskCount == 2 * batchSize) else \"unsupported\"))))",
+    "maskFilter": "attrs.mask_filter_value",
+    "maskPerQuery": "causal or maskKind == \"raw3d\"",
+    "maskRows": "seqLen if maskPerQuery else 1",
+    "maskElements": "batchSize * maskRows * totalLen",
+    "maskSeqStride": "totalLen if maskPerQuery else 0",
+    "maskBatchStride": "maskRows * totalLen",
+    "causalLimit": "pastLen if causal else totalLen",
+    "scaleValue": "attrs.scale if (has(attrs, \"scale\") and attrs.scale != 0) else 1 / pow(headSize, 0.5)",
+    "weightScalePerColumn": "numel(shapes.weight_scale) == hiddenX3",
+    "weightZeroPerColumn": "(numel(shapes.weight_zero_point) == hiddenX3) if present.weight_zero_point else false",
+    "aScalar": "\"u32\"",
+    "bScalar": "\"u32\" if tensorDtypes.weight == \"uint8\" else \"i32\"",
+    "aUnsigned": "true",
+    "bUnsigned": "tensorDtypes.weight == \"uint8\"",
+    "aZeroPerRow": false,
+    "intelXe3SignedProjection": "tensorDtypes.weight == \"int8\" and has(device.adapterInfo, \"vendor\") and device.adapterInfo.vendor == \"intel\" and has(device.adapterInfo, \"architecture\") and device.adapterInfo.architecture == \"xe-3lpg\"",
+    "gemmTileM": "1 if gemmRows == 1 else tunables.DP4A_TILE_M",
+    "gemmTileN": "tunables.DP4A_GEMV_TILE_N if gemmRows == 1 else (min(deviceWorkgroupCap, 2 * tunables.DP4A_TILE_N) if intelXe3SignedProjection else tunables.DP4A_TILE_N)",
+    "gemmKtWords": "min(2 * tunables.DP4A_K_TILE_WORDS, floor((device.limits.maxComputeWorkgroupStorageSize - gemmTileM * 4) / (gemmTileM * 4))) if has(device.adapterInfo, \"architecture\") and device.adapterInfo.architecture == \"maxwell\" and ceilDiv(gemmRows, gemmTileM) >= 8 else tunables.DP4A_K_TILE_WORDS",
+    "gemmStorageBytes": "gemmTileM * gemmKtWords * 4 + gemmTileM * 4",
+    "dp4aOk": "gemmTileN <= deviceWorkgroupCap and gemmStorageBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(hiddenX3, gemmTileN) <= DISPATCH_FOLD_WIDTH and ceilDiv(gemmRows, gemmTileM) <= DISPATCH_FOLD_WIDTH",
+    "sgmatTileN": 64,
+    "sgmatTileK": 32,
+    "sgmatColumnGroups": 2,
+    "sgmatStorageRowGroups": "floor((device.limits.maxComputeWorkgroupStorageSize - sgmatTileN * sgmatTileK * 4) / (16 * sgmatTileK * 4))",
+    "sgmatRowGroups": "max(1, min(4, floor(deviceWorkgroupCap / (32 * sgmatColumnGroups)), sgmatStorageRowGroups, max(floor(sgmatStorageRowGroups / 2), floor(gemmRows / 16))))",
+    "sgmatTileM": "16 * sgmatRowGroups",
+    "sgmatSubgroups": "sgmatRowGroups * sgmatColumnGroups",
+    "sgmatWorkgroup": "32 * sgmatSubgroups",
+    "sgmatStagingBytes": "(sgmatTileM + sgmatTileN) * sgmatTileK * 4",
+    "sgmatScratchBytes": "sgmatSubgroups * 4 * 64 * 4",
+    "sgmatReuseStaging": "sgmatStagingBytes + sgmatScratchBytes > device.limits.maxComputeWorkgroupStorageSize",
+    "sgmatSharedBytes": "sgmatStagingBytes + (0 if sgmatReuseStaging else sgmatScratchBytes)",
+    "sgmatOk": "sgmatWorkgroup <= deviceWorkgroupCap and sgmatSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and ceilDiv(hiddenX3, sgmatTileN) <= DISPATCH_FOLD_WIDTH and ceilDiv(gemmRows, sgmatTileM) <= DISPATCH_FOLD_WIDTH and gemmRows >= sgmatTileM and hiddenX3 >= sgmatTileN / 2 and inputHidden >= sgmatTileK and ceilDiv(gemmRows, sgmatTileM) * ceilDiv(hiddenX3, sgmatTileN) * sgmatWorkgroup >= tunables.EXACT_MATRIX_MIN_INVOCATIONS",
+    "attendUnits": "seqLen * numHeads * batchSize",
+    "attendNarrowTilePreferred": "variableSubgroup16To32 and seqLen >= 4 * tunables.ATTEND_WORKGROUP and headPadV4 >= 1 and headPadV4 <= 2 * device.adapterInfo.subgroupMinSize",
+    "attendWorkgroup": "min(tunables.ATTEND_WORKGROUP, device.adapterInfo.subgroupMinSize) if device.features.has(\"subgroups\") and not device.features.has(\"shader-f16\") and seqLen >= 2 * device.adapterInfo.subgroupMinSize and attendUnits < 2 * tunables.ATTEND_MIN_WORKGROUPS else (min(tunables.ATTEND_WORKGROUP, 2 * device.adapterInfo.subgroupMinSize) if attendNarrowTilePreferred else tunables.ATTEND_WORKGROUP)",
+    "queryTileCap": "max(1, min(tunables.ATTEND_QUERY_TILE, floor(attendWorkgroup / headPadV4), seqLen))",
+    "queryTile": "max(1, min(queryTileCap, floor(attendUnits / max(1, tunables.ATTEND_MIN_WORKGROUPS))))",
+    "vStripes": "max(1, floor(attendWorkgroup / (queryTile * headPadV4)))",
+    "attendSharedBytes": "32 * queryTile * headPadV4 + 12 * queryTile * attendWorkgroup + 4 * queryTile + 16 * vStripes * queryTile * headPadV4",
+    "attendOk": "headPadV4 >= 1 and attendSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and attendWorkgroup <= deviceWorkgroupCap and ceilDiv(seqLen, queryTile) <= DISPATCH_FOLD_WIDTH and numHeads <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "shapeOk": "ranks.input == 3 and ranks.weight == 2 and ranks.bias == 1 and numHeads >= 1 and hiddenX3 >= 3 and hiddenX3 % 3 == 0 and hidden % numHeads == 0 and headSize >= 1 and inputHidden >= 1 and dim(shapes.weight, 0) == inputHidden and numel(shapes.bias) == hiddenX3 and numel(shapes.input_scale) == 1 and (numel(shapes.weight_scale) == 1 or numel(shapes.weight_scale) == hiddenX3) and sameShape(shapes.output, [batchSize, seqLen, hidden]) and seqLen >= 1 and batchSize >= 1",
+    "maskOk": "maskKind != \"unsupported\" and (maskRank != 2 or (dim(shapes.mask_index, 0) == batchSize and dim(shapes.mask_index, 1) == totalLen)) and (maskRank != 3 or (dim(shapes.mask_index, 0) == batchSize and dim(shapes.mask_index, 1) == seqLen and dim(shapes.mask_index, 2) == totalLen))",
+    "scratchOk": "gemmRows * hiddenX3 * 4 <= device.limits.maxStorageBufferBindingSize and 2 * batchSize * totalLen * qkvHidden * 4 <= device.limits.maxStorageBufferBindingSize and maskElements * 4 <= device.limits.maxStorageBufferBindingSize"
+  },
+  "when": ["shapeOk", "attendOk", "scratchOk"],
+  "bindings": {
+    "a": { "arg": "input", "elementType": "$aScalar" },
+    "b": { "arg": "weight", "elementType": "$bScalar" },
+    "a_zero_point": { "arg": "input_zero_point", "elementType": "$aScalar", "length": 1 },
+    "b_zero_point": { "arg": "weight_zero_point", "elementType": "$bScalar" },
+    "y": { "scratch": "qkvAcc", "elementType": "i32" },
+    "gemm_params": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "gemmRows" },
+        { "name": "N", "type": "u32", "value": "hiddenX3" },
+        { "name": "K", "type": "u32", "value": "inputHidden" },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        { "name": "bBatchStride", "type": "u32", "value": 0 },
+        { "name": "yBatchStride", "type": "u32", "value": 0 }
+      ]
+    },
+    "sgmat_params": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "gemmRows" },
+        { "name": "N", "type": "u32", "value": "hiddenX3" },
+        { "name": "K", "type": "u32", "value": "inputHidden" }
+      ]
+    },
+    "qkv_accumulator": { "scratch": "qkvAcc", "buffer": "read-only-storage", "elementType": "i32" },
+    "q_scratch": { "scratch": "qScratch", "elementType": "f32" },
+    "kv_scratch": { "scratch": "kvScratch", "elementType": "f32" },
+    "kv_scratch_read": {
+      "scratch": "kvScratch",
+      "name": "kv_scratch",
+      "buffer": "read-only-storage",
+      "elementType": "f32"
+    },
+    "scatter_params": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "gemmRows * 3 * qkvHidden" },
+        { "name": "seq", "type": "u32", "value": "seqLen" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "total", "type": "u32", "value": "totalLen" },
+        { "name": "past", "type": "u32", "value": "pastLen" }
+      ]
+    },
+    "attn_mask_write": { "scratch": "attnMask", "name": "attn_mask", "elementType": "f32" },
+    "attn_mask": { "scratch": "attnMask", "buffer": "read-only-storage", "elementType": "f32" },
+    "mask_params": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "maskElements" },
+        { "name": "total", "type": "u32", "value": "totalLen" },
+        { "name": "rows", "type": "u32", "value": "maskRows" },
+        { "name": "causalLimit", "type": "u32", "value": "causalLimit" }
+      ]
+    },
+    "past_params": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "2 * batchSize * numHeads * pastLen * headSize" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "total", "type": "u32", "value": "totalLen" },
+        { "name": "length", "type": "u32", "value": "pastLen" }
+      ]
+    },
+    "present_params": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "2 * batchSize * numHeads * totalLen * headSize" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "total", "type": "u32", "value": "totalLen" },
+        { "name": "length", "type": "u32", "value": "totalLen" }
+      ]
+    },
+    "query": { "scratch": "qScratch", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "key_value": { "scratch": "kvScratch", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "attend_params": {
+      "name": "params",
+      "struct": [
+        { "name": "qSeq", "type": "u32", "value": "seqLen" },
+        { "name": "kvSeq", "type": "u32", "value": "totalLen" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "maskBatchStride", "type": "u32", "value": "maskBatchStride" },
+        { "name": "maskSeqStride", "type": "u32", "value": "maskSeqStride" },
+        { "name": "scale", "type": "f32", "value": "scaleValue" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "sgmat_plain_mask_izp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_mask_izp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_mask_izp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_mask_izp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_mask_noizp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_mask_noizp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_mask_noizp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_mask_noizp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_nomask_izp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_nomask_izp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_nomask_izp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_nomask_izp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_nomask_noizp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_nomask_noizp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_plain_nomask_noizp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "packed_plain_nomask_noizp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "not present.present", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_mask_izp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_mask_izp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_mask_izp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_mask_izp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_mask_noizp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_mask_noizp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_mask_noizp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_mask_noizp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_nomask_izp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_nomask_izp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_nomask_izp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_nomask_izp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_nomask_noizp_wzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_nomask_noizp_wzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_present_nomask_noizp_nowzp",
+      "priority": 20,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_present_nomask_noizp_nowzp",
+      "priority": 10,
+      "when": ["not present.past", "present.present", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_mask_izp_wzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_mask_izp_wzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_mask_izp_nowzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_mask_izp_nowzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_mask_noizp_wzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_mask_noizp_wzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_mask_noizp_nowzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_mask_noizp_nowzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "present.mask_index and maskOk", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["mask_index", "attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_nomask_izp_wzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_nomask_izp_wzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_nomask_izp_nowzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_nomask_izp_nowzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "present.input_zero_point", "numel(shapes.input_zero_point) == 1", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_nomask_noizp_wzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_nomask_noizp_wzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "present.weight_zero_point", "numel(shapes.weight_zero_point) == 1 or numel(shapes.weight_zero_point) == hiddenX3", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "b_zero_point", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sgmat_past_nomask_noizp_nowzp",
+      "priority": 20,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "sgmatOk", "wave32Effective"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectExactMatrix",
+          "shader": "quant-exact-matrix.wgsl.jinja",
+          "bindings": ["a", "b", "y", "sgmat_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, sgmatTileN)", "y": "ceilDiv(gemmRows, sgmatTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_past_nomask_noizp_nowzp",
+      "priority": 10,
+      "when": ["present.past", "present.present", "ranks.past == 5", "dim(shapes.past, 0) == 2 and dim(shapes.past, 1) == batchSize", "dim(shapes.past, 2) == numHeads and dim(shapes.past, 4) == headSize", "sameShape(shapes.present, [2, batchSize, numHeads, totalLen, headSize])", "not present.mask_index", "not present.input_zero_point", "not present.weight_zero_point", "dp4aOk"],
+      "derive": {
+        "hasAZero": "present.input_zero_point",
+        "hasBZero": "present.weight_zero_point",
+        "bZeroPerColumn": "weightZeroPerColumn",
+        "tileM": "gemmTileM",
+        "tileN": "gemmTileN",
+        "ktWords": "gemmKtWords",
+        "gemvKUnroll": "tunables.DP4A_GEMV_K_UNROLL"
+      },
+      "intermediates": [
+        { "id": "qkvAcc", "dtype": "int32", "shape": "[gemmRows * hiddenX3]" },
+        { "id": "qScratch", "dtype": "float32", "shape": "[batchSize * seqLen * qkvHidden]" },
+        { "id": "kvScratch", "dtype": "float32", "shape": "[2 * batchSize * totalLen * qkvHidden]" },
+        { "id": "attnMask", "dtype": "float32", "shape": "[maskElements]" }
+      ],
+      "passes": [
+        {
+          "id": "past_state",
+          "name": "QAttention.PastState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"past_in\"" },
+          "bindings": ["past", "kv_scratch", "past_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * pastLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "mask",
+          "name": "QAttention.Mask",
+          "shader": "qattention-mask.wgsl.jinja",
+          "bindings": ["attn_mask_write", "mask_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((maskElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "project",
+          "name": "QAttention.ProjectPackedInteger",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "y", "gemm_params"],
+          "dispatch": { "x": "ceilDiv(hiddenX3, gemmTileN)", "y": "ceilDiv(gemmRows, gemmTileM)" }
+        },
+        {
+          "id": "scatter",
+          "name": "QAttention.Dequantize",
+          "shader": "qattention-qkv-scatter.wgsl.jinja",
+          "bindings": ["qkv_accumulator", "bias", "input_scale", "weight_scale", "q_scratch", "kv_scratch", "scatter_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmRows * 3 * qkvHidden), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "attend",
+          "name": "QAttention.Attend",
+          "shader": "qattention-attend.wgsl.jinja",
+          "bindings": ["query", "key_value", "attn_mask", "output", "attend_params"],
+          "dispatch": { "x": "ceilDiv(seqLen, queryTile)", "y": "numHeads", "z": "batchSize" }
+        },
+        {
+          "id": "present_state",
+          "name": "QAttention.PresentState",
+          "shader": "qattention-kv-permute.wgsl.jinja",
+          "derive": { "direction": "\"present_out\"" },
+          "bindings": ["kv_scratch_read", "present", "present_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((2 * batchSize * numHeads * totalLen * headSize), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

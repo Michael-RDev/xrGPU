@@ -1,0 +1,188 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Asin",
+        "notes": "For tiny finite inputs asin(x) rounds back to x in float32; zero-flushing erases the signed tail."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Asin",
+        "notes": "Unaligned scalar-path subnormal inputs have valid finite Asin outputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.002
+    },
+    {
+      "name": "out_of_domain_returns_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [1.5, 0.5, -1.5, -0.5, 5.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "f32_near_domain_edges_accuracy_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Asin",
+        "notes": "Valid float32 values one ULP inside the unit interval stress Asin's split-pi high-slope domain path."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3],
+          "data": { "kind": "values", "values": [0.9999999403953552, -0.9999999403953552, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-8, "relTolerance": 2.4e-7 } }
+    },
+    {
+      "name": "f16_domain_and_nonfinite_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1.0, -1.001, 0.0, 1.0, 1.001, "Infinity", "-Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.002, "allowNaN": true } }
+    },
+    {
+      "name": "ort_float_unit_interval",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Asin"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_domain_and_nonfinite_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Asin",
+        "notes": "Extends ORT's unit-interval case with ONNX-valid out-of-domain and non-finite inputs."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [9],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 0.0, 1.0, 1.0000001, -1.0000001, "Infinity", "-Infinity", "NaN"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [9], "tolerance": 0.00001, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_asin_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-0.5, 0.0, 0.5] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_asin",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_asin" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125, 0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042, 0.21038256585597992, 0.12892629206180573, 0.31542834639549255, 0.36371076107025146, 0.5701967477798462, 0.4386015236377716, 0.9883738160133362, 0.10204481333494186, 0.20887675881385803, 0.16130951046943665, 0.6531082987785339, 0.25329160690307617, 0.4663107693195343, 0.24442559480667114]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_asin_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_asin_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-0.5, 0.0, 0.5] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_domain_mix_vec4_aligned",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, -1.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "f32_scalar_tail_4097_domain",
+      "provenance": {
+        "notes": "An odd element count exercises the scalar tail while bounded generated values remain inside the Asin domain [-1, 1]."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4097],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.019, "scale": 0.45 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4097], "tolerance": 0.00001 } }
+    }
+  ]
+}

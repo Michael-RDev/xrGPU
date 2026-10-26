@@ -1,0 +1,442 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256, 512], "ITEMS_PER_LANE": [1, 2, 4] },
+  "cases": [
+    {
+      "name": "llama3-8b-prefill-s512-q-h32-d128-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "512-token prefill of the query projection: rank-3 packed heads with a rank-2 cache and a per-token position table. Read-once, write-once traffic.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 2097152, "cacheElems": 32768 },
+      "inputs": {
+        "x": { "shape": [1, 512, 4096], "dtype": "float32", "dist": "normal", "seed": 4010, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4010,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4011, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4012, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-prefill-s512-q-h32-d128-f16",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "The float16 prefill of the same projection, the dtype shipped model graphs use.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float16", "elems": 2097152, "cacheElems": 32768 },
+      "inputs": {
+        "x": { "shape": [1, 512, 4096], "dtype": "float16", "dist": "normal", "seed": 4020, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4020,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 64], "dtype": "float16", "dist": "uniform", "seed": 4021, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float16", "dist": "uniform", "seed": 4022, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 4096], "dtype": "float16" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-prefill-s512-q-h32-d128-interleaved-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 1 },
+      "provenance": {
+        "notes": "The interleaved pairing at the same shape. One of the two ONNX Runtime fusion paths emits interleaved=1, so both layouts occur in real exports.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 2097152, "cacheElems": 32768 },
+      "inputs": {
+        "x": { "shape": [1, 512, 4096], "dtype": "float32", "dist": "normal", "seed": 4030, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4030,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4031, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4032, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-decode-q-h32-d128-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "One decoded token through a format-0 base offset, the shape a decode loop emits. 32 KB of traffic, so this measures launch latency.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 4096, "cacheElems": 64 },
+      "inputs": {
+        "x": { "shape": [1, 1, 4096], "dtype": "float32", "dist": "normal", "seed": 4040, "scale": 1 },
+        "positionIds": { "shape": [1], "dtype": "uint32", "data": { "kind": "values", "values": [1024] } },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4041, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4042, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 1, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-decode-k-h8-d128-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "The grouped-query key projection of the same decode step: eight heads, the smallest dispatch this operator sees per token.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 1024, "cacheElems": 64 },
+      "inputs": {
+        "x": { "shape": [1, 1, 1024], "dtype": "float32", "dist": "normal", "seed": 4050, "scale": 1 },
+        "positionIds": { "shape": [1], "dtype": "uint32", "data": { "kind": "values", "values": [1024] } },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4051, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4052, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 1, 1024], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "qwen3-4b-prefill-s512-rank4-h32-d128-f16",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "Rank-4 BNSH prefill, the transposed layout the ONNX Runtime attention fusion emits after a Transpose.",
+        "model": "Qwen/Qwen3-4B"
+      },
+      "vars": { "dtype": "float16", "elems": 2097152, "cacheElems": 32768 },
+      "inputs": {
+        "x": { "shape": [1, 32, 512, 128], "dtype": "float16", "dist": "normal", "seed": 4060, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4060,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 64], "dtype": "float16", "dist": "uniform", "seed": 4061, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float16", "dist": "uniform", "seed": 4062, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 512, 128], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "phi2-prefill-s512-rotary32-d80-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 32, "num_heads": 32 },
+      "provenance": {
+        "notes": "Partial rotary: 32 of 80 head elements rotate, so 60 percent of the traffic is an untouched tail the same invocations copy at full vector width.",
+        "model": "microsoft/phi-2"
+      },
+      "vars": { "dtype": "float32", "elems": 1310720, "cacheElems": 8192 },
+      "inputs": {
+        "x": { "shape": [1, 512, 2560], "dtype": "float32", "dist": "normal", "seed": 4070, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4070,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 16], "dtype": "float32", "dist": "uniform", "seed": 4071, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 16], "dtype": "float32", "dist": "uniform", "seed": 4072, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 2560], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "phi3-mini-prefill-s512-d96-h32-f16",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "Head size 96 with a 48-wide cache: a non-power-of-two head that still clears the four-pair route's gates.",
+        "model": "microsoft/Phi-3-mini-4k-instruct"
+      },
+      "vars": { "dtype": "float16", "elems": 1572864, "cacheElems": 24576 },
+      "inputs": {
+        "x": { "shape": [1, 512, 3072], "dtype": "float16", "dist": "normal", "seed": 4080, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4080,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 48], "dtype": "float16", "dist": "uniform", "seed": 4081, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 48], "dtype": "float16", "dist": "uniform", "seed": 4082, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 3072], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "pair-route-prefill-s512-rotary126-d128-h32-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126, "num_heads": 32 },
+      "provenance": {
+        "notes": "A rotary window of 126 gives 63 rotation pairs and leaves two unrotated elements in each 128-wide head, at the same geometry as the paired Llama prefill case."
+      },
+      "vars": { "dtype": "float32", "elems": 2097152, "cacheElems": 32256 },
+      "inputs": {
+        "x": { "shape": [1, 512, 4096], "dtype": "float32", "dist": "normal", "seed": 4090, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4090,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 63], "dtype": "float32", "dist": "uniform", "seed": 4091, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 63], "dtype": "float32", "dist": "uniform", "seed": 4092, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 512, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-prefill-s1536-q-h32-d128-f32",
+      "preset": "model",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "A 1536-token prefill, sized so its working set matches the elementwise control of the same working set.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 6291456, "cacheElems": 98304 },
+      "inputs": {
+        "x": { "shape": [1, 1536, 4096], "dtype": "float32", "dist": "normal", "seed": 4100, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 1536],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4100,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4101, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4102, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 1536, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "pair-route-prefill-s2048-rotary126-d128-h32-f32",
+      "preset": "model",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126, "num_heads": 32 },
+      "provenance": {
+        "notes": "The single-pair route at the same 67 MB working set as the four-pair route's model case, so the two schedules are directly comparable."
+      },
+      "vars": { "dtype": "float32", "elems": 8388608, "cacheElems": 129024 },
+      "inputs": {
+        "x": { "shape": [1, 2048, 4096], "dtype": "float32", "dist": "normal", "seed": 4110, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 2048],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4110,
+          "step": 1,
+          "offset": 0,
+          "mod": 8192
+        },
+        "cos": { "shape": [8192, 63], "dtype": "float32", "dist": "uniform", "seed": 4111, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [8192, 63], "dtype": "float32", "dist": "uniform", "seed": 4112, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 2048, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "qwen3-4b-decode-rank4-h32-d128-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "One decoded token in the rank-4 layout through a format-0 base offset: 32 head blocks of one token each, the smallest rank-4 dispatch.",
+        "model": "Qwen/Qwen3-4B"
+      },
+      "vars": { "dtype": "float32", "elems": 4096, "cacheElems": 64 },
+      "inputs": {
+        "x": { "shape": [1, 32, 1, 128], "dtype": "float32", "dist": "normal", "seed": 4120, "scale": 1 },
+        "positionIds": { "shape": [1], "dtype": "uint32", "data": { "kind": "values", "values": [1024] } },
+        "cos": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4121, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 64], "dtype": "float32", "dist": "uniform", "seed": 4122, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 1, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "pair-route-rank4-prefill-s512-rotary126-f32",
+      "preset": "smoke",
+      "attrs": { "interleaved": 0, "rotary_embedding_dim": 126, "num_heads": 32 },
+      "provenance": {
+        "notes": "The single-pair route in the rank-4 layout, where the head block shares one gathered cache row across its heads exactly as the vector route does."
+      },
+      "vars": { "dtype": "float32", "elems": 2097152, "cacheElems": 32256 },
+      "inputs": {
+        "x": { "shape": [1, 32, 512, 128], "dtype": "float32", "dist": "normal", "seed": 4130, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 512],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4130,
+          "step": 1,
+          "offset": 0,
+          "mod": 4096
+        },
+        "cos": { "shape": [4096, 63], "dtype": "float32", "dist": "uniform", "seed": 4131, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [4096, 63], "dtype": "float32", "dist": "uniform", "seed": 4132, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 512, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-prefill-s4096-q-h32-d128-f16",
+      "preset": "model",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "A 4096-token prefill: a 67 MB working set, far past cache, so the bandwidth figure is a DRAM figure.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float16", "elems": 16777216, "cacheElems": 262144 },
+      "inputs": {
+        "x": { "shape": [1, 4096, 4096], "dtype": "float16", "dist": "normal", "seed": 4140, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 4096],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4140,
+          "step": 1,
+          "offset": 0,
+          "mod": 8192
+        },
+        "cos": { "shape": [8192, 64], "dtype": "float16", "dist": "uniform", "seed": 4141, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [8192, 64], "dtype": "float16", "dist": "uniform", "seed": 4142, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 4096, 4096], "dtype": "float16" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "llama3-8b-prefill-s2048-q-h32-d128-f32",
+      "preset": "model",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "The float32 counterpart at the same 67 MB working set.",
+        "model": "meta-llama/Meta-Llama-3-8B"
+      },
+      "vars": { "dtype": "float32", "elems": 8388608, "cacheElems": 131072 },
+      "inputs": {
+        "x": { "shape": [1, 2048, 4096], "dtype": "float32", "dist": "normal", "seed": 4150, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 2048],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4150,
+          "step": 1,
+          "offset": 0,
+          "mod": 8192
+        },
+        "cos": { "shape": [8192, 64], "dtype": "float32", "dist": "uniform", "seed": 4151, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [8192, 64], "dtype": "float32", "dist": "uniform", "seed": 4152, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 2048, 4096], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "qwen3-4b-prefill-s2048-rank4-h32-d128-f32",
+      "preset": "model",
+      "attrs": { "interleaved": 0 },
+      "provenance": {
+        "notes": "The rank-4 layout at the same 67 MB working set, where the pinned (batch, head) slice carries 2048 tokens.",
+        "model": "Qwen/Qwen3-4B"
+      },
+      "vars": { "dtype": "float32", "elems": 8388608, "cacheElems": 131072 },
+      "inputs": {
+        "x": { "shape": [1, 32, 2048, 128], "dtype": "float32", "dist": "normal", "seed": 4160, "scale": 1 },
+        "positionIds": {
+          "shape": [1, 2048],
+          "dtype": "uint32",
+          "dist": "linearMod",
+          "seed": 4160,
+          "step": 1,
+          "offset": 0,
+          "mod": 8192
+        },
+        "cos": { "shape": [8192, 64], "dtype": "float32", "dist": "uniform", "seed": 4161, "scale": 0.1, "offset": 0.9 },
+        "sin": { "shape": [8192, 64], "dtype": "float32", "dist": "uniform", "seed": 4162, "scale": 0.1 }
+      },
+      "outputs": { "y": { "shape": [1, 32, 2048, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": false,
+        "metrics": [{ "type": "bandwidth", "value": "(args.elems * 2 + args.cacheElems * 2) * dtypeBytes(args.dtype)" }]
+      }
+    }
+  ]
+}

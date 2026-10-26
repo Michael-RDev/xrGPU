@@ -1,0 +1,150 @@
+{
+  "domain": "ai.onnx",
+  "name": "BatchNormalization",
+  "sinceVersion": 15,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "scale": { "dtype": "T", "rank": 1 },
+    "b": { "onnx": "B", "dtype": "T", "rank": 1 },
+    "inputMean": { "onnx": "input_mean", "dtype": "T", "rank": 1 },
+    "inputVar": { "onnx": "input_var", "dtype": "T", "rank": 1 }
+  },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "epsilon": { "default": 0.00001 }, "momentum": { "default": 0.9 }, "training_mode": { "default": 0 } },
+  "attributeConstraints": { "momentum": { "values": [0.9] }, "training_mode": { "values": [0] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "normalizationParamsOk": "ranks.scale == 1 and ranks.b == 1 and ranks.inputMean == 1 and ranks.inputVar == 1 and dim(shapes.scale, 0) == dim(shapes.x, 1) and dim(shapes.b, 0) == dim(shapes.x, 1) and dim(shapes.inputMean, 0) == dim(shapes.x, 1) and dim(shapes.inputVar, 0) == dim(shapes.x, 1)",
+    "inferenceContractOk": "f16Ok(dtypes.T) and ranks.x >= 2 and ranks.y == ranks.x and sameShape(shapes.y, shapes.x) and normalizationParamsOk"
+  },
+  "when": ["inferenceContractOk"],
+  "bindings": {
+    "scale": { "elementType": "$T" },
+    "bias": { "arg": "b", "elementType": "$T" },
+    "input_mean": { "arg": "inputMean", "elementType": "$T" },
+    "input_var": { "arg": "inputVar", "elementType": "$T" },
+    "x_main": { "name": "x", "elementType": "vec4<f32>" },
+    "scale_main": { "name": "scale", "elementType": "vec4<f32>" },
+    "bias_b": { "arg": "b", "name": "bias", "elementType": "vec4<f32>" },
+    "input_mean_main": { "arg": "inputMean", "name": "input_mean", "elementType": "vec4<f32>" },
+    "input_var_main": { "arg": "inputVar", "name": "input_var", "elementType": "vec4<f32>" },
+    "y_main": { "name": "y", "elementType": "vec4<f32>" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "numel(shapes.y) / 4" },
+        { "name": "channels4", "type": "u32", "value": "dim(shapes.x, 1) / 4" },
+        { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "numel(shapes.y) / 4" },
+        { "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" },
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+      ]
+    },
+    "params_nchw_inference_vec4": {
+      "name": "params",
+      "struct": [
+        { "name": "count4", "type": "u32", "value": "numel(shapes.y) / 4" },
+        { "name": "spatial4", "type": "u32", "value": "inner(shapes.x, 1) / 4" },
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "inference_scalar",
+      "derive": { "scalar": "dtypes.T", "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BatchNormalization.InferenceScalar",
+          "shader": "batch-normalization-nchw.wgsl.jinja",
+          "bindings": [
+            "x",
+            "scale",
+            "bias",
+            "input_mean",
+            "input_var",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "height", "type": "u32", "value": "1 if ranks.x == 2 else dim(shapes.x, 2)" },
+                { "name": "width", "type": "u32", "value": "1 if ranks.x == 2 else inner(shapes.x, 2)" },
+                { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nc_inference_vec4",
+      "priority": 110,
+      "when": ["dtypes.T == \"f32\"", "ranks.x == 2", "dim(shapes.x, 1) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "BatchNormalization.NcInferenceVec4",
+          "shader": "batch-normalization-nc-vec4.wgsl.jinja",
+          "bindings": ["x_main", "scale_main", "bias_b", "input_mean_main", "input_var_main", "y_main", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_inference_flat_vec4",
+      "priority": 90,
+      "when": ["dtypes.T == \"f32\"", "ranks.x >= 3", "inner(shapes.x, 1) % 4 != 0 and numel(shapes.x) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "BatchNormalization.InferenceFlatVec4",
+          "shader": "batch-normalization-nchw-flat-vec4.wgsl.jinja",
+          "bindings": ["x_main", "scale", "bias", "input_mean", "input_var", "y_main", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_inference_vec4",
+      "priority": 100,
+      "when": ["dtypes.T == \"f32\"", "ranks.x >= 3", "inner(shapes.x, 1) % 4 == 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "BatchNormalization.InferenceVec4",
+          "shader": "batch-normalization-nchw-vec4.wgsl.jinja",
+          "bindings": ["x_main", "scale", "bias", "input_mean", "input_var", "y_main", "params_nchw_inference_vec4"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

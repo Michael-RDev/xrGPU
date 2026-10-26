@@ -1,0 +1,446 @@
+{
+  "cases": [
+    {
+      "name": "dispatch_cliff_ncl1d",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [65540, 256, 1], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65540, 256, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "nchw",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nchw_nan_propagates",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 4, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, "NaN", 3.0, 4.0, -5.0, -6.0, -7.0, -8.0, 9.0, 10.0, "NaN", 12.0, 0.0, -1.0, -2.0, -3.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 1, 1], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "nchw_all_negative_infinity_returns_negative_infinity",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": ["-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ncl_rank3",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "values",
+            "values": [-9.0, -3.0, -7.0, -1.0, 4.0, 4.0, 2.0, -5.0, -100.0, -50.0, -25.0, -75.0, 1.0, 9.0, 3.0, 7.0, -2.0, 6.0, 6.0, 5.0, 0.25, -0.5, 0.75, 0.5]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_nchw2d_smallspatial_1x16x7x7",
+      "provenance": {
+        "notes": "A compact float32 7x7 input with few channels exercises the small-spatial vec4-output path."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 16, 7, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.029, "scale": 0.4 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 16, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_positive_subnormal_rank4_vec4out_max_zero_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalMaxPool",
+        "notes": "Exercises the rank-4 vec4-output kernel with subnormal maxima that should beat zero."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 4, 1, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 1e-40, 0.0, 0.0, 0.0, 0.0, 1e-38, 0.0, -1e-40, -2e-40, 0.0, -3e-40, 0.0, 5e-39, 2e-39, 0.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 1, 1], "tolerance": 2e-45 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "f32_positive_subnormal_rank4_vec4out_tail_max_zero_gpu_gap",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalMaxPool",
+        "notes": "Covers the vec4-output tail path when output channels are not a multiple of four."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 5, 1, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.0, 1e-40, 0.0, 0.0, 0.0, 0.0, 1e-38, 0.0, -1e-40, -2e-40, 0.0, -3e-40, 0.0, 5e-39, 2e-39, 0.0, 0.0, 7e-40, 0.0, 2e-40]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 5, 1, 1], "tolerance": 2e-45 } },
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes f32 subnormals to zero (FTZ); subnormal-magnitude values cannot survive the GPU arithmetic path."
+      }
+    },
+    {
+      "name": "ort_fp16_rank4_tied_max",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalMaxPool",
+        "notes": "Compact fp16 projection of ORT's typed GlobalMaxPool coverage."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 3],
+          "data": { "kind": "values", "values": [-9.0, -3.0, -7.0, -1.0, -1.0, -5.0, 0.25, 4.0, 4.0, -5.0, 3.5, 3.5] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 2, 1, 1],
+          "data": { "kind": "values", "values": [-1.0, 4.0] },
+          "tolerance": 0.001
+        }
+      }
+    },
+    {
+      "name": "fp16_wg_parallel_8x8_vec4_path",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.09, "cosStep": 0.13, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 1, 1], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ncl_all_negative_infinity_returns_negative_infinity",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": {
+            "kind": "values",
+            "values": ["-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity", "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ncl_nan_propagates",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [1.0, "NaN", 3.0, 4.0, -5.0, -6.0, -7.0, -8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "ncdhw_rank5",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [-9.0, -3.0, -7.0, -1.0, -5.0, -8.0, -2.0, -4.0, 10.0, 20.0, 15.0, 5.0, 80.0, 60.0, 70.0, 40.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "zero_batch_dim_rank4",
+      "inputs": { "x": { "dtype": "float32", "shape": [0, 2, 3, 4], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_rank4_1x3x8x8_values",
+      "provenance": { "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc", "test": "PoolTest.GlobalMaxPool" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8, 8],
+          "data": {
+            "kind": "values",
+            "values": [0.19151945412158966, 0.6221087574958801, 0.43772774934768677, 0.7853586077690125, 0.7799758315086365, 0.27259260416030884, 0.2764642536640167, 0.801872193813324, 0.9581393599510193, 0.8759326338768005, 0.35781726241111755, 0.5009950995445251, 0.683462917804718, 0.7127020359039307, 0.37025076150894165, 0.5611962080001831, 0.5030831694602966, 0.013768449425697327, 0.772826611995697, 0.8826411962509155, 0.36488598585128784, 0.6153962016105652, 0.07538124173879623, 0.3688240051269531, 0.9331400990486145, 0.6513781547546387, 0.39720258116722107, 0.7887301445007324, 0.3168361186981201, 0.5680986642837524, 0.8691273927688599, 0.4361734092235565, 0.802147626876831, 0.14376682043075562, 0.7042609453201294, 0.7045813202857971, 0.2187921106815338, 0.9248676300048828, 0.44214075803756714, 0.9093159437179565, 0.05980922281742096, 0.18428708612918854, 0.047355279326438904, 0.6748809218406677, 0.5946247577667236, 0.5333101749420166, 0.043324064463377, 0.5614330768585205, 0.32966843247413635, 0.5029668211936951, 0.11189431697130203, 0.6071937084197998, 0.5659446716308594, 0.006764062214642763, 0.617441713809967, 0.912122905254364, 0.7905241250991821, 0.9920814633369446, 0.9588017463684082, 0.7919641137123108, 0.2852509617805481, 0.6249167323112488, 0.47809380292892456, 0.19567517936229706, 0.382317453622818, 0.053873684257268906, 0.45164841413497925, 0.9820047616958618, 0.12394270300865173, 0.1193808987736702, 0.7385230660438538, 0.587303638458252, 0.47163254022598267, 0.10712681710720062, 0.22921857237815857, 0.8999651670455933, 0.41675353050231934, 0.5358516573905945, 0.0062085166573524475, 0.3006417155265808, 0.43689316511154175, 0.6121490001678467, 0.9181980490684509, 0.625736653804779, 0.7059975862503052, 0.14983370900154114, 0.7460634112358093, 0.8310070037841797, 0.6337257623672485, 0.4383098781108856, 0.15257278084754944, 0.5684096217155457, 0.5282242894172668, 0.9514287710189819, 0.48035916686058044, 0.5025595426559448, 0.5368781685829163, 0.8192020654678345, 0.05711563676595688, 0.6694217324256897, 0.7671166062355042, 0.7081153392791748, 0.7968671917915344, 0.5577608346939087, 0.9658365249633789, 0.14715689420700073, 0.02964700013399124, 0.5938934683799744, 0.11406569927930832, 0.9508098363876343, 0.32570740580558777, 0.19361868500709534, 0.4578116536140442, 0.9204025864601135, 0.8790691494941711, 0.252615749835968, 0.34800878167152405, 0.18258872628211975, 0.9017960429191589, 0.7065281867980957, 0.7266584634780884, 0.900087833404541, 0.7791637778282166, 0.5991547703742981, 0.29112523794174194, 0.1513952612876892, 0.33517464995384216, 0.6575517654418945, 0.07334254682064056, 0.055006396025419235, 0.32319480180740356, 0.5904818177223206, 0.8538985848426819, 0.2870624363422394, 0.17306722700595856, 0.13402120769023895, 0.9946538209915161, 0.1794978678226471, 0.3175468146800995, 0.568291425704956, 0.009348574094474316, 0.9006485939025879, 0.9772414565086365, 0.5568946599960327, 0.08477384597063065, 0.3330024778842926, 0.7284286618232727, 0.14243537187576294, 0.5524689555168152, 0.2730432450771332, 0.9744951128959656, 0.6677868962287903, 0.2556532919406891, 0.1083114966750145, 0.7761807441711426, 0.7824779748916626, 0.7616038918495178, 0.9144031405448914, 0.6586228013038635, 0.568367600440979, 0.20175568759441376, 0.6982963681221008, 0.952195405960083, 0.8899632692337036, 0.9935673475265503, 0.8187035322189331, 0.5451221466064453, 0.45125406980514526, 0.8905571699142456, 0.9732648134231567, 0.5934113264083862, 0.36607450246810913, 0.3230946958065033, 0.8714232444763184, 0.2156340628862381, 0.7349451780319214, 0.36561909317970276, 0.8016026020050049, 0.7827355861663818, 0.7013553977012634, 0.6227765679359436, 0.4936826527118683, 0.8405377268791199, 0.7120969891548157, 0.4439089894294739, 0.031034860759973526, 0.36323976516723633, 0.7307217717170715, 0.475566565990448, 0.3444169759750366, 0.6408804059028625, 0.12620532512664795]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_rank4_1x3x8x8_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalMaxPool",
+        "notes": "Uses the ORT rank-4 shape; fixture values are generated deterministically."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.011, "scale": 1.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_rank5_1x3x8x4x2_generated",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/pool_op_test.cc",
+        "test": "PoolTest.GlobalMaxPool3D",
+        "notes": "Uses the ORT rank-5 shape; fixture values are generated deterministically."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8, 4, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.017, "scale": 1.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_precomputed_3x3",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalmaxpool_precomputed" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_globalmaxpool",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902, -0.6724604368209839, -0.35955315828323364, -0.8131462931632996, -1.7262825965881348, 0.17742614448070526, -0.4017809331417084, -1.630198359489441, 0.46278226375579834, -0.9072983860969543, 0.05194539576768875, 0.7290905714035034, 0.12898291647434235, 1.1394007205963135, -1.234825849533081, 0.4023416340351105]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalmaxpool" }
+    },
+    {
+      "name": "onnx_backend_globalmaxpool_precomputed",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_globalmaxpool_precomputed" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "wg_parallel_9x9_scalar_path",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 9, 9],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_parallel_16x16_vec4_path",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 16, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_parallel_large_spatial_1024_vec4",
+      "provenance": {
+        "notes": "Two spatial planes of 1,024 values each check the exact maximum over a large four-aligned reduction."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.019 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_parallel_large_spatial_1030_scalar",
+      "provenance": {
+        "notes": "A spatial extent of 1,030 is not divisible by four and checks the trailing values in a large max reduction."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 1030],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.023 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "wg_parallel_nan_propagates_8x8",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 8, 8],
+          "data": {
+            "kind": "values",
+            "values": [-0.3, -0.29, -0.28, -0.27, -0.26, -0.25, -0.24, -0.23, -0.22, -0.21, -0.2, -0.19, -0.18, "NaN", -0.16, -0.15, -0.14, -0.13, -0.12, -0.11, -0.1, -0.09, -0.08, -0.07, -0.06, -0.05, -0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.2, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, "NaN", 0.28, 0.29, 0.3, 0.31, 0.32, 0.33]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "wg_parallel_all_negative_infinity_8x8",
+      "inputs": { "x": { "dtype": "float32", "shape": [1, 2, 8, 8], "data": { "kind": "negativeInfinity" } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank4_channels_not_div4_vec4out_tail_unwritten",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 5, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, -1.0, 10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0, -1.0, -2.0, -3.0]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 5, 1, 1],
+          "data": { "kind": "values", "values": [9.0, -1.0, 10.0, 1.0, 5.0] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "rank4_channels_3_not_div4_wg_parallel_tail",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.17, "scale": 1.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank4_all_positive_infinity",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": ["Infinity", "Infinity", "Infinity", "Infinity", "Infinity", "Infinity", "Infinity", "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank4_channels_not_div4_vec4out_6channels",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 6, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0, 5.0, 6.0, 7.0, 8.0, -5.0, -6.0, -7.0, -8.0, 0.0, 0.5, 0.25, 0.75, -9.0, 9.0, -9.0, 9.0]
+          }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 6, 1, 1],
+          "data": { "kind": "values", "values": [4.0, -1.0, 8.0, -5.0, 0.75, 9.0] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "rank6_four_spatial_dims",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "rank8_six_spatial_dims",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2, 2, 2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.27 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 1, 1, 1, 1, 1, 1], "tolerance": 0 } }
+    }
+  ]
+}

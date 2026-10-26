@@ -1,0 +1,79 @@
+{
+  "tunableSpace": {
+    "WORKGROUP_SIZE": [64, 128, 256],
+    "SPLIT_TARGET_DIM": [128, 256, 512, 1024],
+    "MAX_SPLITS": [8, 16, 32, 64, 128, 256]
+  },
+  "cases": [
+    {
+      "name": "4096x4096_last_axis_p2",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "rows": 4096, "dim": 4096 },
+      "attrs": { "axis": -1, "p": 2 },
+      "inputs": { "input": { "dtype": "float32", "shape": [4096, 4096], "dist": "normal", "seed": 760, "scale": 0.5 } },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 4096] } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.rows * args.dim * 2 * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "4096x4096_axis0_p2_nonlast",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "rows": 4096, "dim": 4096 },
+      "attrs": { "axis": 0, "p": 2 },
+      "inputs": { "input": { "dtype": "float32", "shape": [4096, 4096], "dist": "normal", "seed": 761, "scale": 0.5 } },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 4096] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "name": "reduce-read plus divide read-write traffic",
+            "value": "args.rows * args.dim * 3 * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "1024x1024_axis1",
+      "preset": "smoke",
+      "attrs": { "axis": 1, "p": 2 },
+      "inputs": { "input": { "dtype": "float32", "shape": [1024, 1024] } },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024, 1024] } }
+    },
+    {
+      "name": "axis0_fewrows_hugedim_p2_f32_starved_reduce",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "rows": 128, "dim": 16384 },
+      "attrs": { "axis": 0, "p": 2 },
+      "inputs": { "input": { "dtype": "float32", "shape": [16384, 128], "dist": "normal", "seed": 911, "scale": 0.5 } },
+      "outputs": { "output": { "dtype": "float32", "shape": [16384, 128], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "name": "reduce-read plus divide read-write traffic",
+            "value": "args.rows * args.dim * 3 * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "axis0_64rows_dim32k_p1_f32_sharper_starvation",
+      "preset": "stress",
+      "vars": { "dtype": "float32", "rows": 64, "dim": 32768 },
+      "attrs": { "axis": 0, "p": 1 },
+      "inputs": { "input": { "dtype": "float32", "shape": [32768, 64], "dist": "normal", "seed": 912, "scale": 0.5 } },
+      "outputs": { "output": { "dtype": "float32", "shape": [32768, 64], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "name": "reduce-read plus divide read-write traffic",
+            "value": "args.rows * args.dim * 3 * dtypeBytes(args.dtype)"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,217 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-8.0, -1.0, 0.0, 1.0, 8.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "f32_large_values_threshold_regression",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1000.0, -100.0, -20.0, 0.0, 20.0, 20.000001, 88.0, 1000.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_positive_values_above_threshold_return_input_exact",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [20.000001, 88.0, 1000.0, "Infinity"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_large_negative_preserves_exponential_tail",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-9.0, -17.0, -20.0, -30.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-10 } }
+    },
+    {
+      "name": "f32_subnormal_exponential_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Softplus",
+        "notes": "For large negative inputs, Softplus is approximately exp(x); the float32 subnormal tail is valid and should not flush to zero."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-88.0, -90.0, -95.0, -100.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "f32_subnormal_exponential_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Softplus",
+        "notes": "Scalar Softplus maps large negative inputs to valid subnormal tail values."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-90.0, -95.0, -100.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 1e-44 } }
+    },
+    {
+      "name": "f16_large_values_threshold_regression",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-20.0, -12.0, -11.0, 0.0, 10.0, 11.0, 12.0, 20.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.00098 } }
+    },
+    {
+      "name": "f16_large_negative_preserves_exponential_tail",
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [-5.0, -8.0, -10.0, -12.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4], "tolerance": 0.000002 } }
+    },
+    {
+      "name": "f16_positive_values_above_threshold_return_input_exact",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [4],
+          "data": { "kind": "values", "values": [12.0, 20.0, 24.0, "Infinity"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Softplus",
+        "notes": "ORT shared activation vector for stable log1p/exp behavior."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [13],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [13], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_opset22_stable_moderate_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Softplus_Opset22",
+        "notes": "Exact upstream opset-22 float vector; keeps the moderate +/-100 stability boundary covered separately from the huge-value stress fixture."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -5.0, 5.0, -100.0, 100.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fp16_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.Softplus",
+        "notes": "Float16 projection of ORT's shared activation vector for stable log1p/exp behavior."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [13],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 65504.0, -65504.0, "Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [13], "tolerance": 0.01 } }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softplus_example",
+        "test": "test_softplus_example"
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_softplus",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softplus" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_softplus_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softplus_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_threshold_boundary",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [10.5, 10.9, 10.99, 11.0, 11.001, 12.0, 15.0, 19.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.01 } }
+    },
+    {
+      "name": "f16_log1p_series_threshold_boundary",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-8.0, -6.0, -4.5, -4.0, -3.9, -3.0, -1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 0.002 } }
+    },
+    {
+      "name": "f16_empty_zero_dim",
+      "inputs": { "x": { "dtype": "float16", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float16", "shape": [0], "tolerance": 0 } }
+    }
+  ]
+}

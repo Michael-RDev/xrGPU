@@ -1,0 +1,1093 @@
+{
+  "domain": "com.microsoft",
+  "name": "GatedDeltaNet",
+  "sinceVersion": 1,
+  "inputs": {
+    "queryT": { "onnx": "query", "dtype": "T" },
+    "keyT": { "onnx": "key", "dtype": "T" },
+    "valueT": { "onnx": "value", "dtype": "T" },
+    "cuSeqlensT": { "onnx": "cu_seqlens", "dtype": "TI", "rank": 1, "optional": true },
+    "decayT": { "onnx": "decay", "dtype": "TS", "optional": true },
+    "betaT": { "onnx": "beta", "dtype": "TS", "optional": true },
+    "initialStateT": { "onnx": "initial_state", "dtype": "TS", "rank": 4, "optional": true },
+    "aLogT": { "onnx": "a_log", "dtype": "TS", "rank": 1, "optional": true },
+    "dtBiasT": { "onnx": "dt_bias", "dtype": "TS", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T",
+      "rank": "ranks.queryT",
+      "shape": "[dim(shapes.queryT, 0), dim(shapes.queryT, 1), numVHeads, headDimV] if rank4 else [dim(shapes.queryT, 0), numVHeads, headDimV]"
+    },
+    "finalStateT": {
+      "onnx": "final_state",
+      "dtype": "TS",
+      "rank": 4,
+      "shape": "[batchCount, numVHeads, headDimV, headDimK]"
+    }
+  },
+  "attributes": {
+    "update_rule": { "default": "gated_delta" },
+    "scale": { "default": 0 },
+    "gate_activation": { "default": "none" },
+    "beta_activation": { "default": "none" },
+    "qk_l2_norm": { "default": 0 },
+    "chunk_size": { "default": 64 },
+    "state_update_capacity": { "default": 0 }
+  },
+  "attributeConstraints": {
+    "update_rule": { "values": ["linear", "gated", "delta", "gated_delta"] },
+    "gate_activation": { "values": ["none", "qwen"] },
+    "beta_activation": { "values": ["none", "sigmoid"] },
+    "qk_l2_norm": { "values": [0, 1] },
+    "state_update_capacity": { "values": [0] }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "TS": ["float32"], "TI": ["int32"] },
+  "tunables": {
+    "TILE_V": { "default": 0 },
+    "LANE_WORDS": { "default": 4 },
+    "V_GROUPS": { "default": 8 },
+    "MIN_VECTOR_VALUE_GROUPS": { "default": 4 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank4": "ranks.queryT == 4",
+    "numQHeads": "dim(shapes.queryT, ranks.queryT - 2)",
+    "headDimK": "dim(shapes.queryT, ranks.queryT - 1)",
+    "numVHeads": "dim(shapes.valueT, ranks.valueT - 2)",
+    "headDimV": "dim(shapes.valueT, ranks.valueT - 1)",
+    "totalTokens": "numel(shapes.queryT) / max(1, numQHeads * headDimK)",
+    "batchCount": "(dim(shapes.cuSeqlensT, 0) - 1) if present.cuSeqlensT else (dim(shapes.queryT, 0) if rank4 else (dim(shapes.initialStateT, 0) if present.initialStateT else 0))",
+    "seqLength": "totalTokens / max(1, batchCount)",
+    "headsPerQ": "numVHeads / max(1, numQHeads)",
+    "rankOk": "(ranks.queryT == 3 or ranks.queryT == 4) and ranks.keyT == ranks.queryT and ranks.valueT == ranks.queryT and ranks.outputT == ranks.queryT",
+    "headsOk": "numQHeads > 0 and numVHeads > 0 and headDimK > 0 and headDimV > 0 and numVHeads % max(1, numQHeads) == 0",
+    "tokenAxesOk": "sameShape(shapes.keyT, shapes.queryT) and sameShape(prefix(shapes.valueT, ranks.queryT - 2), prefix(shapes.queryT, ranks.queryT - 2))",
+    "batchOk": "batchCount > 0 and (true if present.cuSeqlensT else totalTokens % max(1, batchCount) == 0)",
+    "outputOk": "sameShape(prefix(shapes.outputT, ranks.queryT - 2), prefix(shapes.queryT, ranks.queryT - 2)) and dim(shapes.outputT, ranks.outputT - 2) == numVHeads and dim(shapes.outputT, ranks.outputT - 1) == headDimV",
+    "stateOk": "ranks.finalStateT == 4 and dim(shapes.finalStateT, 0) == batchCount and dim(shapes.finalStateT, 1) == numVHeads and dim(shapes.finalStateT, 2) == headDimV and dim(shapes.finalStateT, 3) == headDimK and (sameShape(shapes.initialStateT, shapes.finalStateT) if present.initialStateT else true)",
+    "gateShapeOk": "(ranks.decayT == ranks.queryT - 1 and sameShape(prefix(shapes.decayT, ranks.queryT - 2), prefix(shapes.queryT, ranks.queryT - 2)) and dim(shapes.decayT, ranks.decayT - 1) == numVHeads if present.decayT else true) and (ranks.betaT == ranks.queryT - 1 and sameShape(prefix(shapes.betaT, ranks.queryT - 2), prefix(shapes.queryT, ranks.queryT - 2)) and dim(shapes.betaT, ranks.betaT - 1) == numVHeads if present.betaT else true) and (ranks.aLogT == 1 and dim(shapes.aLogT, 0) == numVHeads if present.aLogT else true) and (ranks.dtBiasT == 1 and dim(shapes.dtBiasT, 0) == numVHeads if present.dtBiasT else true)",
+    "cuOk": "ranks.cuSeqlensT == 1 and ranks.queryT == 3 and dim(shapes.cuSeqlensT, 0) == batchCount + 1 if present.cuSeqlensT else true",
+    "dtypeOk": "tensorDtypes.keyT == tensorDtypes.queryT and tensorDtypes.valueT == tensorDtypes.queryT and tensorDtypes.outputT == tensorDtypes.queryT and f16Ok(dtypes.T)",
+    "contractOk": "rankOk and headsOk and tokenAxesOk and batchOk and outputOk and stateOk and gateShapeOk and cuOk and dtypeOk",
+    "useVec4": "headDimK % 4 == 0",
+    "dkWords": "headDimK / 4 if useVec4 else headDimK",
+    "laneCap": "pow(2, log2ceil(deviceWorkgroupCap + 1) - 1)",
+    "baseLanes": "max(1, min(laneCap, pow2ceil(ceilDiv(dkWords, max(1, tunables.LANE_WORDS)))))",
+    "subgroupVariable": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize",
+    "wideTileV": "max(1, min(4, headDimV, floor(16 / max(1, ceilDiv(dkWords, baseLanes)))))",
+    "wideVGroups": "max(1, min(tunables.V_GROUPS, ceilDiv(headDimV, wideTileV), max(1, floor(deviceWorkgroupCap / baseLanes))))",
+    "wideWorkgroupSize": "baseLanes * wideVGroups",
+    "variableSubgroupTile": "subgroupVariable and tensorDtypes.queryT == \"float16\" and baseLanes > 1 and baseLanes <= device.adapterInfo.subgroupMinSize and device.adapterInfo.subgroupMinSize % baseLanes == 0 and device.adapterInfo.subgroupMaxSize % baseLanes == 0 and wideWorkgroupSize % device.adapterInfo.subgroupMinSize == 0 and wideWorkgroupSize % device.adapterInfo.subgroupMaxSize == 0 and seqLength >= baseLanes and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "tileV": "max(1, min(tunables.TILE_V if tunables.TILE_V > 0 else (wideTileV if variableSubgroupTile else 2), headDimV))",
+    "subgroupFixed": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == device.adapterInfo.subgroupMaxSize",
+    "subgroupWidth": "device.adapterInfo.subgroupMinSize if subgroupFixed else 0",
+    "subgroupLaneFit": "not useVec4 and subgroupFixed and subgroupWidth > 1 and subgroupWidth < baseLanes and subgroupWidth <= deviceWorkgroupCap and device.wgslLanguageFeatures.has(\"subgroup_id\") and tileV * ceilDiv(dkWords, subgroupWidth) <= 64 and ceilDiv(dkWords, subgroupWidth) <= 4 * max(1, tunables.LANE_WORDS)",
+    "lanes": "subgroupWidth if subgroupLaneFit else baseLanes",
+    "wordsPerLane": "ceilDiv(dkWords, max(1, lanes))",
+    "dvTiles": "ceilDiv(headDimV, max(1, tileV))",
+    "baseVGroups": "max(1, min(tunables.V_GROUPS, dvTiles, max(1, floor(deviceWorkgroupCap / max(1, lanes)))))",
+    "vGroups": "min(ceilDiv(baseVGroups, subgroupWidth / lanes), floor(deviceWorkgroupCap / subgroupWidth)) * (subgroupWidth / lanes) if subgroupFixed and lanes > 1 and lanes <= subgroupWidth and subgroupWidth <= deviceWorkgroupCap and device.wgslLanguageFeatures.has(\"subgroup_id\") else baseVGroups",
+    "workgroupSize": "lanes * vGroups",
+    "variableSubgroupFold": "subgroupVariable and lanes > 1 and lanes <= device.adapterInfo.subgroupMinSize and device.adapterInfo.subgroupMinSize % lanes == 0 and device.adapterInfo.subgroupMaxSize % lanes == 0 and workgroupSize % device.adapterInfo.subgroupMinSize == 0 and workgroupSize % device.adapterInfo.subgroupMaxSize == 0 and seqLength >= lanes and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "dvBlocks": "ceilDiv(dvTiles, max(1, vGroups))",
+    "dispatchUnits": "batchCount * numVHeads * dvBlocks",
+    "useL2Norm": "attrs.qk_l2_norm == 1",
+    "useSubgroups": "(lanes > 1 and subgroupFixed and lanes <= subgroupWidth and workgroupSize % max(1, subgroupWidth) == 0 and device.wgslLanguageFeatures.has(\"subgroup_id\")) or variableSubgroupFold",
+    "foldSlotsPlain": "ceilDiv(tileV, 4)",
+    "foldSlotsDelta": "ceilDiv(2 * tileV, 4)",
+    "foldFitsPlain": "useSubgroups or lanes == 1 or workgroupSize * foldSlotsPlain * 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "foldFitsDelta": "useSubgroups or lanes == 1 or workgroupSize * foldSlotsDelta * 16 <= device.limits.maxComputeWorkgroupStorageSize",
+    "registerWordsOk": "tileV * wordsPerLane <= (64 if subgroupLaneFit else 16)",
+    "geometryOk": "registerWordsOk and workgroupSize <= deviceWorkgroupCap and dispatchUnits > 0 and dispatchUnits <= foldedDispatchCapacity",
+    "outScale": "attrs.scale if attrs.scale != 0.0 else 1.0 / pow(headDimK, 0.5)",
+    "qkElement": "(\"vec4<\" ~ dtypes.T ~ \">\") if useVec4 else dtypes.T",
+    "wordF32": "\"vec4<f32>\" if useVec4 else \"f32\"",
+    "gateItems": "totalTokens * numVHeads",
+    "qkUnits": "totalTokens * numQHeads",
+    "gateLanes": "max(1, min(laneCap, 64, pow2ceil(dkWords)))",
+    "qwenGate": "attrs.gate_activation == \"qwen\"",
+    "betaSigmoid": "attrs.beta_activation == \"sigmoid\"",
+    "valueIOWidth": "device.adapterInfo.subgroupMinSize if has(device.adapterInfo, \"subgroupMinSize\") else 0",
+    "vectorValueIO": "(tileV == 2 or tileV == 4) and headDimV % tileV == 0 and (tensorDtypes.valueT == \"float16\" or lanes * tunables.MIN_VECTOR_VALUE_GROUPS <= valueIOWidth)",
+    "valueIOElement": "(\"vec\" ~ tileV ~ \"<\" ~ dtypes.T ~ \">\") if vectorValueIO else dtypes.T"
+  },
+  "when": ["contractOk", "geometryOk"],
+  "bindings": {
+    "query": { "arg": "queryT", "name": "query", "elementType": "$qkElement" },
+    "key": { "arg": "keyT", "name": "key", "elementType": "$qkElement" },
+    "value": { "arg": "valueT", "name": "value", "elementType": "$valueIOElement" },
+    "cu_seqlens": { "arg": "cuSeqlensT", "name": "cu_seqlens" },
+    "gate": { "scratch": "gate", "name": "gate", "buffer": "read-only-storage", "elementType": "f32" },
+    "initial_state": { "arg": "initialStateT", "name": "initial_state", "elementType": "$wordF32" },
+    "output": { "arg": "outputT", "name": "output", "elementType": "$valueIOElement" },
+    "final_state": { "arg": "finalStateT", "name": "final_state", "elementType": "$wordF32" },
+    "params": {
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "batchCount" },
+        { "name": "seqLength", "type": "u32", "value": "seqLength" },
+        { "name": "qkBase", "type": "u32", "value": "qkBase" }
+      ]
+    },
+    "params_ragged": {
+      "name": "params",
+      "struct": [
+        { "name": "batchSize", "type": "u32", "value": "batchCount" },
+        { "name": "totalTokens", "type": "u32", "value": "totalTokens" },
+        { "name": "qkBase", "type": "u32", "value": "qkBase" }
+      ]
+    },
+    "decay": { "arg": "decayT", "name": "decay" },
+    "beta": { "arg": "betaT", "name": "beta" },
+    "a_log": { "arg": "aLogT", "name": "a_log" },
+    "dt_bias": { "arg": "dtBiasT", "name": "dt_bias" },
+    "gate_out": { "scratch": "gate", "name": "gate", "elementType": "f32" },
+    "params_gate": {
+      "name": "params",
+      "struct": [
+        { "name": "units", "type": "u32", "value": "qkUnits" },
+        { "name": "qkBase", "type": "u32", "value": "qkBase" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "linear_state_ragged",
+      "when": ["attrs.update_rule == \"linear\"", "not present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_state_packed",
+      "when": ["attrs.update_rule == \"linear\"", "not present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_zero_ragged",
+      "when": ["attrs.update_rule == \"linear\"", "not present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "linear_zero_packed",
+      "when": ["attrs.update_rule == \"linear\"", "not present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_state_ragged",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_state_packed",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_zero_ragged",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_zero_packed",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_qwen_state_ragged",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_qwen_state_packed",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_qwen_zero_ragged",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_qwen_zero_packed",
+      "when": ["attrs.update_rule == \"gated\"", "present.decayT", "not present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_state_ragged",
+      "when": ["attrs.update_rule == \"delta\"", "not present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_state_packed",
+      "when": ["attrs.update_rule == \"delta\"", "not present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_zero_ragged",
+      "when": ["attrs.update_rule == \"delta\"", "not present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "delta_zero_packed",
+      "when": ["attrs.update_rule == \"delta\"", "not present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_state_ragged",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_state_packed",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_zero_ragged",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_zero_packed",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "not present.aLogT", "not present.dtBiasT", "not qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_qwen_state_ragged",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "initial_state", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_qwen_state_packed",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "initial_state", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_qwen_zero_ragged",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "not present.initialStateT", "present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "cu_seqlens", "gate", "output", "final_state", "params_ragged"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gated_delta_qwen_zero_packed",
+      "when": ["attrs.update_rule == \"gated_delta\"", "present.decayT", "present.betaT", "present.aLogT", "present.dtBiasT", "qwenGate", "not present.initialStateT", "not present.cuSeqlensT", "foldFitsDelta if present.betaT else foldFitsPlain"],
+      "intermediates": [{ "id": "gate", "dtype": "float32", "shape": "[qkBase + (5 if pairTokens else 3) * qkUnits]" }],
+      "derive": {
+        "hasGate": "present.decayT or present.betaT",
+        "qkBase": "2 * gateItems if hasGate else 0",
+        "useDelta": "present.betaT",
+        "hasState": "present.initialStateT",
+        "hasCu": "present.cuSeqlensT",
+        "pairTokens": "useDelta and not useSubgroups and tensorDtypes.queryT == \"float16\" and lanes > 1 and seqLength >= 2 * lanes and workgroupSize * tileV * 16 <= device.limits.maxComputeWorkgroupStorageSize and 4 * (qkBase + 5 * qkUnits) <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+        "foldSlots": "tileV if pairTokens else (foldSlotsDelta if useDelta else foldSlotsPlain)"
+      },
+      "passes": [
+        {
+          "id": "gate",
+          "name": "GatedDeltaNet.Gate",
+          "shader": "gated-delta-net-gate.wgsl.jinja",
+          "derive": {
+            "hasDecayInput": "present.decayT",
+            "hasBetaInput": "present.betaT",
+            "qwen": "qwenGate",
+            "sigmoidBeta": "betaSigmoid"
+          },
+          "bindings": ["query", "key", "decay", "beta", "a_log", "dt_bias", "gate_out", "params_gate"],
+          "dispatch": { "x": "min(qkUnits, 65535)", "y": "ceilDiv(qkUnits, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "GatedDeltaNet.Recurrent",
+          "shader": "gated-delta-net.wgsl.jinja",
+          "bindings": ["query", "key", "value", "gate", "output", "final_state", "params"],
+          "dispatch": {
+            "x": "min(dispatchUnits, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(dispatchUnits, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    }
+  ]
+}

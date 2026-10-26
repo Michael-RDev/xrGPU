@@ -1,0 +1,314 @@
+{
+  "domain": "com.microsoft",
+  "name": "MatMulNBitsQkv",
+  "sinceVersion": 1,
+  "inputs": {
+    "aT": { "onnx": "A", "dtype": "T1" },
+    "skipT": { "onnx": "skip", "dtype": "T1", "optional": true },
+    "normScaleT": { "onnx": "norm_scale", "dtype": "T1", "rank": 1 },
+    "qBT": { "onnx": "q_B", "dtype": "T2", "rank": 3, "layout": "packed" },
+    "qScalesT": { "onnx": "q_scales", "dtype": "T1", "rank": 2 },
+    "kBT": { "onnx": "k_B", "dtype": "T2", "rank": 3, "layout": "packed" },
+    "kScalesT": { "onnx": "k_scales", "dtype": "T1", "rank": 2 },
+    "vBT": { "onnx": "v_B", "dtype": "T2", "rank": 3, "layout": "packed" },
+    "vScalesT": { "onnx": "v_scales", "dtype": "T1", "rank": 2 }
+  },
+  "outputs": {
+    "qT": { "onnx": "Q", "dtype": "T1", "rank": "ranks.aT", "shape": "shapes.aT[:-1] + [attrs.Nq]" },
+    "kT": { "onnx": "K", "dtype": "T1", "rank": "ranks.aT", "shape": "shapes.aT[:-1] + [attrs.Nkv]" },
+    "vT": { "onnx": "V", "dtype": "T1", "rank": "ranks.aT", "shape": "shapes.aT[:-1] + [attrs.Nkv]" },
+    "residualT": {
+      "onnx": "input_skip_bias_sum",
+      "dtype": "T1",
+      "rank": "ranks.aT",
+      "optional": true,
+      "shape": "shapes.aT"
+    }
+  },
+  "attributes": {
+    "accuracy_level": { "default": 0 },
+    "bits": { "default": 4 },
+    "epsilon": { "default": 9.999999974752427e-7 },
+    "K": {},
+    "Nq": {},
+    "Nkv": {},
+    "block_size": {}
+  },
+  "attributeConstraints": {
+    "K": { "required": true },
+    "Nq": { "required": true },
+    "Nkv": { "required": true },
+    "accuracy_level": { "values": [0] },
+    "bits": { "values": [4] },
+    "block_size": { "required": true, "values": [32] }
+  },
+  "typeConstraints": { "T1": ["float32", "float16"], "T2": ["uint8"] },
+  "tunables": {
+    "TILE_N": { "default": 8 },
+    "LANES": { "default": 8 },
+    "NORM_WORKGROUP_SIZE": { "default": 128 },
+    "ROW_TILE": { "default": 8 },
+    "DECODE_WORKGROUP_SIZE": { "default": 64 }
+  },
+  "derive": {
+    "aRows": "numel(shapes.aT) / max(1, attrs.K)",
+    "rowTile": "1 if aRows <= 1 else min(aRows, tunables.ROW_TILE)",
+    "rowGroups": "ceilDiv(aRows, rowTile)",
+    "codesPerByte": "8 / attrs.bits",
+    "codeMask": "3 if attrs.bits == 2 else (15 if attrs.bits == 4 else 255)",
+    "epsilonValue": "attrs.epsilon",
+    "lanesPow2": "tunables.LANES == pow2ceil(tunables.LANES)",
+    "decodeWalk": "aRows <= 1",
+    "aScalar": "\"f16\" if tensorDtypes.aT == \"float16\" else \"f32\"",
+    "scalar": "\"f16\" if tensorDtypes.aT == \"float16\" else \"f32\"",
+    "K": "attrs.K",
+    "blockSize": "attrs.block_size",
+    "bits": "attrs.bits",
+    "tileN": "tunables.TILE_N",
+    "lanes": "tunables.LANES",
+    "rowCount": "aRows",
+    "useSubgroups": "device.features.has(\"subgroups\")",
+    "hidden": "attrs.K",
+    "workgroupSize": "tunables.NORM_WORKGROUP_SIZE",
+    "epsilon": "epsilonValue",
+    "hasSkip": "present.skipT",
+    "writeResidual": "present.residualT",
+    "K_LEN": "attrs.K",
+    "kBlocks": "dim(shapes.qBT, 1)",
+    "blobSize": "dim(shapes.qBT, 2)",
+    "pairSharesWord": "codesPerByte >= 2",
+    "weightShapeOk": "ranks.qBT == 3 and ranks.kBT == 3 and ranks.vBT == 3 and dim(shapes.qBT, 0) == attrs.Nq and dim(shapes.kBT, 0) == attrs.Nkv and dim(shapes.vBT, 0) == attrs.Nkv and dim(shapes.kBT, 1) == kBlocks and dim(shapes.vBT, 1) == kBlocks and dim(shapes.kBT, 2) == blobSize and dim(shapes.vBT, 2) == blobSize and kBlocks == ceilDiv(attrs.K, attrs.block_size) and blobSize * 8 == attrs.block_size * attrs.bits",
+    "scaleShapeOk": "ranks.qScalesT == 2 and ranks.kScalesT == 2 and ranks.vScalesT == 2 and dim(shapes.qScalesT, 0) == attrs.Nq and dim(shapes.qScalesT, 1) == kBlocks and dim(shapes.kScalesT, 0) == attrs.Nkv and dim(shapes.kScalesT, 1) == kBlocks and dim(shapes.vScalesT, 0) == attrs.Nkv and dim(shapes.vScalesT, 1) == kBlocks",
+    "ioShapeOk": "(ranks.aT == 2 or ranks.aT == 3) and dim(shapes.aT, ranks.aT - 1) == attrs.K and ranks.qT == ranks.aT and ranks.kT == ranks.aT and ranks.vT == ranks.aT and dim(shapes.qT, ranks.qT - 1) == attrs.Nq and dim(shapes.kT, ranks.kT - 1) == attrs.Nkv and dim(shapes.vT, ranks.vT - 1) == attrs.Nkv and sameShape(prefix(shapes.qT, ranks.qT - 1), prefix(shapes.aT, ranks.aT - 1)) and sameShape(prefix(shapes.kT, ranks.kT - 1), prefix(shapes.aT, ranks.aT - 1)) and sameShape(prefix(shapes.vT, ranks.vT - 1), prefix(shapes.aT, ranks.aT - 1))",
+    "dtypeOk": "tensorDtypes.qBT == \"uint8\" and tensorDtypes.kBT == \"uint8\" and tensorDtypes.vBT == \"uint8\" and tensorDtypes.qScalesT == tensorDtypes.aT and tensorDtypes.kScalesT == tensorDtypes.aT and tensorDtypes.vScalesT == tensorDtypes.aT and tensorDtypes.qT == tensorDtypes.aT and tensorDtypes.kT == tensorDtypes.aT and tensorDtypes.vT == tensorDtypes.aT and tensorDtypes.normScaleT == tensorDtypes.aT and f16Ok(tensorDtypes.aT)",
+    "normContractOk": "ranks.normScaleT == 1 and dim(shapes.normScaleT, 0) == attrs.K and (sameShape(shapes.skipT, shapes.aT) and tensorDtypes.skipT == tensorDtypes.aT if present.skipT else true) and (sameShape(shapes.residualT, shapes.aT) and tensorDtypes.residualT == tensorDtypes.aT and present.skipT if present.residualT else true)",
+    "qkvShapeOk": "weightShapeOk and scaleShapeOk and ioShapeOk and dtypeOk and lanesPow2 and normContractOk and pairSharesWord and attrs.K > 0 and attrs.Nq > 0 and attrs.Nkv > 0",
+    "decodeCols": "4",
+    "gemvWalk": "rowTile == 1 and blobSize % 16 == 0",
+    "decodeActVec4": "gemvWalk and attrs.K % attrs.block_size == 0",
+    "tileCols": "decodeCols if decodeWalk else tunables.TILE_N",
+    "decodeWorkgroupOk": "tunables.DECODE_WORKGROUP_SIZE >= 4 and pow2ceil(tunables.DECODE_WORKGROUP_SIZE) == tunables.DECODE_WORKGROUP_SIZE and tunables.DECODE_WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.DECODE_WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupSizeX",
+    "projectionTiles": "ceilDiv(attrs.Nq, tileCols) + 2 * ceilDiv(attrs.Nkv, tileCols)",
+    "dispatchFits": "decodeWorkgroupOk and projectionTiles <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and aRows <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and tunables.TILE_N * tunables.LANES <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.TILE_N * tunables.LANES <= device.limits.maxComputeWorkgroupSizeX and tunables.NORM_WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.NORM_WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupSizeX",
+    "nq": "attrs.Nq",
+    "nkv": "attrs.Nkv",
+    "defaultZero": "\"8.0\"",
+    "decodeNCols": "decodeCols",
+    "actVec4": "decodeActVec4",
+    "weightElement": "\"vec4<u32>\" if gemvWalk else \"u32\"",
+    "normedElement": "\"vec4<f32>\" if decodeActVec4 else \"f32\"",
+    "decodeWorkgroupSize": "tunables.DECODE_WORKGROUP_SIZE"
+  },
+  "when": ["dispatchFits", "qkvShapeOk"],
+  "bindings": {
+    "a": { "arg": "aT", "elementType": "$aScalar" },
+    "norm_scale": { "arg": "normScaleT", "elementType": "$aScalar", "length": "$K_LEN" },
+    "normed": { "scratch": "normedA", "elementType": "f32" },
+    "params": { "struct": [{ "name": "rows", "type": "u32", "value": "aRows" }] },
+    "skip": { "arg": "skipT", "elementType": "$aScalar" },
+    "residual": { "arg": "residualT", "elementType": "$aScalar" },
+    "normed_q": {
+      "scratch": "normedA",
+      "name": "normed",
+      "buffer": "read-only-storage",
+      "elementType": "$normedElement"
+    },
+    "q_b": { "arg": "qBT", "elementType": "$weightElement" },
+    "q_scales": { "arg": "qScalesT", "elementType": "$aScalar" },
+    "k_b": { "arg": "kBT", "elementType": "$weightElement" },
+    "k_scales": { "arg": "kScalesT", "elementType": "$aScalar" },
+    "v_b": { "arg": "vBT", "elementType": "$weightElement" },
+    "v_scales": { "arg": "vScalesT", "elementType": "$aScalar" },
+    "q": { "arg": "qT", "elementType": "$aScalar" },
+    "k": { "arg": "kT", "elementType": "$aScalar" },
+    "v": { "arg": "vT", "elementType": "$aScalar" }
+  },
+  "variants": [
+    {
+      "id": "norm",
+      "priority": 20,
+      "when": ["not hasSkip", "not writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsQkv.Projection",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "k_b", "k_scales", "v_b", "v_scales", "q", "k", "v"],
+          "dispatch": { "x": "projectionTiles", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "split_norm",
+      "priority": 10,
+      "when": ["not hasSkip", "not writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "q",
+          "name": "MatMulNBitsQkv.ProjectionQ",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"q\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "q"],
+          "dispatch": { "x": "ceilDiv(attrs.Nq, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "k",
+          "name": "MatMulNBitsQkv.ProjectionK",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"k\"" },
+          "bindings": ["normed_q", "k_b", "k_scales", "k"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "v",
+          "name": "MatMulNBitsQkv.ProjectionV",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"v\"" },
+          "bindings": ["normed_q", "v_b", "v_scales", "v"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "skip",
+      "priority": 20,
+      "when": ["hasSkip", "not writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsQkv.Projection",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "k_b", "k_scales", "v_b", "v_scales", "q", "k", "v"],
+          "dispatch": { "x": "projectionTiles", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "split_skip",
+      "priority": 10,
+      "when": ["hasSkip", "not writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "q",
+          "name": "MatMulNBitsQkv.ProjectionQ",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"q\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "q"],
+          "dispatch": { "x": "ceilDiv(attrs.Nq, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "k",
+          "name": "MatMulNBitsQkv.ProjectionK",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"k\"" },
+          "bindings": ["normed_q", "k_b", "k_scales", "k"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "v",
+          "name": "MatMulNBitsQkv.ProjectionV",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"v\"" },
+          "bindings": ["normed_q", "v_b", "v_scales", "v"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "skipsum",
+      "priority": 20,
+      "when": ["hasSkip", "writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "main",
+          "name": "MatMulNBitsQkv.Projection",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "k_b", "k_scales", "v_b", "v_scales", "q", "k", "v"],
+          "dispatch": { "x": "projectionTiles", "y": "rowGroups" }
+        }
+      ]
+    },
+    {
+      "id": "split_skipsum",
+      "priority": 10,
+      "when": ["hasSkip", "writeResidual"],
+      "intermediates": [{ "id": "normedA", "dtype": "float32", "shape": "[numel(shapes.aT)]" }],
+      "passes": [
+        {
+          "id": "norm",
+          "name": "MatMulNBitsQkv.RmsNorm",
+          "shader": "matmul-nbits-fused-rms-norm.wgsl.jinja",
+          "bindings": ["a", "skip", "norm_scale", "normed", "residual", "params"],
+          "dispatch": { "x": "min(aRows, 65535)", "y": "ceilDiv(aRows, 65535)", "z": 1 }
+        },
+        {
+          "id": "q",
+          "name": "MatMulNBitsQkv.ProjectionQ",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"q\"" },
+          "bindings": ["normed_q", "q_b", "q_scales", "q"],
+          "dispatch": { "x": "ceilDiv(attrs.Nq, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "k",
+          "name": "MatMulNBitsQkv.ProjectionK",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"k\"" },
+          "bindings": ["normed_q", "k_b", "k_scales", "k"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        },
+        {
+          "id": "v",
+          "name": "MatMulNBitsQkv.ProjectionV",
+          "shader": "qkv-projection.wgsl.jinja",
+          "derive": { "singleProjection": "\"v\"" },
+          "bindings": ["normed_q", "v_b", "v_scales", "v"],
+          "dispatch": { "x": "ceilDiv(attrs.Nkv, tileCols)", "y": "rowGroups" }
+        }
+      ]
+    }
+  ]
+}

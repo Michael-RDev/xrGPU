@@ -1,0 +1,90 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256] },
+  "cases": [
+    {
+      "name": "qwen-image21-vae-repeat-axis1-1152x1x128x128-to-1152x8x128x128",
+      "preset": "model",
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [1152, 1, 128, 128], "dist": "normal", "seed": 20268, "scale": 1 },
+        "shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1152, 8, 128, 128] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1152, 8, 128, 128], "dist": "empty" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(numel(shapes.input) + numel(shapes.output)) * 4" }] }
+    },
+    {
+      "name": "expand-f32-1m",
+      "preset": "smoke",
+      "vars": { "dtype": "float32", "count": 1048576 },
+      "inputs": {
+        "input": { "shape": [1, 1024], "dtype": "float32", "dist": "normal", "seed": 860, "scale": 1 },
+        "shape": { "shape": [2], "dtype": "uint32", "data": { "kind": "values", "values": [1024, 1024] } }
+      },
+      "outputs": { "output": { "shape": [1024, 1024], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }]
+      }
+    },
+    {
+      "name": "expand-u32-bool-like-1m",
+      "preset": "edge",
+      "vars": { "dtype": "uint32", "count": 1048576 },
+      "inputs": {
+        "input": { "shape": [1, 1024], "dtype": "uint32", "dist": "linearMod", "mod": 2 },
+        "shape": { "shape": [2], "dtype": "uint32", "data": { "kind": "values", "values": [1024, 1024] } }
+      },
+      "outputs": { "output": { "shape": [1024, 1024], "dtype": "uint32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "expand-f32-unaligned-row-1m",
+      "provenance": {
+        "notes": "A 1,025-wide output row is not divisible by four; four-element storage groups at row boundaries must preserve each row's broadcast values."
+      },
+      "preset": "stress",
+      "vars": { "dtype": "float32", "count": 1049600 },
+      "inputs": {
+        "input": { "shape": [1, 1025], "dtype": "float32", "dist": "normal", "seed": 42, "scale": 1 },
+        "shape": { "shape": [2], "dtype": "uint32", "data": { "kind": "values", "values": [1024, 1025] } }
+      },
+      "outputs": { "output": { "shape": [1024, 1025], "dtype": "float32" } },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "args.count * dtypeBytes(args.dtype) * 2" }] }
+    },
+    {
+      "name": "expand-f32-mask-8x1x1x197-to-8x8x197x197-vit-pathology",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Broadcasts a [B,1,1,S] key mask to [B,H,S,S] at the ViT-B/16 token count of 197. The paired 200-token case checks an aligned width."
+      },
+      "vars": { "dtype": "float32" },
+      "inputs": {
+        "input": { "shape": [8, 1, 1, 197], "dtype": "float32", "dist": "normal", "seed": 43, "scale": 1 },
+        "shape": { "shape": [4], "dtype": "uint32", "data": { "kind": "values", "values": [8, 8, 197, 197] } }
+      },
+      "outputs": { "output": { "shape": [8, 8, 197, 197], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "(numel(shapes.input) + numel(shapes.output)) * dtypeBytes(args.dtype)" }
+        ]
+      }
+    },
+    {
+      "name": "expand-f32-mask-8x1x1x200-to-8x8x200x200-control",
+      "preset": "stress",
+      "provenance": {
+        "notes": "The next multiple-of-four token count above the paired 197-token case, with about 3% more bytes."
+      },
+      "vars": { "dtype": "float32" },
+      "inputs": {
+        "input": { "shape": [8, 1, 1, 200], "dtype": "float32", "dist": "normal", "seed": 44, "scale": 1 },
+        "shape": { "shape": [4], "dtype": "uint32", "data": { "kind": "values", "values": [8, 8, 200, 200] } }
+      },
+      "outputs": { "output": { "shape": [8, 8, 200, 200], "dtype": "float32", "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "(numel(shapes.input) + numel(shapes.output)) * dtypeBytes(args.dtype)" }
+        ]
+      }
+    }
+  ]
+}

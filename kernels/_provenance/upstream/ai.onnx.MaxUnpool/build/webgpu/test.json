@@ -1,0 +1,503 @@
+{
+  "cases": [
+    {
+      "name": "dispatch_cliff_over_16m_elements",
+      "attrs": { "kernel_shape": [1, 1], "strides": [1, 1] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4097, 4097] },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 1, 4097, 4097],
+          "data": { "kind": "linspace", "start": 0, "end": 16785408 }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4097, 4097], "tolerance": 0 } },
+      "tunables": { "WORKGROUP_SIZE": 64 },
+      "provenance": {
+        "notes": "The 64-thread workgroup makes both four-output clearing/publication and per-input election cross the dispatch fold, exercising each pass on a large shape."
+      }
+    },
+    {
+      "name": "without_output_shape_4x4_f32",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [5, 7, 13, 15] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0 } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_maxunpool_export_without_output_shape",
+        "notes": "Projects representable int64 indices to uint32 slots."
+      }
+    },
+    {
+      "name": "f32_subnormal_payload_unique_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnpoolWithoutOutputShape",
+        "notes": "Same valid unique-index unpool pattern as the ORT/base fixture, but with finite subnormal payloads that must survive the scatter."
+      },
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 4e-39, -4e-39] }
+        },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 5, 10, 15] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "with_output_shape_5x5_f32",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [5.0, 6.0, 7.0, 8.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [5, 7, 13, 15] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 5, 5] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 5, 5], "tolerance": 0 } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_maxunpool_export_with_output_shape",
+        "notes": "Projects representable int64 indices and output_shape metadata to uint32 slots."
+      }
+    },
+    {
+      "name": "multichannel_4x4_f32",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [6.0, 8.0, 14.0, 16.0, 22.0, 24.0, 30.0, 32.0] }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [5, 7, 13, 15, 21, 23, 29, 31] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 2, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "without_output_shape_4x4_f16",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.5, 2.5, 3.5, 4.5] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 3, 12, 15] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 1, 4, 4], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_1d_with_output_shape",
+      "attrs": { "kernel_shape": [2], "strides": [2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 3, 4, 6] } },
+        "output_shape": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 1, 8] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 8], "tolerance": 0 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool1D"
+      }
+    },
+    {
+      "name": "ort_1d_with_output_shape_9_trailing_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool1D_WithOutputShape"
+      },
+      "attrs": { "kernel_shape": [2], "strides": [2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 3, 4, 6] } },
+        "output_shape": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 1, 9] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 9], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_1d_without_output_shape",
+      "attrs": { "kernel_shape": [2], "strides": [2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 3, 4, 6] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 8], "tolerance": 0 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool1D_Without_OutputShape"
+      }
+    },
+    {
+      "name": "ort_2d_with_output_shape_4x4_basic_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool2D"
+      },
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1, 3, 4, 6] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 4, 4] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_2d_without_output_shape_basic_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool2D_Without_OutputShape"
+      },
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1, 3, 4, 6] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_2d_padding",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2], "pads": [1, 1, 0, 0] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1, 3, 4, 6] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 3, 3], "tolerance": 0 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool2D_Padding"
+      }
+    },
+    {
+      "name": "ort_3d_with_output_shape_center_value",
+      "attrs": { "kernel_shape": [2, 2, 2], "strides": [2, 2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1, 1, 1], "data": { "kind": "values", "values": [3.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 1, 1, 1], "data": { "kind": "values", "values": [13] } },
+        "output_shape": { "dtype": "uint32", "shape": [5], "data": { "kind": "values", "values": [1, 1, 3, 3, 3] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 3, 3, 3], "tolerance": 0 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool3D_WithOutputShape"
+      }
+    },
+    {
+      "name": "ort_3d_with_output_shape_full",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool3D"
+      },
+      "attrs": { "kernel_shape": [2, 2, 2], "strides": [2, 2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1, 3, 24, 30, 32, 38, 60, 62] }
+        },
+        "output_shape": { "dtype": "uint32", "shape": [5], "data": { "kind": "values", "values": [1, 1, 4, 4, 4] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_default_strides_1d",
+      "attrs": { "kernel_shape": [2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 2, 3, 4] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 5], "tolerance": 0 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnpool_DefaultStrides"
+      }
+    },
+    {
+      "name": "ort_1d_padding",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool1D_Padding"
+      },
+      "attrs": { "kernel_shape": [2], "strides": [2], "pads": [1, 0] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1, 3, 4, 6] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 7], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_2d_with_output_shape_5x5",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool2D_WithOutputShape"
+      },
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1, 3, 10, 12] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 5, 5] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 5, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_3d_without_output_shape_full",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool3D_Without_OutputShape"
+      },
+      "attrs": { "kernel_shape": [2, 2, 2], "strides": [2, 2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 1, 2, 2, 2],
+          "data": { "kind": "values", "values": [1, 3, 24, 30, 32, 38, 60, 62] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_3d_padding",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/nn/unpool_op_test.cc",
+        "test": "UnpoolTest.MaxUnPool3D_Padding"
+      },
+      "attrs": { "kernel_shape": [2, 2, 2], "strides": [2, 2, 2], "pads": [0, 1, 1, 0, 0, 0] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 2, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 1, 1, 2, 2],
+          "data": { "kind": "values", "values": [1, 4, 8, 12] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 2, 3, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 1, 2, 2], "data": { "kind": "values", "values": [] } },
+        "indices": { "dtype": "uint32", "shape": [0, 1, 2, 2], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [0, 1, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_caseB_empty",
+      "attrs": { "kernel_shape": [2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 0], "data": { "kind": "values", "values": [] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1, 1, 1],
+          "data": { "kind": "values", "values": [0.0] },
+          "tolerance": 0.001
+        }
+      }
+    },
+    {
+      "name": "segdecoder_f16_2ch_dense_2x_unpool",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [-2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, -2.0, -1.75, -1.5, -1.25, -1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
+          }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 2, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [0, 2, 4, 6, 16, 18, 20, 22, 32, 34, 36, 38, 48, 50, 52, 54, 64, 66, 68, 70, 80, 82, 84, 86, 96, 98, 100, 102, 112, 114, 116, 118]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 2, 8, 8], "tolerance": 0.001 } }
+    },
+    {
+      "name": "multichannel_3ch_with_output_shape_input_f32",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 41.0, 42.0, 43.0, 44.0, 45.0, 46.0, 47.0, 48.0]
+          }
+        },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 3, 4, 4],
+          "data": {
+            "kind": "values",
+            "values": [0, 2, 4, 6, 16, 18, 20, 22, 32, 34, 36, 38, 48, 50, 52, 54, 64, 66, 68, 70, 80, 82, 84, 86, 96, 98, 100, 102, 112, 114, 116, 118, 128, 130, 132, 134, 144, 146, 148, 150, 160, 162, 164, 166, 176, 178, 180, 182]
+          }
+        },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 3, 8, 8] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 3, 8, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_with_output_shape_input_nonpow2_5x5",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.5, 2.5, 3.5, 4.5] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 2, 10, 24] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 5, 5] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 1, 5, 5], "tolerance": 0.001 } }
+    },
+    {
+      "name": "oob_index_boundary_drop_f32",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 15, 16, 7] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1, 1, 4, 4],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "output_shape_zero_spatial_dim",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 0, 2], "data": { "kind": "values", "values": [] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 0, 2], "data": { "kind": "values", "values": [] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 0, 4] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1, 1, 0, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [] }
+        }
+      }
+    },
+    {
+      "name": "f16_index_at_last_valid_slot",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.5, 2.5, 3.5, 4.5] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 8, 7, 15] } }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float16",
+          "shape": [1, 1, 4, 4],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3.5, 2.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4.5]
+          }
+        }
+      }
+    },
+    {
+      "name": "all_indices_oob_output_all_zeros",
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": {
+          "dtype": "uint32",
+          "shape": [1, 1, 2, 2],
+          "data": { "kind": "values", "values": [16, 17, 18, 19] }
+        }
+      },
+      "outputs": {
+        "output": {
+          "dtype": "float32",
+          "shape": [1, 1, 4, 4],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "index_past_output_count_dropped",
+      "provenance": {
+        "notes": "For this package's documented out-of-range extension, an index at the output element count is dropped and the corresponding output slot remains zero. This extension is outside the standard valid-input contract and is excluded from cross-runtime parity checks."
+      },
+      "attrs": { "kernel_shape": [2, 2], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [0, 5, 16, 23] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 4, 4] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "duplicate_index_last_writer_wins",
+      "provenance": {
+        "notes": "Two pooled values target one output slot, as overlapping k3/s2 windows can. Duplicate indices resolve deterministically to the last value in index order."
+      },
+      "attrs": { "kernel_shape": [3, 3], "strides": [2, 2] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 2, 2], "data": { "kind": "values", "values": [12, 12, 7, 18] } },
+        "output_shape": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [1, 1, 5, 5] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1, 1, 5, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "gather_f16_duplicate_last_slot_output8",
+      "provenance": {
+        "notes": "Duplicate election at the last output slot with distinct surviving payloads; aligned and tail lengths exercise vector and scalar gather publication."
+      },
+      "attrs": { "kernel_shape": [2], "strides": [2] },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.5, -2.25, 3.5, 7.25] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [0, 7, 2, 7] } },
+        "output_shape": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 1, 8] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 1, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "gather_f16_duplicate_last_slot_output9",
+      "provenance": {
+        "notes": "Duplicate election at the last output slot with distinct surviving payloads; aligned and tail lengths exercise vector and scalar gather publication."
+      },
+      "attrs": { "kernel_shape": [2], "strides": [2] },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 1, 4], "data": { "kind": "values", "values": [1.5, -2.25, 3.5, 7.25] } },
+        "indices": { "dtype": "uint32", "shape": [1, 1, 4], "data": { "kind": "values", "values": [0, 8, 2, 8] } },
+        "output_shape": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 1, 9] } }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [1, 1, 9], "tolerance": 0 } }
+    }
+  ]
+}

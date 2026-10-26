@@ -1,0 +1,232 @@
+{
+  "tunableSpace": {
+    "WORKGROUP_SIZE": [32, 64, 128],
+    "SCATTER_WORKGROUP_SIZE": [64, 128, 256],
+    "SPLIT_TARGET_WORKGROUPS": [512, 1024, 2048, 4096],
+    "SPLIT_MIN_KEYS": [64, 128, 256],
+    "MAX_SPLITS": [8, 16, 32]
+  },
+  "cases": [
+    {
+      "name": "paged-decode-b8-past1024-h32kv8-d128",
+      "preset": "smoke",
+      "vars": { "dtype": "float16", "batch": 8, "past": 1024, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": { "shape": [8, 4096], "dtype": "float16", "dist": "normal", "seed": 9201, "scale": 1 },
+        "keyT": { "shape": [8, 1024], "dtype": "float16", "dist": "normal", "seed": 9202, "scale": 1 },
+        "valueT": { "shape": [8, 1024], "dtype": "float16", "dist": "normal", "seed": 9203, "scale": 1 },
+        "keyCacheT": { "shape": [512, 16, 8, 128], "dtype": "float16", "dist": "normal", "seed": 9204, "scale": 1 },
+        "valueCacheT": { "shape": [512, 16, 8, 128], "dtype": "float16", "dist": "normal", "seed": 9205, "scale": 1 },
+        "cumulativeSequenceLengthT": {
+          "shape": [9],
+          "dtype": "int32",
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8] }
+        },
+        "pastSeqlensT": { "shape": [8], "dtype": "int32", "dist": "constant", "value": 1023 },
+        "blockTableT": { "shape": [8, 64], "dtype": "int32", "dist": "linearMod", "seed": 9208, "step": 1, "mod": 512 }
+      },
+      "outputs": { "outputT": { "shape": [8, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "2 * args.batch * args.kvHeads * args.past * args.headDim * 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric derives KV traffic from the key/value head count and the two-byte float16 cache element size."
+      }
+    },
+    {
+      "name": "paged-decode-llama-b16-past2048-h32kv32-d128",
+      "preset": "model",
+      "provenance": {
+        "notes": "Llama class defaults (32 query heads, no GQA, head_dim 128) decoding 16 concurrent sequences with 2048 tokens of paged KV each. Context counts include this step: past_seqlens is context - 1 and the exclusive prefix [0, ..., batch] assigns one new token per sequence. All logical blocks map to distinct physical blocks, including the final append slot."
+      },
+      "vars": { "dtype": "float16", "batch": 16, "past": 2048, "heads": 32, "kvHeads": 32, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 32 },
+      "inputs": {
+        "queryT": { "shape": [16, 4096], "dtype": "float16", "dist": "normal", "seed": 7600, "scale": 0.3 },
+        "keyT": { "shape": [16, 4096], "dtype": "float16", "dist": "normal", "seed": 7601, "scale": 0.3 },
+        "valueT": { "shape": [16, 4096], "dtype": "float16", "dist": "normal", "seed": 7602, "scale": 0.3 },
+        "keyCacheT": { "shape": [2048, 16, 32, 128], "dtype": "float16", "dist": "normal", "seed": 7603, "scale": 0.3 },
+        "valueCacheT": {
+          "shape": [2048, 16, 32, 128],
+          "dtype": "float16",
+          "dist": "normal",
+          "seed": 7604,
+          "scale": 0.3
+        },
+        "cumulativeSequenceLengthT": {
+          "shape": [17],
+          "dtype": "int32",
+          "data": { "kind": "linspace", "start": 0, "end": 16 }
+        },
+        "pastSeqlensT": { "shape": [16], "dtype": "int32", "dist": "constant", "value": 2047 },
+        "blockTableT": {
+          "shape": [16, 128],
+          "dtype": "int32",
+          "dist": "linearMod",
+          "seed": 7606,
+          "step": 1,
+          "mod": 2048
+        }
+      },
+      "outputs": { "outputT": { "shape": [16, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "2 * args.batch * args.kvHeads * args.past * args.headDim * 2" }]
+      }
+    },
+    {
+      "name": "paged-decode-mistral-b16-past4096-h32kv8-d128",
+      "preset": "model",
+      "provenance": {
+        "notes": "Mistral class defaults (32 query heads, 8 key/value heads, head_dim 128) at 4096 tokens per sequence including the current token -- the GQA case, where the cache is a quarter the size for the same context. Context counts include this step: past_seqlens is context - 1 and the exclusive prefix [0, ..., batch] assigns one new token per sequence. All logical blocks map to distinct physical blocks, including the final append slot."
+      },
+      "vars": { "dtype": "float16", "batch": 16, "past": 4096, "heads": 32, "kvHeads": 8, "headDim": 128 },
+      "attrs": { "num_heads": 32, "kv_num_heads": 8 },
+      "inputs": {
+        "queryT": { "shape": [16, 4096], "dtype": "float16", "dist": "normal", "seed": 7700, "scale": 0.3 },
+        "keyT": { "shape": [16, 1024], "dtype": "float16", "dist": "normal", "seed": 7701, "scale": 0.3 },
+        "valueT": { "shape": [16, 1024], "dtype": "float16", "dist": "normal", "seed": 7702, "scale": 0.3 },
+        "keyCacheT": { "shape": [4096, 16, 8, 128], "dtype": "float16", "dist": "normal", "seed": 7703, "scale": 0.3 },
+        "valueCacheT": { "shape": [4096, 16, 8, 128], "dtype": "float16", "dist": "normal", "seed": 7704, "scale": 0.3 },
+        "cumulativeSequenceLengthT": {
+          "shape": [17],
+          "dtype": "int32",
+          "data": { "kind": "linspace", "start": 0, "end": 16 }
+        },
+        "pastSeqlensT": { "shape": [16], "dtype": "int32", "dist": "constant", "value": 4095 },
+        "blockTableT": {
+          "shape": [16, 256],
+          "dtype": "int32",
+          "dist": "linearMod",
+          "seed": 7706,
+          "step": 1,
+          "mod": 4096
+        }
+      },
+      "outputs": { "outputT": { "shape": [16, 4096], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "2 * args.batch * args.kvHeads * args.past * args.headDim * 2" }]
+      }
+    },
+    {
+      "name": "paged-decode-gemma3-b8-past2048-h8kv4-d256",
+      "preset": "model",
+      "provenance": {
+        "notes": "Gemma3 class defaults (8 query heads, 4 key/value heads, head_dim 256) -- few heads but the widest head dimension in this set. Context counts include this step: past_seqlens is context - 1 and the exclusive prefix [0, ..., batch] assigns one new token per sequence. All logical blocks map to distinct physical blocks, including the final append slot."
+      },
+      "vars": { "dtype": "float16", "batch": 8, "past": 2048, "heads": 8, "kvHeads": 4, "headDim": 256 },
+      "attrs": { "num_heads": 8, "kv_num_heads": 4 },
+      "inputs": {
+        "queryT": { "shape": [8, 2048], "dtype": "float16", "dist": "normal", "seed": 7800, "scale": 0.3 },
+        "keyT": { "shape": [8, 1024], "dtype": "float16", "dist": "normal", "seed": 7801, "scale": 0.3 },
+        "valueT": { "shape": [8, 1024], "dtype": "float16", "dist": "normal", "seed": 7802, "scale": 0.3 },
+        "keyCacheT": { "shape": [1024, 16, 4, 256], "dtype": "float16", "dist": "normal", "seed": 7803, "scale": 0.3 },
+        "valueCacheT": { "shape": [1024, 16, 4, 256], "dtype": "float16", "dist": "normal", "seed": 7804, "scale": 0.3 },
+        "cumulativeSequenceLengthT": {
+          "shape": [9],
+          "dtype": "int32",
+          "data": { "kind": "linspace", "start": 0, "end": 8 }
+        },
+        "pastSeqlensT": { "shape": [8], "dtype": "int32", "dist": "constant", "value": 2047 },
+        "blockTableT": {
+          "shape": [8, 128],
+          "dtype": "int32",
+          "dist": "linearMod",
+          "seed": 7806,
+          "step": 1,
+          "mod": 1024
+        }
+      },
+      "outputs": { "outputT": { "shape": [8, 2048], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "2 * args.batch * args.kvHeads * args.past * args.headDim * 2" }]
+      }
+    },
+    {
+      "name": "scatter-fold-wg1-independent-sequences",
+      "provenance": {
+        "notes": "A large scatter workload crosses the WebGPU dispatch-grid limit. One-token sequences bound attention cost; nonzero dyadic cycles expose missing tail writes and misplaced cache/value elements."
+      },
+      "attrs": { "num_heads": 8, "kv_num_heads": 8 },
+      "tunables": { "WORKGROUP_SIZE": 64, "SCATTER_WORKGROUP_SIZE": 1 },
+      "inputs": {
+        "queryT": { "dtype": "float16", "shape": [64, 1024], "data": { "kind": "constant", "value": 0.0 } },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [64, 1024],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 4.0, -1.0, -2.0] }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [64, 1024],
+          "data": { "kind": "cycle", "values": [2.0, -4.0, 8.0, 1.0, -2.0, 4.0, -1.0] }
+        },
+        "keyCacheT": { "dtype": "float16", "shape": [64, 1, 8, 128], "data": { "kind": "constant", "value": 0.0 } },
+        "valueCacheT": { "dtype": "float16", "shape": [64, 1, 8, 128], "data": { "kind": "constant", "value": 0.0 } },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [65],
+          "data": { "kind": "linspace", "start": 0, "end": 64 }
+        },
+        "pastSeqlensT": { "dtype": "int32", "shape": [64], "data": { "kind": "constant", "value": 0 } },
+        "blockTableT": { "dtype": "int32", "shape": [64, 1], "data": { "kind": "linspace", "start": 0, "end": 63 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [64, 1024] },
+        "keyCacheT": { "dtype": "float16", "shape": [64, 1, 8, 128] },
+        "valueCacheT": { "dtype": "float16", "shape": [64, 1, 8, 128] }
+      },
+      "preset": "edge",
+      "vars": { "tokens": 64, "heads": 8, "headDim": 128 },
+      "tunableSpace": { "WORKGROUP_SIZE": [64], "SCATTER_WORKGROUP_SIZE": [1] },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "6 * args.tokens * args.heads * args.headDim * 2", "provenance": "logical" }
+        ]
+      }
+    },
+    {
+      "name": "scatter-fold-wg4-independent-sequences",
+      "provenance": {
+        "notes": "A large scatter workload crosses the WebGPU dispatch-grid limit. One-token sequences bound attention cost; nonzero dyadic cycles expose missing tail writes and misplaced cache/value elements."
+      },
+      "attrs": { "num_heads": 8, "kv_num_heads": 8 },
+      "tunables": { "WORKGROUP_SIZE": 64, "SCATTER_WORKGROUP_SIZE": 4 },
+      "inputs": {
+        "queryT": { "dtype": "float16", "shape": [256, 1024], "data": { "kind": "constant", "value": 0.0 } },
+        "keyT": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 4.0, -1.0, -2.0] }
+        },
+        "valueT": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "cycle", "values": [2.0, -4.0, 8.0, 1.0, -2.0, 4.0, -1.0] }
+        },
+        "keyCacheT": { "dtype": "float16", "shape": [256, 1, 8, 128], "data": { "kind": "constant", "value": 0.0 } },
+        "valueCacheT": { "dtype": "float16", "shape": [256, 1, 8, 128], "data": { "kind": "constant", "value": 0.0 } },
+        "cumulativeSequenceLengthT": {
+          "dtype": "int32",
+          "shape": [257],
+          "data": { "kind": "linspace", "start": 0, "end": 256 }
+        },
+        "pastSeqlensT": { "dtype": "int32", "shape": [256], "data": { "kind": "constant", "value": 0 } },
+        "blockTableT": { "dtype": "int32", "shape": [256, 1], "data": { "kind": "linspace", "start": 0, "end": 255 } }
+      },
+      "outputs": {
+        "outputT": { "dtype": "float16", "shape": [256, 1024] },
+        "keyCacheT": { "dtype": "float16", "shape": [256, 1, 8, 128] },
+        "valueCacheT": { "dtype": "float16", "shape": [256, 1, 8, 128] }
+      },
+      "preset": "edge",
+      "vars": { "tokens": 256, "heads": 8, "headDim": 128 },
+      "tunableSpace": { "WORKGROUP_SIZE": [64], "SCATTER_WORKGROUP_SIZE": [4] },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "6 * args.tokens * args.heads * args.headDim * 2", "provenance": "logical" }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "domain": "ai.onnx",
+  "name": "GatherND",
+  "sinceVersion": 13,
+  "inputs": { "data": { "dtype": "T" }, "indices": { "dtype": "I", "storage": "int32", "narrowing": "checked" } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": "ranks.indices + ranks.data - attrs.batch_dims - dim(shapes.indices, -1) - 1",
+      "shape": "prefix(shapes.indices, ranks.indices - 1) + suffix(shapes.data, attrs.batch_dims + dim(shapes.indices, -1))"
+    }
+  },
+  "attributes": { "batch_dims": { "default": 0 } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "I": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "when": ["f16Ok(dtypes.T)"],
+  "bindings": { "indices": { "elementType": "$indexScalar" } },
+  "variants": [
+    {
+      "id": "generic",
+      "when": ["attrs.batch_dims >= 0", "ranks.data >= attrs.batch_dims + 1", "ranks.indices >= attrs.batch_dims + 1", "sameShape(prefix(shapes.data, attrs.batch_dims), prefix(shapes.indices, attrs.batch_dims))", "dim(shapes.indices, ranks.indices - 1) <= ranks.data - attrs.batch_dims", "ranks.output == ranks.indices - 1 + ranks.data - dim(shapes.indices, ranks.indices - 1) - attrs.batch_dims"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherND",
+          "shader": "gather-nd.wgsl.jinja",
+          "derive": {
+            "dataShape": "shapes.data",
+            "indicesShape": "shapes.indices",
+            "outputShape": "shapes.output",
+            "dataRank": "ranks.data",
+            "indicesRank": "ranks.indices",
+            "outputRank": "ranks.output",
+            "indexDepth": "dim(shapes.indices, ranks.indices - 1)",
+            "batchDims": "attrs.batch_dims"
+          },
+          "bindings": [
+            { "arg": "data", "elementType": "$scalar" },
+            "indices",
+            { "arg": "output", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "row_flat_vec4",
+      "priority": 27,
+      "when": ["dtypes.T != \"vec2<u32>\"", "attrs.batch_dims == 0", "ranks.data >= 2", "ranks.indices >= 2", "ranks.indices <= 5", "dim(shapes.indices, ranks.indices - 1) == 1", "ranks.output == ranks.indices + ranks.data - 2", "((ranks.indices == 2 and dim(shapes.output, 0) == dim(shapes.indices, 0)) or (ranks.indices == 3 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1)) or (ranks.indices == 4 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1) and dim(shapes.output, 2) == dim(shapes.indices, 2)) or (ranks.indices == 5 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1) and dim(shapes.output, 2) == dim(shapes.indices, 2) and dim(shapes.output, 3) == dim(shapes.indices, 3)))", "((ranks.data == 2 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1)) or (ranks.data == 3 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2)) or (ranks.data == 4 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3)) or (ranks.data == 5 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3) and dim(shapes.output, ranks.indices + 2) == dim(shapes.data, 4)) or (ranks.data == 6 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3) and dim(shapes.output, ranks.indices + 2) == dim(shapes.data, 4) and dim(shapes.output, ranks.indices + 3) == dim(shapes.data, 5)))", "numel(shapes.indices) > 0", "inner(shapes.data, 0) % 4 == 0", "inner(shapes.data, 0) / 4 <= tunables.WORKGROUP_SIZE / 4", "numel(shapes.output) == numel(shapes.indices) * inner(shapes.data, 0)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherND.RowFlatVec4",
+          "shader": "datamove-gather-row.wgsl.jinja",
+          "derive": { "axisDimSpec": "dim(shapes.data, 0)", "rowVecs": "inner(shapes.data, 0) / 4", "flatRows": true },
+          "bindings": [
+            { "arg": "data", "elementType": "$vectorScalar" },
+            "indices",
+            { "arg": "output", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "batched_row_fast_vec4",
+      "priority": 26,
+      "when": ["dtypes.T != \"vec2<u32>\"", "attrs.batch_dims >= 1", "ranks.data >= attrs.batch_dims + 2", "ranks.indices >= attrs.batch_dims + 1", "ranks.indices <= 5", "dim(shapes.indices, ranks.indices - 1) == 1", "sameShape(prefix(shapes.data, attrs.batch_dims), prefix(shapes.indices, attrs.batch_dims))", "ranks.output == ranks.indices + ranks.data - attrs.batch_dims - 2", "inner(shapes.data, attrs.batch_dims) % 4 == 0", "numel(shapes.indices) > 0", "numel(shapes.output) == numel(shapes.indices) * inner(shapes.data, attrs.batch_dims)"],
+      "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherND.BatchedRowVec4",
+          "shader": "datamove-gather-row.wgsl.jinja",
+          "derive": {
+            "axisDimSpec": "dim(shapes.data, attrs.batch_dims)",
+            "rowVecs": "inner(shapes.data, attrs.batch_dims) / 4",
+            "batchCount": "outer(shapes.data, attrs.batch_dims)",
+            "indicesPerBatch": "numel(shapes.indices) / outer(shapes.data, attrs.batch_dims)"
+          },
+          "bindings": [
+            { "arg": "data", "elementType": "$vectorScalar" },
+            "indices",
+            { "arg": "output", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.indices), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "row_fast_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"vec2<u32>\"", "attrs.batch_dims == 0", "ranks.data >= 2", "ranks.indices >= 2", "ranks.indices <= 5", "dim(shapes.indices, ranks.indices - 1) == 1", "ranks.output == ranks.indices + ranks.data - 2", "((ranks.indices == 2 and dim(shapes.output, 0) == dim(shapes.indices, 0)) or (ranks.indices == 3 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1)) or (ranks.indices == 4 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1) and dim(shapes.output, 2) == dim(shapes.indices, 2)) or (ranks.indices == 5 and dim(shapes.output, 0) == dim(shapes.indices, 0) and dim(shapes.output, 1) == dim(shapes.indices, 1) and dim(shapes.output, 2) == dim(shapes.indices, 2) and dim(shapes.output, 3) == dim(shapes.indices, 3)))", "((ranks.data == 2 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1)) or (ranks.data == 3 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2)) or (ranks.data == 4 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3)) or (ranks.data == 5 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3) and dim(shapes.output, ranks.indices + 2) == dim(shapes.data, 4)) or (ranks.data == 6 and dim(shapes.output, ranks.indices - 1) == dim(shapes.data, 1) and dim(shapes.output, ranks.indices) == dim(shapes.data, 2) and dim(shapes.output, ranks.indices + 1) == dim(shapes.data, 3) and dim(shapes.output, ranks.indices + 2) == dim(shapes.data, 4) and dim(shapes.output, ranks.indices + 3) == dim(shapes.data, 5)))", "numel(shapes.indices) > 0", "inner(shapes.data, 0) % 4 == 0", "numel(shapes.output) == numel(shapes.indices) * inner(shapes.data, 0)"],
+      "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherND.RowVec4",
+          "shader": "datamove-gather-row.wgsl.jinja",
+          "derive": { "axisDimSpec": "dim(shapes.data, 0)", "rowVecs": "inner(shapes.data, 0) / 4" },
+          "bindings": [
+            { "arg": "data", "elementType": "$vectorScalar" },
+            "indices",
+            { "arg": "output", "elementType": "$vectorScalar" }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.indices), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "derive": {
+    "indexScalar": "dtypes.I",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "numIndices": "numel(shapes.indices)"
+  }
+}

@@ -1,0 +1,385 @@
+{
+  "cases": [
+    {
+      "name": "rank3_h8_vec4_gate_beta",
+      "provenance": {
+        "notes": "Head count 8 (divisible by four) exercises four-wide beta computation in the (B,T,H) layout; a 2e-6 tolerance covers float32 Softplus rounding near where its log1p-based series approximation switches."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 2.5 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [8], "data": { "kind": "linspace", "start": -1.5, "end": 1.1 } },
+        "decayScaleT": { "dtype": "float32", "shape": [8], "data": { "kind": "linspace", "start": -3.2, "end": -0.15 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 3.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0, "relTolerance": 0.000002 },
+        "betaT": { "dtype": "float32", "shape": [2, 3, 8], "tolerance": 0, "relTolerance": 0.000002 }
+      }
+    },
+    {
+      "name": "rank2_h6_scalar_gate_beta",
+      "provenance": {
+        "notes": "Head count 6 is not a multiple of four, so four-wide parameter mapping does not apply; a rank-2 (no batch dimension) input checks per-head computation one head at a time."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.19, "scale": 2.2 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [6], "data": { "kind": "linspace", "start": -2.0, "end": 0.9 } },
+        "decayScaleT": { "dtype": "float32", "shape": [6], "data": { "kind": "linspace", "start": -2.6, "end": -0.2 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 2.8 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [5, 6], "tolerance": 0, "relTolerance": 0.000002 },
+        "betaT": { "dtype": "float32", "shape": [5, 6], "tolerance": 0, "relTolerance": 0.000002 }
+      }
+    },
+    {
+      "name": "rank4_h4_vec4_gate_only",
+      "provenance": {
+        "notes": "Rank 4 proves the leading axes are folded rather than parsed: only the last axis is the head axis. No b input, so no beta output. Covers vec4_gate."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.41, "cosStep": 0.23, "scale": 3.1 }
+        },
+        "dtBiasT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1.25, 0.4, 1.75, -0.6] }
+        },
+        "decayScaleT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1.5, -0.35, -2.8, -0.9] }
+        }
+      },
+      "outputs": { "decayT": { "dtype": "float32", "shape": [2, 2, 3, 4], "tolerance": 0, "relTolerance": 0.000002 } }
+    },
+    {
+      "name": "rank1_h5_scalar_gate_only",
+      "provenance": {
+        "notes": "Rank 1 is the single-token decode shape: the whole tensor is one head row, so every element reads a different parameter slot. Covers scalar_gate."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-9.5, -1.25, 0.0, 2.5, 14.0] }
+        },
+        "dtBiasT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.75, -0.5, 1.25, -1.75, 0.3] }
+        },
+        "decayScaleT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-0.4, -1.6, -3.05, -0.85, -2.2] }
+        }
+      },
+      "outputs": { "decayT": { "dtype": "float32", "shape": [5], "tolerance": 0, "relTolerance": 0.000002 } }
+    },
+    {
+      "name": "b_without_beta_is_ignored",
+      "provenance": {
+        "notes": "The schema requires `b` when beta is requested but permits `b` when beta is omitted. This case supplies unused `b` without beta."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.27, "cosStep": 0.19, "scale": 1.7 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [4], "data": { "kind": "linspace", "start": -0.7, "end": 0.8 } },
+        "decayScaleT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-0.5, -1.0, -1.5, -2.0] }
+        },
+        "bT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.43, "cosStep": 0.11, "scale": 4.0 }
+        }
+      },
+      "outputs": { "decayT": { "dtype": "float32", "shape": [2, 4], "tolerance": 0, "relTolerance": 0.000002 } }
+    },
+    {
+      "name": "rank2_h4_vec4_pinned_head_parameters",
+      "provenance": {
+        "notes": "Expected values are derived directly from the gating equation. Row 0 sets `a + dt_bias` to zero in every head, so Softplus equals ln(2) and each decay differs only by `decay_scale`. Row 1 sets the value to 25, where the guarded Softplus branch returns x exactly. Beta inputs cover both sigmoid signs at 0, +/-1, +/-2, and +/-6."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, -1.0, 1.0, -0.5, 25.0, 24.0, 26.0, 24.5] }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.0, 1.0, -1.0, 0.5] } },
+        "decayScaleT": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -0.5, -4.0] }
+        },
+        "bT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [0.0, 6.0, -6.0, 1.0, -1.0, 2.0, -2.0, 0.0] }
+        }
+      },
+      "outputs": {
+        "decayT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": {
+            "kind": "values",
+            "values": [-0.69314718, -1.3862944, -0.34657359, -2.7725887, -25.0, -50.0, -12.5, -100.0]
+          },
+          "tolerance": 0,
+          "relTolerance": 0.000001
+        },
+        "betaT": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.5, 0.99752738, 0.0024726232, 0.73105858, 0.26894142, 0.88079708, 0.11920292, 0.5]
+          },
+          "tolerance": 0,
+          "relTolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "rank2_h5_scalar_pinned_saturation",
+      "provenance": {
+        "notes": "Hand-computed on the scalar path (head count 5). Both rows bias to one shared value -- 25 in row 0 (the x > 20 softplus identity) and 0 in row 1 (ln 2) -- so the five distinct decay values in each row are exactly the five decay_scale entries times one constant. That is the per-head parameter index, index % head_count, stated as arithmetic."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 5],
+          "data": { "kind": "values", "values": [24.5, 25.5, 25.0, 23.0, 27.0, -0.5, 0.5, 0.0, -2.0, 2.0] }
+        },
+        "dtBiasT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.5, -0.5, 0.0, 2.0, -2.0] }
+        },
+        "decayScaleT": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -0.25, -4.0, -0.5] }
+        },
+        "bT": {
+          "dtype": "float32",
+          "shape": [2, 5],
+          "data": { "kind": "values", "values": [-6.0, -2.0, 0.0, 2.0, 6.0, -1.0, -0.25, 0.25, 1.0, 3.0] }
+        }
+      },
+      "outputs": {
+        "decayT": {
+          "dtype": "float32",
+          "shape": [2, 5],
+          "data": {
+            "kind": "values",
+            "values": [-25.0, -50.0, -6.25, -100.0, -12.5, -0.69314718, -1.3862944, -0.1732868, -2.7725887, -0.34657359]
+          },
+          "tolerance": 0,
+          "relTolerance": 0.000001
+        },
+        "betaT": {
+          "dtype": "float32",
+          "shape": [2, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.0024726232, 0.11920292, 0.5, 0.88079708, 0.99752738, 0.26894142, 0.4378235, 0.5621765, 0.73105858, 0.95257413]
+          },
+          "tolerance": 0,
+          "relTolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "f16_rank3_h8_vec4_gate_beta",
+      "provenance": {
+        "notes": "float16 a/b/decay/beta with float32 dt_bias and decay_scale -- the schema's T/TF split. The gate arithmetic still runs in f32 and only the store narrows."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float16",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 2.5 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [8], "data": { "kind": "linspace", "start": -1.5, "end": 1.1 } },
+        "decayScaleT": { "dtype": "float32", "shape": [8], "data": { "kind": "linspace", "start": -3.2, "end": -0.15 } },
+        "bT": {
+          "dtype": "float16",
+          "shape": [2, 3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 3.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float16", "shape": [2, 3, 8], "tolerance": 0, "relTolerance": 0.002 },
+        "betaT": { "dtype": "float16", "shape": [2, 3, 8], "tolerance": 0, "relTolerance": 0.002 }
+      }
+    },
+    {
+      "name": "f16_rank2_h6_scalar_gate_beta",
+      "provenance": { "notes": "float16 gate tensors on the scalar path (head count 6)." },
+      "inputs": {
+        "aT": {
+          "dtype": "float16",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.19, "scale": 2.2 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [6], "data": { "kind": "linspace", "start": -2.0, "end": 0.9 } },
+        "decayScaleT": { "dtype": "float32", "shape": [6], "data": { "kind": "linspace", "start": -2.6, "end": -0.2 } },
+        "bT": {
+          "dtype": "float16",
+          "shape": [5, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.11, "scale": 2.8 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float16", "shape": [5, 6], "tolerance": 0, "relTolerance": 0.002 },
+        "betaT": { "dtype": "float16", "shape": [5, 6], "tolerance": 0, "relTolerance": 0.002 }
+      }
+    },
+    {
+      "name": "ort_gate_float_decode_h32",
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [1, 1, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [1, 1, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 6.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [1, 1, 32], "tolerance": 0, "relTolerance": 0.000002 },
+        "betaT": { "dtype": "float32", "shape": [1, 1, 32], "tolerance": 0, "relTolerance": 0.000002 }
+      }
+    },
+    {
+      "name": "ort_gate_float_speculative_decode_tile_h32",
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [1, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [1, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 6.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [1, 4, 32], "tolerance": 0, "relTolerance": 0.000002 },
+        "betaT": { "dtype": "float32", "shape": [1, 4, 32], "tolerance": 0, "relTolerance": 0.000002 }
+      }
+    },
+    {
+      "name": "ort_gate_float_decay_only_h16",
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 3, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [16], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } }
+      },
+      "outputs": { "decayT": { "dtype": "float32", "shape": [2, 3, 16], "tolerance": 0, "relTolerance": 0.000002 } }
+    },
+    {
+      "name": "ort_gate_float16_speculative_decode_tile_h32",
+      "inputs": {
+        "aT": {
+          "dtype": "float16",
+          "shape": [1, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } },
+        "bT": {
+          "dtype": "float16",
+          "shape": [1, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 6.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float16", "shape": [1, 4, 32], "tolerance": 0, "relTolerance": 0.002 },
+        "betaT": { "dtype": "float16", "shape": [1, 4, 32], "tolerance": 0, "relTolerance": 0.002 }
+      }
+    },
+    {
+      "name": "ort_gate_float16_prefill_h32",
+      "inputs": {
+        "aT": {
+          "dtype": "float16",
+          "shape": [2, 37, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } },
+        "bT": {
+          "dtype": "float16",
+          "shape": [2, 37, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 6.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float16", "shape": [2, 37, 32], "tolerance": 0, "relTolerance": 0.002 },
+        "betaT": { "dtype": "float16", "shape": [2, 37, 32], "tolerance": 0, "relTolerance": 0.002 }
+      }
+    },
+    {
+      "name": "ort_gate_float16_ragged_tail_h7",
+      "inputs": {
+        "aT": {
+          "dtype": "float16",
+          "shape": [1, 5, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.17, "scale": 6.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [7], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [7], "data": { "kind": "linspace", "start": -4.0, "end": -0.1 } },
+        "bT": {
+          "dtype": "float16",
+          "shape": [1, 5, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.13, "scale": 6.0 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float16", "shape": [1, 5, 7], "tolerance": 0, "relTolerance": 0.002 },
+        "betaT": { "dtype": "float16", "shape": [1, 5, 7], "tolerance": 0, "relTolerance": 0.002 }
+      }
+    }
+  ]
+}

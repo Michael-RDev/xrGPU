@@ -1,0 +1,189 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 0.5, 1.0, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sinh",
+        "notes": "For tiny finite inputs sinh(x) rounds back to x in float32; zero-flushing erases the signed tail."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sinh",
+        "notes": "On the scalar path, subnormal inputs produce valid finite Sinh outputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 0.5, 1.0, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.003
+    },
+    {
+      "name": "overflow_and_special_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-100.0, -20.0, 0.0, 20.0, 100.0, "Infinity", "-Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "allowNaN": true } }
+    },
+    {
+      "name": "f32_near_overflow_threshold_finite",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sinh",
+        "notes": "sinh(x) remains finite beyond the exp(x) overflow threshold because the mathematical result is approximately exp(x) / 2."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [88.75, 89.0, -88.75, -89.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_near_overflow_threshold_finite_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sinh",
+        "notes": "The scalar path exercises finite Sinh values above the exp(x) overflow threshold."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [88.75, 89.0, -89.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "f16_overflow_and_special_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-20.0, -12.0, 0.0, 0.0, 12.0, 20.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.003, "allowNaN": true } }
+    },
+    {
+      "name": "ort_float_small_range",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sinh"
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [5],
+          "tolerance": 0.00001,
+          "data": {
+            "kind": "values",
+            "values": [-1.175201177597046, -0.5210952758789062, 0.0, 0.5210952758789062, 1.175201177597046]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sinh_example",
+        "test": "test_sinh_example"
+      },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_sinh",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sinh" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_sinh_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sinh_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "empty_input_f16_zero_dim",
+      "inputs": { "x": { "dtype": "float16", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float16", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_nonmult4_scalar_path_range",
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [-2.0, -0.5, 0.0, 0.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [5], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_scalar_tail_4097",
+      "provenance": { "notes": "An odd float32 element count exercises scalar Sinh with finite moderate inputs." },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4097],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.019, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4097], "tolerance": 0.00001 } }
+    }
+  ]
+}

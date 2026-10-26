@@ -1,0 +1,166 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [32, 64, 128, 256] },
+  "cases": [
+    {
+      "name": "gate-smoke-decode-h64",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "One token: the decode shape, where the whole op is a single tiny dispatch and launch overhead dominates."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [1, 1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 2.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [64], "data": { "kind": "linspace", "start": -1.5, "end": 1.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [64], "data": { "kind": "linspace", "start": -3.0, "end": -0.2 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [1, 1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23, "scale": 2.5 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [1, 1, 64] },
+        "betaT": { "dtype": "float32", "shape": [1, 1, 64] }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-smoke-prefill-t512-h32",
+      "preset": "smoke",
+      "provenance": { "notes": "Prefill over 512 tokens on the vectorized path." },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [1, 512, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 2.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -1.5, "end": 1.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [32], "data": { "kind": "linspace", "start": -3.0, "end": -0.2 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [1, 512, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23, "scale": 2.5 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [1, 512, 32] },
+        "betaT": { "dtype": "float32", "shape": [1, 512, 32] }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-smoke-prefill-t256-h30",
+      "preset": "smoke",
+      "provenance": { "notes": "Head count 30 is not a multiple of four, so this is the scalar path at prefill width." },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [1, 256, 30],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 2.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [30], "data": { "kind": "linspace", "start": -1.5, "end": 1.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [30], "data": { "kind": "linspace", "start": -3.0, "end": -0.2 } },
+        "bT": {
+          "dtype": "float32",
+          "shape": [1, 256, 30],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.23, "scale": 2.5 }
+        }
+      },
+      "outputs": {
+        "decayT": { "dtype": "float32", "shape": [1, 256, 30] },
+        "betaT": { "dtype": "float32", "shape": [1, 256, 30] }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-smoke-decay-only-b2-t128-h64",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "No b input: two of the four tensors disappear, which is the bandwidth the optional-pair binding actually saves."
+      },
+      "inputs": {
+        "aT": {
+          "dtype": "float32",
+          "shape": [2, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29, "scale": 2.0 }
+        },
+        "dtBiasT": { "dtype": "float32", "shape": [64], "data": { "kind": "linspace", "start": -1.5, "end": 1.0 } },
+        "decayScaleT": { "dtype": "float32", "shape": [64], "data": { "kind": "linspace", "start": -3.0, "end": -0.2 } }
+      },
+      "outputs": { "decayT": { "dtype": "float32", "shape": [2, 128, 64] } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (2 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-qwen3next-decode-s1-h32",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-Next class defaults (linear_num_value_heads 32): the decay/beta gate for one decode step."
+      },
+      "vars": { "batch": 1, "seq": 1, "heads": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 1, 32], "dtype": "float32", "dist": "normal", "seed": 8400, "scale": 0.5 },
+        "dtBiasT": { "shape": [32], "dtype": "float32", "dist": "normal", "seed": 8401, "scale": 0.2 },
+        "decayScaleT": { "shape": [32], "dtype": "float32", "dist": "uniform", "seed": 8402, "min": 0.5, "max": 1.5 },
+        "bT": { "shape": [1, 1, 32], "dtype": "float32", "dist": "normal", "seed": 8403, "scale": 0.5 }
+      },
+      "outputs": {
+        "decayT": { "shape": [1, 1, 32], "dtype": "float32" },
+        "betaT": { "shape": [1, 1, 32], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-qwen3next-prefill-s2048-h32",
+      "preset": "model",
+      "provenance": { "notes": "Qwen3-Next class defaults over a 2048-token prefill chunk." },
+      "vars": { "batch": 1, "seq": 2048, "heads": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2048, 32], "dtype": "float32", "dist": "normal", "seed": 8500, "scale": 0.5 },
+        "dtBiasT": { "shape": [32], "dtype": "float32", "dist": "normal", "seed": 8501, "scale": 0.2 },
+        "decayScaleT": { "shape": [32], "dtype": "float32", "dist": "uniform", "seed": 8502, "min": 0.5, "max": 1.5 },
+        "bT": { "shape": [1, 2048, 32], "dtype": "float32", "dist": "normal", "seed": 8503, "scale": 0.5 }
+      },
+      "outputs": {
+        "decayT": { "shape": [1, 2048, 32], "dtype": "float32" },
+        "betaT": { "shape": [1, 2048, 32], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    },
+    {
+      "name": "gate-qwen3next-prefill-s8192-h32",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-Next class defaults over an 8192-token prefill chunk, where the gate is purely bandwidth-bound."
+      },
+      "vars": { "batch": 1, "seq": 8192, "heads": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 8192, 32], "dtype": "float32", "dist": "normal", "seed": 8600, "scale": 0.5 },
+        "dtBiasT": { "shape": [32], "dtype": "float32", "dist": "normal", "seed": 8601, "scale": 0.2 },
+        "decayScaleT": { "shape": [32], "dtype": "float32", "dist": "uniform", "seed": 8602, "min": 0.5, "max": 1.5 },
+        "bT": { "shape": [1, 8192, 32], "dtype": "float32", "dist": "normal", "seed": 8603, "scale": 0.5 }
+      },
+      "outputs": {
+        "decayT": { "shape": [1, 8192, 32], "dtype": "float32" },
+        "betaT": { "shape": [1, 8192, 32], "dtype": "float32" }
+      },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "4 * (4 * numel(shapes.aT) + 2 * numel(shapes.dtBiasT))" }]
+      }
+    }
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "domain": "ai.onnx",
+  "name": "Gelu",
+  "sinceVersion": 20,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "approximate": { "default": "none" } },
+  "attributeConstraints": { "approximate": { "values": ["none", "tanh"] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+  },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gelu.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"gelu\"",
+            "approximateSpec": "attrs.approximate",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_layout_vec4_tail",
+      "priority": 19,
+      "when": ["numel(shapes.x) > 4", "numel(shapes.x) % 4 != 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "approximate": "attrs.approximate" },
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "Gelu.Vec4Bulk",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"gelu\"",
+            "approximateSpec": "attrs.approximate",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "floor(numel(shapes.y) / 4)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(floor(numel(shapes.y) / 4), 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "Gelu.Tail",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "op": "\"gelu\"", "itemsPerInvocation": 4, "tailOnly": true },
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "derive": { "approximate": "attrs.approximate" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gelu",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "op": "\"gelu\"", "itemsPerInvocation": 4 },
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

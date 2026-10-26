@@ -1,0 +1,70 @@
+{
+  "domain": "ai.onnx",
+  "name": "HardSigmoid",
+  "sinceVersion": 6,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "alpha": { "default": 0.2 }, "beta": { "default": 0.5 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T" },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "derive": { "alpha": "attrs.alpha", "beta": "attrs.beta" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "HardSigmoid.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1"
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "when": ["numel(shapes.x) == numel(shapes.y) and (f16Ok(dtypes.T))"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "HardSigmoid",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": { "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha" },
+                { "name": "beta", "type": "f32", "value": "attrs.beta" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {}
+}

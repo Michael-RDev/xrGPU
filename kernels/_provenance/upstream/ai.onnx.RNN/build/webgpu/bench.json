@@ -1,0 +1,297 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256], "HIDDEN_BLOCK": [2, 4, 8] },
+  "cases": [
+    {
+      "name": "small",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 32 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16, 1, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.01, "cosStep": 0.02 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.04 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.06 }
+        },
+        "b": { "dtype": "float32", "shape": [1, 64], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [16, 1, 1, 32] },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 32] }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) * (dim(shapes.x, 2) + dim(shapes.r, 2))"
+          },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "h256-in64-b8-seq32-vec4",
+      "preset": "smoke",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 256 },
+      "vars": { "seq": 32, "batch": 8, "inputSize": 64, "hidden": 256 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [32, 8, 64], "dist": "normal", "seed": 441, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 256, 64], "dist": "normal", "seed": 442, "scale": 0.05 },
+        "r": { "dtype": "float32", "shape": [1, 256, 256], "dist": "normal", "seed": 443, "scale": 0.02 },
+        "b": { "dtype": "float32", "shape": [1, 512], "dist": "normal", "seed": 444, "scale": 0.05 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [32, 1, 8, 256] },
+        "y_h": { "dtype": "float32", "shape": [1, 8, 256] }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "h102-in80-b4-seq32-mixed-vector",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 102 },
+      "vars": { "seq": 32, "batch": 4, "inputSize": 80, "hidden": 102 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [32, 4, 80], "dist": "normal", "seed": 451, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 102, 80], "dist": "normal", "seed": 452, "scale": 0.05 },
+        "r": { "dtype": "float32", "shape": [1, 102, 102], "dist": "normal", "seed": 453, "scale": 0.05 },
+        "b": { "dtype": "float32", "shape": [1, 204], "dist": "normal", "seed": 454, "scale": 0.05 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [32, 1, 4, 102] },
+        "y_h": { "dtype": "float32", "shape": [1, 4, 102] }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "large-h512-in64-b2-seq4-vec4",
+      "preset": "model",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 512 },
+      "vars": { "seq": 4, "batch": 2, "inputSize": 64, "hidden": 512 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4, 2, 64], "dist": "normal", "seed": 501, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 512, 64], "dist": "normal", "seed": 502, "scale": 0.05 },
+        "r": { "dtype": "float32", "shape": [1, 512, 512], "dist": "normal", "seed": 503, "scale": 0.02 },
+        "b": { "dtype": "float32", "shape": [1, 1024], "dist": "normal", "seed": 504, "scale": 0.05 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 1, 2, 512] },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 512] }
+      },
+      "bench": {
+        "primary": false,
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "single_wg_global_hidden4096_b1_seq16_stress",
+      "preset": "stress",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4096 },
+      "vars": { "seq": 16, "batch": 1, "inputSize": 64, "hidden": 4096 },
+      "tunableSpace": { "RECURRENT_WORKGROUP_SIZE": [1, 2, 4, 8, 16, 32, 64] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [16, 1, 64], "dist": "normal", "seed": 771, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 4096, 64], "dist": "normal", "seed": 772, "scale": 0.02 },
+        "r": { "dtype": "float32", "shape": [1, 4096, 4096], "dist": "normal", "seed": 773, "scale": 0.005 },
+        "b": { "dtype": "float32", "shape": [1, 8192], "dist": "normal", "seed": 774, "scale": 0.02 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [16, 1, 1, 4096], "dist": "empty" },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 4096], "dist": "empty" }
+      },
+      "bench": {
+        "primary": false,
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "single_wg_batch1_hidden2048_seq64_serial_recurrence_stress",
+      "preset": "stress",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2048 },
+      "vars": { "seq": 64, "batch": 1, "inputSize": 256, "hidden": 2048 },
+      "tunableSpace": { "RECURRENT_WORKGROUP_SIZE": [1, 2, 4, 8, 16, 32, 64] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [64, 1, 256], "dist": "normal", "seed": 781, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 2048, 256], "dist": "normal", "seed": 782, "scale": 0.03 },
+        "r": { "dtype": "float32", "shape": [1, 2048, 2048], "dist": "normal", "seed": 783, "scale": 0.01 },
+        "b": { "dtype": "float32", "shape": [1, 4096], "dist": "normal", "seed": 784, "scale": 0.03 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [64, 1, 1, 2048], "dist": "empty" },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 2048], "dist": "empty" }
+      },
+      "bench": {
+        "primary": false,
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "speech-encoder-b1-seq128-in256-h1024-single-wg-pathology",
+      "preset": "model",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1024 },
+      "vars": { "seq": 128, "batch": 1, "inputSize": 256, "hidden": 1024 },
+      "tunableSpace": { "RECURRENT_WORKGROUP_SIZE_MEDIUM_ROWS": [1, 2, 4, 8, 16, 32, 64] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [128, 1, 256], "dist": "normal", "seed": 791, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 1024, 256], "dist": "normal", "seed": 792, "scale": 0.03 },
+        "r": { "dtype": "float32", "shape": [1, 1024, 1024], "dist": "normal", "seed": 793, "scale": 0.01 },
+        "b": { "dtype": "float32", "shape": [1, 2048], "dist": "normal", "seed": 794, "scale": 0.03 }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [128, 1, 1, 1024], "dist": "empty" },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 1024], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sequence-lens-b8-h256-in256-seq64-general-path",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic",
+        "notes": "All eight sequence_lens values equal the full 64-step length; measures RNN performance when sequence_lens is supplied but doesn't actually shorten any sequence."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 256 },
+      "vars": { "seq": 64, "batch": 8, "inputSize": 256, "hidden": 256 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [64, 8, 256], "dist": "normal", "seed": 9181, "scale": 0.3 },
+        "w": { "dtype": "float32", "shape": [1, 256, 256], "dist": "normal", "seed": 9182, "scale": 0.05 },
+        "r": { "dtype": "float32", "shape": [1, 256, 256], "dist": "normal", "seed": 9183, "scale": 0.02 },
+        "b": { "dtype": "float32", "shape": [1, 512], "dist": "normal", "seed": 9184, "scale": 0.05 },
+        "sequence_lens": {
+          "dtype": "int32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [64, 64, 64, 64, 64, 64, 64, 64] }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [64, 1, 8, 256], "dist": "empty" },
+        "y_h": { "dtype": "float32", "shape": [1, 8, 256], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          { "type": "gflops", "value": "args.seq * args.batch * 2 * args.hidden * (args.inputSize + args.hidden)" },
+          {
+            "type": "bandwidth",
+            "name": "recurrent lower-bound BW",
+            "value": "4 * (numel(shapes.x) + numel(shapes.w) + 2 * dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.w, 0) * dim(shapes.w, 1) + max(dim(shapes.x, 0) - 1, 0) * numel(shapes.r) + 2 * numel(shapes.y))"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rnn-layout1-batch-major-h256-in256-b8-seq64",
+      "preset": "edge",
+      "attrs": { "layout": 1, "direction": "forward", "hidden_size": 256 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8, 64, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.01, "cosStep": 0.02 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.04, "scale": 0.05 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.06, "scale": 0.05 }
+        },
+        "b": { "dtype": "float32", "shape": [1, 512], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [8, 64, 1, 256] },
+        "y_h": { "dtype": "float32", "shape": [8, 1, 256] }
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 64 * 8 * 256 * (256 + 256)" }] }
+    },
+    {
+      "name": "rnn-layout0-time-major-h256-in256-b8-seq64-control",
+      "preset": "edge",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 256 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [64, 8, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.01, "cosStep": 0.02 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.04, "scale": 0.05 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.06, "scale": 0.05 }
+        },
+        "b": { "dtype": "float32", "shape": [1, 512], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [64, 1, 8, 256] },
+        "y_h": { "dtype": "float32", "shape": [1, 8, 256] }
+      },
+      "bench": { "metrics": [{ "type": "gflops", "value": "2 * 64 * 8 * 256 * (256 + 256)" }] }
+    }
+  ]
+}

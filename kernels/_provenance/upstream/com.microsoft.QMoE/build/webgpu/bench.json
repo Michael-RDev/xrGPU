@@ -1,0 +1,692 @@
+{
+  "tunableSpace": {
+    "workgroupSize": [64, 128, 256],
+    "groupThreads": [8, 16],
+    "groupRegM": [1, 2, 4],
+    "groupRegN": [1, 2, 4],
+    "groupTileK": [8, 16, 32]
+  },
+  "cases": [
+    {
+      "name": "qmoe-q4-relu-t32-h64-e4-i32",
+      "preset": "smoke",
+      "vars": { "tokens": 32, "hidden": 64, "experts": 4, "inter": 32 },
+      "inputs": {
+        "inputT": { "shape": [32, 64], "dtype": "float32", "dist": "normal", "seed": 212, "scale": 0.2 },
+        "routerT": { "shape": [32, 4], "dtype": "float32", "dist": "normal", "seed": 213, "scale": 0.5 },
+        "fc1T": { "shape": [4, 32, 32], "dtype": "uint8", "dist": "uniform", "seed": 214, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [4, 32],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 215,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [4, 64, 16], "dtype": "uint8", "dist": "uniform", "seed": 216, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [4, 64],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 217,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [32, 64], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.hidden * args.inter * 2" }]
+      }
+    },
+    {
+      "name": "qmoe-q8-swiglu-t1-h128-e8-i64",
+      "preset": "smoke",
+      "vars": { "tokens": 1, "hidden": 128, "experts": 8, "inter": 64 },
+      "attrs": { "activation_type": "swiglu", "expert_weight_bits": 8, "swiglu_fusion": 1 },
+      "tunables": { "workgroupSize": 64, "decodeLanes": 32, "decodeBlockTarget": 1024 },
+      "tunableSpace": { "decodeMinLaneTrips": [2, 4] },
+      "inputs": {
+        "inputT": { "shape": [1, 128], "dtype": "float32", "dist": "normal", "seed": 312, "scale": 0.2 },
+        "routerT": { "shape": [1, 8], "dtype": "float32", "dist": "normal", "seed": 313, "scale": 0.5 },
+        "fc1T": { "shape": [8, 128, 128], "dtype": "uint8", "dist": "uniform", "seed": 314, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 315,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 128, 64], "dtype": "uint8", "dist": "uniform", "seed": 316, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 317,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 128], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t1-h2048-e8-k2-i768-decode",
+      "preset": "smoke",
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 8, "inter": 768, "topK": 2, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "tunableSpace": { "workgroupSize": [64, 128, 256], "decodeLanes": [8, 16, 32, 64] },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 400, "scale": 0.2 },
+        "routerT": { "shape": [1, 8], "dtype": "float32", "dist": "normal", "seed": 401, "scale": 0.5 },
+        "fc1T": { "shape": [8, 1536, 1024], "dtype": "uint8", "dist": "uniform", "seed": 402, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 1536],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 403,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 2048, 384], "dtype": "uint8", "dist": "uniform", "seed": 404, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 405,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric counts the selected experts' three quantized weight matrices at `bits/2` bytes per logical weight in the bound storage layout."
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t1-h1024-e16-k4-i512-decode-topk4",
+      "preset": "stress",
+      "vars": { "tokens": 1, "hidden": 1024, "experts": 16, "inter": 512, "topK": 4, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 4 },
+      "inputs": {
+        "inputT": { "shape": [1, 1024], "dtype": "float32", "dist": "normal", "seed": 420, "scale": 0.2 },
+        "routerT": { "shape": [1, 16], "dtype": "float32", "dist": "normal", "seed": 421, "scale": 0.5 },
+        "fc1T": { "shape": [16, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 422, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [16, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 423,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [16, 1024, 256], "dtype": "uint8", "dist": "uniform", "seed": 424, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [16, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 425,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric counts the selected experts' three quantized weight matrices at `bits/2` bytes per logical weight in the bound storage layout."
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t8-h2048-e8-k2-i768-decode-batch8",
+      "preset": "stress",
+      "vars": { "tokens": 8, "hidden": 2048, "experts": 8, "inter": 768, "topK": 2, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "tunableSpace": { "decodeBlockTarget": [128, 256] },
+      "inputs": {
+        "inputT": { "shape": [8, 2048], "dtype": "float32", "dist": "normal", "seed": 440, "scale": 0.2 },
+        "routerT": { "shape": [8, 8], "dtype": "float32", "dist": "normal", "seed": 441, "scale": 0.5 },
+        "fc1T": { "shape": [8, 1536, 1024], "dtype": "uint8", "dist": "uniform", "seed": 442, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 1536],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 443,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 2048, 384], "dtype": "uint8", "dist": "uniform", "seed": 444, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 445,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [8, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric counts the selected experts' three quantized weight matrices at `bits/2` bytes per logical weight in the bound storage layout."
+      }
+    },
+    {
+      "name": "qmoe-q8-swiglu-t1-h1024-e8-k2-i1024-decode-q8",
+      "preset": "stress",
+      "vars": { "tokens": 1, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2, "bits": 8 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "expert_weight_bits": 8, "k": 2 },
+      "inputs": {
+        "inputT": { "shape": [1, 1024], "dtype": "float32", "dist": "normal", "seed": 460, "scale": 0.2 },
+        "routerT": { "shape": [1, 8], "dtype": "float32", "dist": "normal", "seed": 461, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 1024], "dtype": "uint8", "dist": "uniform", "seed": 462, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 463,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 1024, 1024], "dtype": "uint8", "dist": "uniform", "seed": 464, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 465,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric counts the selected experts' three quantized weight matrices at `bits/2` bytes per logical weight in the bound storage layout."
+      }
+    },
+    {
+      "name": "qmoe-q4-relu-t1-h2048-e8-i2048-decode-relu",
+      "preset": "stress",
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 8, "inter": 2048, "topK": 1, "bits": 4 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 480, "scale": 0.2 },
+        "routerT": { "shape": [1, 8], "dtype": "float32", "dist": "normal", "seed": 481, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 1024], "dtype": "uint8", "dist": "uniform", "seed": 482, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 483,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 2048, 1024], "dtype": "uint8", "dist": "uniform", "seed": 484, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 485,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 2 * args.hidden * args.inter * args.bits / 2" }]
+      },
+      "provenance": {
+        "notes": "The bandwidth metric counts the selected expert's two quantized weight matrices at `bits/2` bytes per logical weight in the bound storage layout."
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t48-h1024-e8-k2-i1024-prefill-band",
+      "preset": "stress",
+      "vars": { "tokens": 48, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "inputs": {
+        "inputT": { "shape": [48, 1024], "dtype": "float32", "dist": "normal", "seed": 600, "scale": 0.2 },
+        "routerT": { "shape": [48, 8], "dtype": "float32", "dist": "normal", "seed": 601, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 512], "dtype": "uint8", "dist": "uniform", "seed": 502, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 503,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 504, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 505,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [48, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t96-h1024-e8-k2-i1024-prefill-small",
+      "preset": "stress",
+      "vars": { "tokens": 96, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "tunables": { "workgroupSize": 128, "decodeLanes": 32, "decodeMinLaneTrips": 4 },
+      "inputs": {
+        "inputT": { "shape": [96, 1024], "dtype": "float32", "dist": "normal", "seed": 620, "scale": 0.2 },
+        "routerT": { "shape": [96, 8], "dtype": "float32", "dist": "normal", "seed": 621, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 512], "dtype": "uint8", "dist": "uniform", "seed": 502, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 503,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 504, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 505,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [96, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t128-h1024-e8-k2-i1024-prefill",
+      "preset": "stress",
+      "vars": { "tokens": 128, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "tunables": { "workgroupSize": 128, "decodeLanes": 32, "decodeMinLaneTrips": 4 },
+      "tunableSpace": { "groupRegM": [2, 4], "groupRegN": [2, 4], "groupTileK": [8, 16] },
+      "inputs": {
+        "inputT": { "shape": [128, 1024], "dtype": "float32", "dist": "normal", "seed": 500, "scale": 0.2 },
+        "routerT": { "shape": [128, 8], "dtype": "float32", "dist": "normal", "seed": 501, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 512], "dtype": "uint8", "dist": "uniform", "seed": 502, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 503,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 504, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 505,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [128, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t512-h1024-e8-k2-i1024-prefill-long",
+      "preset": "stress",
+      "vars": { "tokens": 512, "hidden": 1024, "experts": 8, "inter": 1024, "topK": 2 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "inputs": {
+        "inputT": { "shape": [512, 1024], "dtype": "float32", "dist": "normal", "seed": 520, "scale": 0.2 },
+        "routerT": { "shape": [512, 8], "dtype": "float32", "dist": "normal", "seed": 521, "scale": 0.5 },
+        "fc1T": { "shape": [8, 2048, 512], "dtype": "uint8", "dist": "uniform", "seed": 522, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [8, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 523,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [8, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 524, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [8, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 525,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [512, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-swiglu-t384-h1024-e32-k1-i512-prefill-band",
+      "preset": "stress",
+      "vars": { "tokens": 384, "hidden": 1024, "experts": 32, "inter": 512, "topK": 1 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 1 },
+      "inputs": {
+        "inputT": { "shape": [384, 1024], "dtype": "float32", "dist": "normal", "seed": 700, "scale": 0.2 },
+        "routerT": { "shape": [384, 32], "dtype": "float32", "dist": "normal", "seed": 701, "scale": 0.5 },
+        "fc1T": { "shape": [32, 1024, 512], "dtype": "uint8", "dist": "uniform", "seed": 702, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [32, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 703,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [32, 1024, 256], "dtype": "uint8", "dist": "uniform", "seed": 704, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [32, 1024],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 705,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [384, 1024], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-qwen3-moe-decode-t1-h2048-e64-k8-i768",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-MoE geometry uses hidden size 2,048, intermediate size 768, top-k 8, and 64 instantiated experts to keep each weight tensor below 512 MB. The bandwidth metric counts three selected quantized matrices at `bits/2` bytes per logical weight."
+      },
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 64, "inter": 768, "topK": 8, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 8 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 4011, "scale": 0.2 },
+        "routerT": { "shape": [1, 64], "dtype": "float32", "dist": "normal", "seed": 4012, "scale": 0.5 },
+        "fc1T": { "shape": [64, 1536, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4013, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [64, 1536],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4014,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [64, 2048, 384], "dtype": "uint8", "dist": "uniform", "seed": 4015, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [64, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4016,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-qwen3-moe-prefill-t256-h2048-e64-k8-i768",
+      "preset": "model",
+      "provenance": {
+        "notes": "Qwen3-MoE class defaults at a 256-token prefill chunk; 2048 routed slots clear the grouped schedule's slot floor for 64 experts."
+      },
+      "vars": { "tokens": 256, "hidden": 2048, "experts": 64, "inter": 768, "topK": 8 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 8 },
+      "inputs": {
+        "inputT": { "shape": [256, 2048], "dtype": "float32", "dist": "normal", "seed": 4021, "scale": 0.2 },
+        "routerT": { "shape": [256, 64], "dtype": "float32", "dist": "normal", "seed": 4022, "scale": 0.5 },
+        "fc1T": { "shape": [64, 1536, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4023, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [64, 1536],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4024,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [64, 2048, 384], "dtype": "uint8", "dist": "uniform", "seed": 4025, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [64, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4026,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [256, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-olmoe-decode-t1-h2048-e32-k8-i2048",
+      "preset": "model",
+      "provenance": {
+        "notes": "OLMoE geometry uses hidden and intermediate sizes of 2,048, top-k 8, and 32 instantiated experts. The bandwidth metric counts three selected quantized matrices at `bits/2` bytes per logical weight."
+      },
+      "vars": { "tokens": 1, "hidden": 2048, "experts": 32, "inter": 2048, "topK": 8, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 8 },
+      "inputs": {
+        "inputT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 4031, "scale": 0.2 },
+        "routerT": { "shape": [1, 32], "dtype": "float32", "dist": "normal", "seed": 4032, "scale": 0.5 },
+        "fc1T": { "shape": [32, 4096, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4033, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [32, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4034,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [32, 2048, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4035, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [32, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4036,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-olmoe-prefill-t128-h2048-e32-k8-i2048",
+      "preset": "model",
+      "provenance": { "notes": "OLMoE class defaults at a 128-token prefill chunk." },
+      "vars": { "tokens": 128, "hidden": 2048, "experts": 32, "inter": 2048, "topK": 8 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 8 },
+      "inputs": {
+        "inputT": { "shape": [128, 2048], "dtype": "float32", "dist": "normal", "seed": 4041, "scale": 0.2 },
+        "routerT": { "shape": [128, 32], "dtype": "float32", "dist": "normal", "seed": 4042, "scale": 0.5 },
+        "fc1T": { "shape": [32, 4096, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4043, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [32, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4044,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [32, 2048, 1024], "dtype": "uint8", "dist": "uniform", "seed": 4045, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [32, 2048],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4046,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [128, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-gpt-oss-decode-t1-h2880-e16-k4-i2880",
+      "preset": "model",
+      "provenance": {
+        "notes": "GPT-OSS geometry uses hidden and intermediate sizes of 2,880, top-k 4, and 16 instantiated experts. The bandwidth metric counts three selected quantized matrices at `bits/2` bytes per logical weight."
+      },
+      "vars": { "tokens": 1, "hidden": 2880, "experts": 16, "inter": 2880, "topK": 4, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 4 },
+      "inputs": {
+        "inputT": { "shape": [1, 2880], "dtype": "float32", "dist": "normal", "seed": 4051, "scale": 0.2 },
+        "routerT": { "shape": [1, 16], "dtype": "float32", "dist": "normal", "seed": 4052, "scale": 0.5 },
+        "fc1T": { "shape": [16, 5760, 1440], "dtype": "uint8", "dist": "uniform", "seed": 4053, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [16, 5760],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4054,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [16, 2880, 1440], "dtype": "uint8", "dist": "uniform", "seed": 4055, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [16, 2880],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4056,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 2880], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-gpt-oss-prefill-t256-h2880-e16-k4-i2880",
+      "preset": "model",
+      "provenance": { "notes": "GPT-OSS class defaults at a 256-token prefill chunk." },
+      "vars": { "tokens": 256, "hidden": 2880, "experts": 16, "inter": 2880, "topK": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 4 },
+      "inputs": {
+        "inputT": { "shape": [256, 2880], "dtype": "float32", "dist": "normal", "seed": 4061, "scale": 0.2 },
+        "routerT": { "shape": [256, 16], "dtype": "float32", "dist": "normal", "seed": 4062, "scale": 0.5 },
+        "fc1T": { "shape": [16, 5760, 1440], "dtype": "uint8", "dist": "uniform", "seed": 4063, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [16, 5760],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4064,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [16, 2880, 1440], "dtype": "uint8", "dist": "uniform", "seed": 4065, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [16, 2880],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4066,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [256, 2880], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-phimoe-decode-t1-h4096-e4-k2-i6400",
+      "preset": "model",
+      "provenance": {
+        "notes": "Phi-MoE geometry uses hidden size 4,096, intermediate size 6,400, top-k 2, and four instantiated experts. The bandwidth metric counts three selected quantized matrices at `bits/2` bytes per logical weight."
+      },
+      "vars": { "tokens": 1, "hidden": 4096, "experts": 4, "inter": 6400, "topK": 2, "bits": 4 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "inputs": {
+        "inputT": { "shape": [1, 4096], "dtype": "float32", "dist": "normal", "seed": 4071, "scale": 0.2 },
+        "routerT": { "shape": [1, 4], "dtype": "float32", "dist": "normal", "seed": 4072, "scale": 0.5 },
+        "fc1T": { "shape": [4, 12800, 2048], "dtype": "uint8", "dist": "uniform", "seed": 4073, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [4, 12800],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4074,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [4, 4096, 3200], "dtype": "uint8", "dist": "uniform", "seed": 4075, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4076,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [1, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "args.topK * 3 * args.hidden * args.inter * args.bits / 2" }]
+      }
+    },
+    {
+      "name": "qmoe-q4-phimoe-prefill-t256-h4096-e4-k2-i6400",
+      "preset": "model",
+      "provenance": { "notes": "Phi-MoE class defaults at a 256-token prefill chunk." },
+      "vars": { "tokens": 256, "hidden": 4096, "experts": 4, "inter": 6400, "topK": 2 },
+      "attrs": { "activation_type": "swiglu", "swiglu_fusion": 1, "k": 2 },
+      "inputs": {
+        "inputT": { "shape": [256, 4096], "dtype": "float32", "dist": "normal", "seed": 4081, "scale": 0.2 },
+        "routerT": { "shape": [256, 4], "dtype": "float32", "dist": "normal", "seed": 4082, "scale": 0.5 },
+        "fc1T": { "shape": [4, 12800, 2048], "dtype": "uint8", "dist": "uniform", "seed": 4083, "min": 0, "max": 255 },
+        "fc1ScalesT": {
+          "shape": [4, 12800],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4084,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "fc2T": { "shape": [4, 4096, 3200], "dtype": "uint8", "dist": "uniform", "seed": 4085, "min": 0, "max": 255 },
+        "fc2ScalesT": {
+          "shape": [4, 4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 4086,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": { "outputT": { "shape": [256, 4096], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "gflops", "value": "2 * args.tokens * args.topK * args.hidden * args.inter * 3" }]
+      }
+    }
+  ]
+}

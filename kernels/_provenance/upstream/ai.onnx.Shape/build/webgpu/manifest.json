@@ -1,0 +1,33 @@
+{
+  "domain": "ai.onnx",
+  "name": "Shape",
+  "sinceVersion": 15,
+  "inputs": { "data": { "dtype": "T" } },
+  "outputs": { "shape": { "dtype": "S", "rank": 1, "shape": ["max(0, endAxis - startAxis)"], "storage": "uint32" } },
+  "attributes": { "start": { "default": 0 }, "end": {} },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "int16", "uint32", "int8", "uint8", "bool"],
+    "S": ["int64"]
+  },
+  "derive": {
+    "startAxis": "max(0, min(ranks.data, attrs.start + (ranks.data if attrs.start < 0 else 0)))",
+    "endParam": "attrs.end if has(attrs, \"end\") else ranks.data",
+    "endAxis": "min(ranks.data, endParam + (ranks.data if endParam < 0 else 0))"
+  },
+  "variants": [
+    {
+      "id": "full_shape",
+      "when": ["ranks.shape == 1", "dim(shapes.shape, 0) == max(0, endAxis - startAxis)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Shape",
+          "shader": "shape.wgsl.jinja",
+          "derive": { "inputShape": "shapes.data", "start": "startAxis", "outputRank": "dim(shapes.shape, 0)" },
+          "bindings": ["shape"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,291 @@
+{
+  "cases": [
+    {
+      "name": "row_updates",
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4096, 768] },
+        "indices": { "dtype": "int32", "shape": [128, 1], "min": 0, "max": 4096 },
+        "updates": { "dtype": "float32", "shape": [128, 768] }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 768] } }
+    },
+    {
+      "name": "row_updates_reduction_add",
+      "preset": "smoke",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4096, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [512, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float32", "shape": [512, 768], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 768], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "row_updates_reduction_max",
+      "preset": "smoke",
+      "attrs": { "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4096, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [512, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float32", "shape": [512, 768], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 768], "dist": "empty" } }
+    },
+    {
+      "name": "scalar_updates_reduction_add_contended_1m",
+      "preset": "stress",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1024], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [1048576, 1], "dist": "randint", "min": 0, "max": 1024, "seed": 3 },
+        "updates": { "dtype": "float32", "shape": [1048576], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024], "dist": "empty" } }
+    },
+    {
+      "name": "scalar_updates_reduction_add_single_slot_1m",
+      "preset": "stress",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1024], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [1048576, 1], "dist": "constant", "value": 0 },
+        "updates": { "dtype": "float32", "shape": [1048576], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1024], "dist": "empty" } }
+    },
+    {
+      "name": "row_updates_dense_8192x1024",
+      "preset": "model",
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [8192, 1024], "dist": "normal", "seed": 701 },
+        "indices": { "dtype": "int32", "shape": [8192, 1], "dist": "linearMod", "mod": 8192, "step": 7 },
+        "updates": { "dtype": "float32", "shape": [8192, 1024], "dist": "normal", "seed": 703 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8192, 1024], "dist": "empty" } },
+      "bench": {
+        "primary": false,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16_reduction_add_single_lane_serial_cliff",
+      "preset": "smoke",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [4096, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [512, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float16", "shape": [512, 768], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4096, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f32_reduction_add_atomic_parallel_control",
+      "preset": "smoke",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [4096, 768], "dist": "normal", "seed": 1 },
+        "indices": { "dtype": "int32", "shape": [512, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float32", "shape": [512, 768], "dist": "normal", "seed": 2 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4096, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "int8_reduction_add_atomic_path_control",
+      "preset": "smoke",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [1024], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [262144, 1], "dist": "randint", "min": 0, "max": 1024, "seed": 3 },
+        "updates": { "dtype": "int8", "shape": [262144], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "int8", "shape": [1024], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "numel(shapes.data) + 3 * numel(shapes.updates) + 4 * numel(shapes.indices)" }
+        ]
+      }
+    },
+    {
+      "name": "f16_row_update_none_unaligned770_batch0_cliff",
+      "preset": "smoke",
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [4096, 770], "dist": "normal", "seed": 11 },
+        "indices": { "dtype": "int32", "shape": [128, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float16", "shape": [128, 770], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4096, 770], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16_row_update_none_aligned768_rowfast_control",
+      "preset": "smoke",
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [4096, 768], "dist": "normal", "seed": 11 },
+        "indices": { "dtype": "int32", "shape": [128, 1], "dist": "linearMod", "mod": 4096, "step": 9 },
+        "updates": { "dtype": "float16", "shape": [128, 768], "dist": "normal", "seed": 12 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [4096, 768], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16_reduction_add_scalar_updates_rank1_single_thread",
+      "preset": "stress",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [16384], "dist": "normal", "seed": 20 },
+        "indices": { "dtype": "int32", "shape": [16384, 1], "dist": "randint", "min": 0, "max": 16384, "seed": 21 },
+        "updates": { "dtype": "float16", "shape": [16384], "dist": "normal", "seed": 22 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16384], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f32_sparse_copy_dominates_tiny_scatter",
+      "preset": "stress",
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [307200, 13], "dist": "normal", "seed": 30 },
+        "indices": { "dtype": "int32", "shape": [8, 1], "dist": "randint", "min": 0, "max": 307200, "seed": 31 },
+        "updates": { "dtype": "float32", "shape": [8, 13], "dist": "normal", "seed": 32 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [307200, 13], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "scalar-loss-accumulation-add-4m-single-output-pathology",
+      "preset": "model",
+      "attrs": { "reduction": "add" },
+      "vars": { "count": 4194304, "dtype": "float32" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [4194304, 1], "dist": "constant", "value": 0 },
+        "updates": { "dtype": "float32", "shape": [4194304], "dist": "normal", "seed": 33, "scale": 0.001 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [1], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          { "type": "bandwidth", "value": "args.count * (dtypeBytes(args.dtype) + 4) + 2 * dtypeBytes(args.dtype)" }
+        ]
+      }
+    },
+    {
+      "name": "padding-token-hotspot-add-2m-vocab131072",
+      "preset": "stress",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [131072], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [2097152, 1], "dist": "constant", "value": 0 },
+        "updates": { "dtype": "float32", "shape": [2097152], "dist": "constant", "value": 1 }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [131072], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "4 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-sparse-router-gradient-65536-into16384",
+      "preset": "stress",
+      "attrs": { "reduction": "add" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [16384], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [65536, 1], "dist": "randint", "min": 0, "max": 16384, "seed": 41 },
+        "updates": { "dtype": "float16", "shape": [65536], "dist": "normal", "seed": 42, "scale": 0.01 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16384], "dist": "empty" } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "f16-router-max-262144-into16384-single-column",
+      "preset": "stress",
+      "provenance": {
+        "notes": "Large f16 max reduction that exercises the serialized reduction_slice route; the atomic-add control distinguishes the non-add reduction gap."
+      },
+      "attrs": { "reduction": "max" },
+      "inputs": {
+        "data": { "dtype": "float16", "shape": [16384], "dist": "constant", "value": 0 },
+        "indices": { "dtype": "int32", "shape": [262144, 1], "dist": "randint", "min": 0, "max": 16384, "seed": 43 },
+        "updates": { "dtype": "float16", "shape": [262144], "dist": "normal", "seed": 44 }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [16384], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "2 * (2 * numel(shapes.data) + 3 * numel(shapes.updates)) + 4 * numel(shapes.indices)"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,276 @@
+{
+  "domain": "ai.onnx",
+  "name": "Max",
+  "sinceVersion": 13,
+  "inputs": {
+    "a": { "onnx": "A", "dtype": "T" },
+    "b": { "onnx": "B", "dtype": "T", "optional": true },
+    "c": { "onnx": "C", "dtype": "T", "optional": true },
+    "d": { "onnx": "D", "dtype": "T", "optional": true },
+    "e": { "onnx": "E", "dtype": "T", "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "max",
+      "dtype": "T",
+      "rank": "max(ranks.a, ranks.b if present.b else 0, ranks.c if present.b and present.c else 0, ranks.d if present.b and present.c and present.d else 0, ranks.e if present.b and present.c and present.d and present.e else 0)",
+      "shape": "variadicShape"
+    }
+  },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32", "int16", "int8", "uint8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "variadicInputCount": "1 + (1 if present.b else 0) + (1 if (present.b and present.c) else 0) + (1 if (present.b and present.c and present.d) else 0) + (1 if (present.b and present.c and present.d and present.e) else 0)",
+    "variadicShape": "broadcastShape(broadcastShape(broadcastShape(broadcastShape(shapes.a, shapes.b), shapes.c), shapes.d), shapes.e) if present.b and present.c and present.d and present.e else (broadcastShape(broadcastShape(broadcastShape(shapes.a, shapes.b), shapes.c), shapes.d) if present.b and present.c and present.d else (broadcastShape(broadcastShape(shapes.a, shapes.b), shapes.c) if present.b and present.c else (broadcastShape(shapes.a, shapes.b) if present.b else shapes.a)))",
+    "scalar": "dtypes.T",
+    "flatVec4OutputOk": "numel(shapes.y) > 0 and numel(shapes.y) % 4 == 0 and f16Ok(dtypes.T)",
+    "broadcastOutputOk": "f16Ok(dtypes.T)"
+  },
+  "variants": [
+    {
+      "id": "single_input_identity",
+      "priority": 30,
+      "when": ["variadicInputCount == 1", "ranks.a == ranks.y", "numel(shapes.a) == numel(shapes.y)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max.Identity",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [{ "arg": "a", "name": "x" }, "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4_two_input",
+      "priority": 20,
+      "when": ["variadicInputCount == 2", "sameShape(shapes.a, shapes.y)", "sameShape(shapes.b, shapes.y)", "flatVec4OutputOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max.Vec4",
+          "shader": "minmax-vec4.wgsl.jinja",
+          "derive": { "op": "\"max\"", "hasC": "false" },
+          "bindings": ["a_vec4", "b_vec4", "y_vec4", "params_vec4"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4_three_input",
+      "priority": 25,
+      "when": ["variadicInputCount == 3", "sameShape(shapes.a, shapes.y)", "sameShape(shapes.b, shapes.y)", "sameShape(shapes.c, shapes.y)", "flatVec4OutputOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max.Vec4ThreeInputs",
+          "shader": "minmax-vec4.wgsl.jinja",
+          "derive": { "op": "\"max\"", "hasC": "true" },
+          "bindings": ["a_vec4", "b_vec4", "c_vec4", "y_vec4", "params_vec4"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4_four_input",
+      "priority": 27,
+      "when": ["variadicInputCount == 4", "sameShape(shapes.a, shapes.y)", "sameShape(shapes.b, shapes.y)", "sameShape(shapes.c, shapes.y)", "sameShape(shapes.d, shapes.y)", "flatVec4OutputOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max.Vec4FourInputs",
+          "shader": "minmax-vec4.wgsl.jinja",
+          "derive": { "op": "\"max\"", "hasC": "true", "hasD": "true" },
+          "bindings": ["a_vec4", "b_vec4", "c_vec4", "d_vec4", "y_vec4", "params_vec4"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast_two_input",
+      "when": ["variadicInputCount == 2", "ranks.a <= ranks.y", "ranks.b <= ranks.y", "broadcastOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max",
+          "shader": "minmax-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "yShape": "shapes.y",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "yRank": "ranks.y",
+            "hasC": "false",
+            "op": "\"max\"",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a", "b", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast_three_input",
+      "priority": 20,
+      "when": ["variadicInputCount == 3", "ranks.a <= ranks.y", "ranks.b <= ranks.y", "ranks.c <= ranks.y", "broadcastOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max",
+          "shader": "minmax-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "yShape": "shapes.y",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c",
+            "yRank": "ranks.y",
+            "hasC": "true",
+            "op": "\"max\"",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a", "b", "c", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast_four_input",
+      "priority": 22,
+      "when": ["variadicInputCount == 4", "ranks.a <= ranks.y", "ranks.b <= ranks.y", "ranks.c <= ranks.y", "ranks.d <= ranks.y", "broadcastOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max",
+          "shader": "minmax-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "dShape": "shapes.d",
+            "yShape": "shapes.y",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c",
+            "dRank": "ranks.d",
+            "yRank": "ranks.y",
+            "hasC": "true",
+            "hasD": "true",
+            "op": "\"max\"",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a", "b", "c", "d", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_vec4_five_input",
+      "priority": 28,
+      "when": ["variadicInputCount == 5", "sameShape(shapes.a, shapes.y)", "sameShape(shapes.b, shapes.y)", "sameShape(shapes.c, shapes.y)", "sameShape(shapes.d, shapes.y)", "sameShape(shapes.e, shapes.y)", "flatVec4OutputOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max.Vec4FiveInputs",
+          "shader": "minmax-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"max\"",
+            "hasC": "true",
+            "hasD": "true",
+            "hasE": "true",
+            "extraInputs": "[\"c\", \"d\", \"e\"]"
+          },
+          "bindings": ["a_vec4", "b_vec4", "c_vec4", "d_vec4", "e_vec4", "y_vec4", "params_vec4"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast_five_input",
+      "priority": 23,
+      "when": ["variadicInputCount == 5", "ranks.a <= ranks.y", "ranks.b <= ranks.y", "ranks.c <= ranks.y", "ranks.d <= ranks.y", "ranks.e <= ranks.y", "broadcastOutputOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Max",
+          "shader": "minmax-broadcast.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "cShape": "shapes.c",
+            "dShape": "shapes.d",
+            "eShape": "shapes.e",
+            "yShape": "shapes.y",
+            "aRank": "ranks.a",
+            "bRank": "ranks.b",
+            "cRank": "ranks.c",
+            "dRank": "ranks.d",
+            "eRank": "ranks.e",
+            "yRank": "ranks.y",
+            "hasC": "true",
+            "hasD": "true",
+            "hasE": "true",
+            "extraInputs": "[\"c\", \"d\", \"e\"]",
+            "op": "\"max\"",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["a", "b", "c", "d", "e", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), itemsPerInvocation)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] },
+    "params_vec4": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] },
+    "y_vec4": { "name": "y", "elementType": "$vectorScalar" },
+    "a_vec4": { "name": "a", "elementType": "$vectorScalar" },
+    "b_vec4": { "name": "b", "elementType": "$vectorScalar" },
+    "c_vec4": { "name": "c", "elementType": "$vectorScalar" },
+    "d_vec4": { "name": "d", "elementType": "$vectorScalar" },
+    "e_vec4": { "name": "e", "elementType": "$vectorScalar" }
+  }
+}

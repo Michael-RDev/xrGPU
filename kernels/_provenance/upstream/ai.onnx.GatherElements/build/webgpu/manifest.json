@@ -1,0 +1,86 @@
+{
+  "domain": "ai.onnx",
+  "name": "GatherElements",
+  "sinceVersion": 13,
+  "inputs": { "data": { "dtype": "T" }, "indices": { "dtype": "I" } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.indices", "shape": "shapes.indices" } },
+  "attributes": { "axis": { "default": 0 } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "I": ["int32"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 }, "ROW_VEC4_ITEMS_MIN_ELEMENTS": { "default": 1048576 } },
+  "derive": {
+    "resolvedAxis": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.data",
+    "dataRowWidth": "dim(shapes.data, ranks.data - 1)",
+    "outputRowWidth": "dim(shapes.output, ranks.output - 1)",
+    "dataRows": "numel(shapes.data) / dataRowWidth if dataRowWidth > 0 else 0",
+    "outputRows": "numel(shapes.output) / outputRowWidth if outputRowWidth > 0 else 0",
+    "vec4RowsShared": "numel(shapes.output) > 0 and numel(shapes.indices) == numel(shapes.output) and outputRowWidth % 4 == 0 and f16Ok(dtypes.T)",
+    "rank2Vec4Ok": "vec4RowsShared and ranks.data == 2 and ranks.indices == 2 and ranks.output == 2 and (resolvedAxis == 0 or resolvedAxis == 1) and dim(shapes.indices, 0) == dim(shapes.output, 0) and dim(shapes.indices, 1) == dim(shapes.output, 1) and ((resolvedAxis == 0 and dim(shapes.data, 1) == dim(shapes.output, 1)) or (resolvedAxis == 1 and dim(shapes.data, 0) == dim(shapes.output, 0)))",
+    "flatRowVec4Ok": "vec4RowsShared and ranks.data >= 3 and ranks.indices == ranks.data and ranks.output == ranks.data and resolvedAxis == ranks.data - 1 and sameShape(shapes.indices, shapes.output) and dataRows == outputRows",
+    "scalar": "dtypes.T",
+    "indexScalar": "dtypes.I"
+  },
+  "variants": [
+    {
+      "id": "row_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "rank2Vec4Ok or flatRowVec4Ok"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherElements.Rank2Vec4",
+          "shader": "gather-elements-row-vec4.wgsl.jinja",
+          "derive": {
+            "axisSpec": "resolvedAxis",
+            "axisDimSpec": "dim(shapes.data, resolvedAxis)",
+            "dataCols": "dataRowWidth",
+            "outputCols": "outputRowWidth",
+            "itemsPerLane": "4 if numel(shapes.output) >= tunables.ROW_VEC4_ITEMS_MIN_ELEMENTS else 1"
+          },
+          "bindings": [
+            "data",
+            "indices",
+            { "arg": "output", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count4", "type": "u32", "value": "numel(shapes.output) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) >= tunables.ROW_VEC4_ITEMS_MIN_ELEMENTS else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) >= tunables.ROW_VEC4_ITEMS_MIN_ELEMENTS else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "when": ["ranks.data == ranks.indices", "ranks.data == ranks.output", "ranks.data >= 1", "attrs.axis + ranks.data >= 0", "attrs.axis < ranks.data", "numel(shapes.indices) == numel(shapes.output)", "f16Ok(dtypes.T)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatherElements",
+          "shader": "gather-elements.wgsl.jinja",
+          "derive": {
+            "dataShape": "shapes.data",
+            "outputShape": "shapes.output",
+            "rank": "ranks.data",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.data"
+          },
+          "bindings": [
+            "data",
+            "indices",
+            "output",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

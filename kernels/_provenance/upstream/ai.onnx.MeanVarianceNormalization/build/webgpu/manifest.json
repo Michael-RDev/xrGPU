@@ -1,0 +1,222 @@
+{
+  "domain": "ai.onnx",
+  "name": "MeanVarianceNormalization",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "axes": { "default": [0, 2, 3] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SERIAL_WORKGROUP_SIZE": { "default": 256 },
+    "SERIAL_TINY_WORKGROUP_SIZE": { "default": 64 },
+    "SERIAL_MAX_REDUCTION": { "default": 128 },
+    "SERIAL_MIN_ROWS": { "default": 256 },
+    "TREE_MEDIUM_WORKGROUP_SIZE": { "default": 64 },
+    "VEC4_MIN_REDUCTION": { "default": 8 },
+    "FLAT_SPLIT_MIN_ELEMENTS": { "default": 65536 },
+    "FLAT_SPLIT_TARGET_ELEMENTS": { "default": 4096 },
+    "MAX_FLAT_SPLITS": { "default": 256 },
+    "PACKED_WORKGROUP_SIZE": { "default": 512 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "shapeContract": "ranks.x >= 3 and ranks.x <= 8 and ranks.y == ranks.x and sameShape(shapes.y, shapes.x) and f16Ok(dtypes.T)",
+    "reduceCount": "(dim(shapes.x, 0) if hasAxis(attrs.axes, 0, ranks.x) else 1) * (dim(shapes.x, 1) if hasAxis(attrs.axes, 1, ranks.x) else 1) * (dim(shapes.x, 2) if hasAxis(attrs.axes, 2, ranks.x) else 1) * (dim(shapes.x, 3) if ranks.x >= 4 and hasAxis(attrs.axes, 3, ranks.x) else 1) * (dim(shapes.x, 4) if ranks.x >= 5 and hasAxis(attrs.axes, 4, ranks.x) else 1) * (dim(shapes.x, 5) if ranks.x >= 6 and hasAxis(attrs.axes, 5, ranks.x) else 1) * (dim(shapes.x, 6) if ranks.x >= 7 and hasAxis(attrs.axes, 6, ranks.x) else 1) * (dim(shapes.x, 7) if ranks.x >= 8 and hasAxis(attrs.axes, 7, ranks.x) else 1)",
+    "shortGroup": "reduceCount >= 2 and reduceCount <= 4",
+    "rowCount": "numel(shapes.x) / max(1, reduceCount)",
+    "allAxesReduced": "hasAxis(attrs.axes, 0, ranks.x) and hasAxis(attrs.axes, 1, ranks.x) and hasAxis(attrs.axes, 2, ranks.x) and (ranks.x < 4 or hasAxis(attrs.axes, 3, ranks.x)) and (ranks.x < 5 or hasAxis(attrs.axes, 4, ranks.x)) and (ranks.x < 6 or hasAxis(attrs.axes, 5, ranks.x)) and (ranks.x < 7 or hasAxis(attrs.axes, 6, ranks.x)) and (ranks.x < 8 or hasAxis(attrs.axes, 7, ranks.x))",
+    "vec4Eligible": "((ranks.x == 3 and hasAxis(attrs.axes, 2, 3) and (dim(shapes.x, 2) % 4 == 0 or (hasAxis(attrs.axes, 1, 3) and dim(shapes.x, 1) * dim(shapes.x, 2) % 4 == 0) or (hasAxis(attrs.axes, 0, 3) and hasAxis(attrs.axes, 1, 3) and numel(shapes.x) % 4 == 0))) or (ranks.x == 4 and hasAxis(attrs.axes, 3, 4) and (dim(shapes.x, 3) % 4 == 0 or (hasAxis(attrs.axes, 2, 4) and dim(shapes.x, 2) * dim(shapes.x, 3) % 4 == 0) or (hasAxis(attrs.axes, 1, 4) and hasAxis(attrs.axes, 2, 4) and dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) % 4 == 0) or (hasAxis(attrs.axes, 0, 4) and hasAxis(attrs.axes, 1, 4) and hasAxis(attrs.axes, 2, 4) and numel(shapes.x) % 4 == 0))) or (ranks.x == 5 and hasAxis(attrs.axes, 4, 5) and (dim(shapes.x, 4) % 4 == 0 or (hasAxis(attrs.axes, 3, 5) and dim(shapes.x, 3) * dim(shapes.x, 4) % 4 == 0) or (hasAxis(attrs.axes, 2, 5) and hasAxis(attrs.axes, 3, 5) and dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4) % 4 == 0) or (hasAxis(attrs.axes, 1, 5) and hasAxis(attrs.axes, 2, 5) and hasAxis(attrs.axes, 3, 5) and dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4) % 4 == 0) or (allAxesReduced and numel(shapes.x) % 4 == 0))) or (ranks.x == 6 and hasAxis(attrs.axes, 5, 6) and (dim(shapes.x, 5) % 4 == 0 or (hasAxis(attrs.axes, 4, 6) and dim(shapes.x, 4) * dim(shapes.x, 5) % 4 == 0) or (hasAxis(attrs.axes, 3, 6) and hasAxis(attrs.axes, 4, 6) and dim(shapes.x, 3) * dim(shapes.x, 4) * dim(shapes.x, 5) % 4 == 0) or (hasAxis(attrs.axes, 2, 6) and hasAxis(attrs.axes, 3, 6) and hasAxis(attrs.axes, 4, 6) and dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4) * dim(shapes.x, 5) % 4 == 0) or (hasAxis(attrs.axes, 1, 6) and hasAxis(attrs.axes, 2, 6) and hasAxis(attrs.axes, 3, 6) and hasAxis(attrs.axes, 4, 6) and dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4) * dim(shapes.x, 5) % 4 == 0) or (allAxesReduced and numel(shapes.x) % 4 == 0))))",
+    "maxWorkgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "minSubgroupSize": "device.adapterInfo.subgroupMinSize if has(device.adapterInfo, \"subgroupMinSize\") else 1",
+    "useSubgroups": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and minSubgroupSize > 0",
+    "scalarWorkgroupSize": "min(maxWorkgroupSize, tunables.TREE_MEDIUM_WORKGROUP_SIZE) if not useSubgroups and reduceCount > tunables.TREE_MEDIUM_WORKGROUP_SIZE and reduceCount <= 2 * tunables.TREE_MEDIUM_WORKGROUP_SIZE else min(maxWorkgroupSize, max(1, pow2ceil(reduceCount)))",
+    "vectorWorkgroupSize": "min(maxWorkgroupSize, max(1, pow2ceil(ceilDiv(reduceCount, 4))))",
+    "serialWorkgroupSize": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX, (tunables.SERIAL_TINY_WORKGROUP_SIZE if reduceCount <= 4 else tunables.SERIAL_WORKGROUP_SIZE))",
+    "rowDispatchFits": "rowCount <= foldedDispatchCapacity",
+    "serialDispatchFits": "ceilDiv(rowCount, serialWorkgroupSize) <= foldedDispatchCapacity",
+    "applyDispatchFits": "ceilDiv(numel(shapes.y), maxWorkgroupSize) <= foldedDispatchCapacity",
+    "scalarStorageFits": "scalarWorkgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "vectorStorageFits": "vectorWorkgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "flatSplit": "min(tunables.MAX_FLAT_SPLITS, pow2ceil(ceilDiv(numel(shapes.x), tunables.FLAT_SPLIT_TARGET_ELEMENTS)))",
+    "flatScratchBytes": "flatSplit * 8",
+    "flatPathFits": "flatSplit <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and flatScratchBytes <= device.limits.maxStorageBufferBindingSize and flatScratchBytes <= device.limits.maxBufferSize and maxWorkgroupSize * 8 <= device.limits.maxComputeWorkgroupStorageSize and applyDispatchFits",
+    "reducedSpan": "1 + ((dim(shapes.x, 0) - 1) * inner(shapes.x, 0) if ranks.x > 0 and hasAxis(attrs.axes, 0, ranks.x) else 0) + ((dim(shapes.x, 1) - 1) * inner(shapes.x, 1) if ranks.x > 1 and hasAxis(attrs.axes, 1, ranks.x) else 0) + ((dim(shapes.x, 2) - 1) * inner(shapes.x, 2) if ranks.x > 2 and hasAxis(attrs.axes, 2, ranks.x) else 0) + ((dim(shapes.x, 3) - 1) * inner(shapes.x, 3) if ranks.x > 3 and hasAxis(attrs.axes, 3, ranks.x) else 0) + ((dim(shapes.x, 4) - 1) * inner(shapes.x, 4) if ranks.x > 4 and hasAxis(attrs.axes, 4, ranks.x) else 0) + ((dim(shapes.x, 5) - 1) * inner(shapes.x, 5) if ranks.x > 5 and hasAxis(attrs.axes, 5, ranks.x) else 0) + ((dim(shapes.x, 6) - 1) * inner(shapes.x, 6) if ranks.x > 6 and hasAxis(attrs.axes, 6, ranks.x) else 0) + ((dim(shapes.x, 7) - 1) * inner(shapes.x, 7) if ranks.x > 7 and hasAxis(attrs.axes, 7, ranks.x) else 0)",
+    "packedRows": "4 if reduceCount % 2 != 0 else (2 if reduceCount % 4 != 0 else 1)",
+    "packedVectors": "reduceCount * packedRows / 4",
+    "packedWorkgroupSize": "tunables.PACKED_WORKGROUP_SIZE if tunables.PACKED_WORKGROUP_SIZE <= deviceWorkgroupCap else min(tunables.SERIAL_TINY_WORKGROUP_SIZE, deviceWorkgroupCap)"
+  },
+  "when": ["shapeContract"],
+  "bindings": {
+    "x": { "elementType": "$scalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.x)" }] },
+    "x_main": { "name": "x", "elementType": "$ioElement" },
+    "y_main": { "name": "y", "elementType": "$ioElement" },
+    "params_rows": { "name": "params", "struct": [{ "name": "rows", "type": "u32", "value": "rowCount" }] }
+  },
+  "variants": [
+    {
+      "id": "empty_noop",
+      "priority": 200,
+      "when": ["numel(shapes.x) == 0"],
+      "passes": [
+        {
+          "id": "noop",
+          "name": "MeanVarianceNormalization.Empty",
+          "shader": "noop.wgsl.jinja",
+          "bindings": [{ "name": "params", "struct": [{ "name": "dummy", "type": "u32", "value": 0 }] }],
+          "dispatch": { "x": 0 }
+        }
+      ]
+    },
+    {
+      "id": "all_axes_flat_split",
+      "priority": 120,
+      "when": ["numel(shapes.x) > 0", "allAxesReduced", "numel(shapes.x) >= tunables.FLAT_SPLIT_MIN_ELEMENTS", "flatPathFits"],
+      "derive": { "scalar": "dtypes.T" },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[flatSplit, 2]" },
+        { "id": "stats", "dtype": "float32", "shape": "[2]" }
+      ],
+      "passes": [
+        {
+          "id": "partials",
+          "name": "MeanVarianceNormalization.FlatPartials",
+          "shader": "norm-flat-splitk-partials.wgsl.jinja",
+          "derive": {
+            "workgroupSizeSpec": "maxWorkgroupSize",
+            "splitSpec": "flatSplit",
+            "usesF16Spec": "dtypes.T == \"f16\""
+          },
+          "bindings": ["x", { "name": "partials", "elementType": "vec2<f32>" }, "params"],
+          "dispatch": { "x": "flatSplit" }
+        },
+        {
+          "id": "combine",
+          "name": "MeanVarianceNormalization.FlatCombine",
+          "shader": "norm-flat-splitk-combine.wgsl.jinja",
+          "derive": { "splitSpec": "flatSplit" },
+          "bindings": [
+            { "name": "partials", "buffer": "read-only-storage", "elementType": "vec2<f32>" },
+            { "name": "stats", "elementType": "f32", "length": 2 },
+            "params"
+          ],
+          "dispatch": { "x": "min(1, 65535)", "y": "ceilDiv(1, 65535)", "z": 1 }
+        },
+        {
+          "id": "apply",
+          "name": "MeanVarianceNormalization.FlatApply",
+          "shader": "norm-flat-apply.wgsl.jinja",
+          "derive": { "workgroupSizeSpec": "maxWorkgroupSize", "usesF16Spec": "dtypes.T == \"f16\"" },
+          "bindings": [
+            "x",
+            { "name": "stats", "buffer": "read-only-storage", "elementType": "f32", "length": 2 },
+            { "arg": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (maxWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (maxWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_short_groups",
+      "priority": 116,
+      "when": ["numel(shapes.x) > 0", "shortGroup", "rowCount >= tunables.SERIAL_MIN_ROWS", "reducedSpan == reduceCount", "ceilDiv(rowCount / packedRows, packedWorkgroupSize) <= foldedDispatchCapacity"],
+      "derive": {
+        "packedTail": "rowCount % packedRows != 0",
+        "ioElement": "dtypes.T if packedTail else \"vec4<\" ~ dtypes.T ~ \">\"",
+        "usesF16Spec": "dtypes.T == \"f16\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MeanVarianceNormalization.PackedShortGroups",
+          "shader": "mean-variance-normalization-packed-rows.wgsl.jinja",
+          "bindings": ["x_main", "y_main", "params_rows"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(rowCount, packedRows)), (packedWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(rowCount, packedRows)), (packedWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "serial_rows",
+      "priority": 115,
+      "when": ["numel(shapes.x) > 0", "reduceCount <= tunables.SERIAL_MAX_REDUCTION", "rowCount >= tunables.SERIAL_MIN_ROWS", "serialDispatchFits"],
+      "derive": { "scalar": "dtypes.T", "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MeanVarianceNormalization.SerialRows",
+          "shader": "mean-variance-normalization-serial-rows.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "reduce": ["hasAxis(attrs.axes, 0, ranks.x)", "hasAxis(attrs.axes, 1, ranks.x)", "hasAxis(attrs.axes, 2, ranks.x)", "hasAxis(attrs.axes, 3, ranks.x)", "hasAxis(attrs.axes, 4, ranks.x)", "hasAxis(attrs.axes, 5, ranks.x)", "hasAxis(attrs.axes, 6, ranks.x)", "hasAxis(attrs.axes, 7, ranks.x)"],
+            "workgroupSizeSpec": "serialWorkgroupSize",
+            "usesF16Spec": "dtypes.T == \"f16\""
+          },
+          "bindings": ["x_main", "y_main", "params_rows"],
+          "dispatch": {
+            "x": "min(ceilDiv((rowCount), (serialWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((rowCount), (serialWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "cooperative_vec4",
+      "priority": 110,
+      "when": ["numel(shapes.x) > 0", "reduceCount >= tunables.VEC4_MIN_REDUCTION", "vec4Eligible", "rowDispatchFits", "vectorStorageFits"],
+      "derive": { "scalar": "dtypes.T", "ioElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MeanVarianceNormalization.CooperativeVec4",
+          "shader": "mean-variance-normalization-subgroup.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "reduce": ["hasAxis(attrs.axes, 0, ranks.x)", "hasAxis(attrs.axes, 1, ranks.x)", "hasAxis(attrs.axes, 2, ranks.x)", "hasAxis(attrs.axes, 3, ranks.x)", "hasAxis(attrs.axes, 4, ranks.x)", "hasAxis(attrs.axes, 5, ranks.x)", "hasAxis(attrs.axes, 6, ranks.x)", "hasAxis(attrs.axes, 7, ranks.x)"],
+            "wg": "vectorWorkgroupSize",
+            "scalar": "dtypes.T",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "usesF16Spec": "dtypes.T == \"f16\"",
+            "vectorizedSpec": true
+          },
+          "bindings": ["x_main", "y_main", "params_rows"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "cooperative_scalar",
+      "priority": 100,
+      "when": ["numel(shapes.x) > 0", "rowDispatchFits", "scalarStorageFits"],
+      "derive": { "scalar": "dtypes.T", "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "MeanVarianceNormalization.CooperativeScalar",
+          "shader": "mean-variance-normalization-subgroup.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "reduce": ["hasAxis(attrs.axes, 0, ranks.x)", "hasAxis(attrs.axes, 1, ranks.x)", "hasAxis(attrs.axes, 2, ranks.x)", "hasAxis(attrs.axes, 3, ranks.x)", "hasAxis(attrs.axes, 4, ranks.x)", "hasAxis(attrs.axes, 5, ranks.x)", "hasAxis(attrs.axes, 6, ranks.x)", "hasAxis(attrs.axes, 7, ranks.x)"],
+            "wg": "scalarWorkgroupSize",
+            "scalar": "dtypes.T",
+            "usesF16Spec": "dtypes.T == \"f16\"",
+            "vectorizedSpec": false
+          },
+          "bindings": ["x_main", "y_main", "params_rows"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    }
+  ]
+}

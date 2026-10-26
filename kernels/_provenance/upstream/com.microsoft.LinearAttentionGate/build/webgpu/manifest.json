@@ -1,0 +1,150 @@
+{
+  "domain": "com.microsoft",
+  "name": "LinearAttentionGate",
+  "sinceVersion": 1,
+  "inputs": {
+    "aT": { "onnx": "a", "dtype": "T" },
+    "dtBiasT": { "onnx": "dt_bias", "dtype": "TF", "rank": 1 },
+    "decayScaleT": { "onnx": "decay_scale", "dtype": "TF", "rank": 1 },
+    "bT": { "onnx": "b", "dtype": "T", "optional": true }
+  },
+  "outputs": {
+    "decayT": { "onnx": "decay", "dtype": "T", "rank": "ranks.aT", "shape": "shapes.aT" },
+    "betaT": { "onnx": "beta", "dtype": "T", "rank": "ranks.aT", "optional": true, "shape": "shapes.aT" }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "TF": ["float32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "numHeads": "dim(shapes.aT, ranks.aT - 1)",
+    "gateCount": "numel(shapes.aT)",
+    "headsVec4": "numHeads / 4",
+    "gateVec4Count": "gateCount / 4",
+    "gateDtype": "tensorDtypes.aT",
+    "gateDtypeOk": "(gateDtype == \"float32\" or gateDtype == \"float16\") and f16Ok(dtypes.T)",
+    "paramsOk": "ranks.aT >= 1 and numHeads > 0 and ranks.dtBiasT == 1 and ranks.decayScaleT == 1 and tensorDtypes.dtBiasT == \"float32\" and tensorDtypes.decayScaleT == \"float32\" and dim(shapes.dtBiasT, 0) == numHeads and dim(shapes.decayScaleT, 0) == numHeads",
+    "tensorContract": "gateDtypeOk and paramsOk and sameShape(shapes.decayT, shapes.aT) and tensorDtypes.decayT == gateDtype",
+    "betaContract": "tensorContract and present.bT and present.betaT and sameShape(shapes.bT, shapes.aT) and sameShape(shapes.betaT, shapes.aT) and tensorDtypes.bT == gateDtype and tensorDtypes.betaT == gateDtype",
+    "decayOnlyContract": "tensorContract and not present.betaT",
+    "workgroupFits": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap",
+    "scalarDispatchFits": "ceilDiv(gateCount, tunables.WORKGROUP_SIZE) <= foldedDispatchCapacity",
+    "vec4DispatchFits": "numHeads % 4 == 0 and ceilDiv(gateVec4Count, tunables.WORKGROUP_SIZE) <= foldedDispatchCapacity",
+    "workgroupSize": "tunables.WORKGROUP_SIZE"
+  },
+  "when": ["workgroupFits"],
+  "bindings": {
+    "a": { "arg": "aT", "elementType": "$gateElement", "length": "$gateItems" },
+    "dt_bias": { "arg": "dtBiasT", "elementType": "$paramElement", "length": "$headItems" },
+    "decay_scale": { "arg": "decayScaleT", "elementType": "$paramElement", "length": "$headItems" },
+    "b": { "arg": "bT", "elementType": "$gateElement", "length": "$gateItems" },
+    "decay": { "arg": "decayT", "elementType": "$gateElement", "length": "$gateItems" },
+    "beta": { "arg": "betaT", "elementType": "$gateElement", "length": "$gateItems" }
+  },
+  "variants": [
+    {
+      "id": "vec4_gate_beta",
+      "priority": 30,
+      "when": ["betaContract", "vec4DispatchFits"],
+      "derive": {
+        "vectorized": true,
+        "hasBeta": "present.betaT",
+        "gateElement": "\"vec4<f16>\" if gateDtype == \"float16\" else \"vec4<f32>\"",
+        "paramElement": "\"vec4<f32>\"",
+        "headItems": "headsVec4",
+        "gateItems": "gateVec4Count"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttentionGate.Vec4GateBeta",
+          "shader": "linear-attention-gate.wgsl.jinja",
+          "bindings": ["a", "dt_bias", "decay_scale", "b", "decay", "beta"],
+          "dispatch": {
+            "x": "min(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_gate",
+      "priority": 20,
+      "when": ["decayOnlyContract", "vec4DispatchFits"],
+      "derive": {
+        "vectorized": true,
+        "hasBeta": "present.betaT",
+        "gateElement": "\"vec4<f16>\" if gateDtype == \"float16\" else \"vec4<f32>\"",
+        "paramElement": "\"vec4<f32>\"",
+        "headItems": "headsVec4",
+        "gateItems": "gateVec4Count"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttentionGate.Vec4Gate",
+          "shader": "linear-attention-gate.wgsl.jinja",
+          "bindings": ["a", "dt_bias", "decay_scale", "decay"],
+          "dispatch": {
+            "x": "min(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_gate_beta",
+      "priority": 10,
+      "when": ["betaContract", "scalarDispatchFits"],
+      "derive": {
+        "vectorized": false,
+        "hasBeta": "present.betaT",
+        "gateElement": "\"f16\" if gateDtype == \"float16\" else \"f32\"",
+        "paramElement": "\"f32\"",
+        "headItems": "numHeads",
+        "gateItems": "gateCount"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttentionGate.ScalarGateBeta",
+          "shader": "linear-attention-gate.wgsl.jinja",
+          "bindings": ["a", "dt_bias", "decay_scale", "b", "decay", "beta"],
+          "dispatch": {
+            "x": "min(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar_gate",
+      "priority": 0,
+      "when": ["decayOnlyContract", "scalarDispatchFits"],
+      "derive": {
+        "vectorized": false,
+        "hasBeta": "present.betaT",
+        "gateElement": "\"f16\" if gateDtype == \"float16\" else \"f32\"",
+        "paramElement": "\"f32\"",
+        "headItems": "numHeads",
+        "gateItems": "gateCount"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LinearAttentionGate.ScalarGate",
+          "shader": "linear-attention-gate.wgsl.jinja",
+          "bindings": ["a", "dt_bias", "decay_scale", "decay"],
+          "dispatch": {
+            "x": "min(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gateItems), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

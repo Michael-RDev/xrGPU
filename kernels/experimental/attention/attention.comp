@@ -1,0 +1,92 @@
+#version 450
+
+// Experimental FP32 attention. One workgroup owns one query and batch/head.
+// QK, additive mask, stable softmax and AV share a dispatch; scores stay local.
+#ifndef WORKGROUP_SIZE
+#define WORKGROUP_SIZE 64
+#endif
+#if WORKGROUP_SIZE != 32 && WORKGROUP_SIZE != 64 && WORKGROUP_SIZE != 128
+#error Unsupported workgroup size
+#endif
+layout(local_size_x=WORKGROUP_SIZE, local_size_y=1, local_size_z=1) in;
+layout(set=0, binding=0, std430) writeonly buffer Output { float output_data[]; };
+layout(set=0, binding=1, std430) readonly buffer Query { float q[]; };
+layout(set=0, binding=2, std430) readonly buffer Key { float k[]; };
+layout(set=0, binding=3, std430) readonly buffer Value { float v[]; };
+layout(set=0, binding=4, std430) readonly buffer Mask { float mask[]; };
+layout(push_constant) uniform Params {
+  uint query_length;
+  uint key_length;
+  uint head_dim;
+  uint value_dim;
+  uint heads;
+  uint batches;
+  uint mask_batch_stride;
+  uint use_mask;
+} shape;
+
+shared float query[128];
+shared float scores[256];
+shared float reduction[WORKGROUP_SIZE];
+
+void main() {
+  uint lane = gl_LocalInvocationID.x;
+  uint row = gl_WorkGroupID.x;
+  uint bh = gl_WorkGroupID.y;
+  // All conditions are uniform within a workgroup, including early returns.
+  if (row >= shape.query_length || bh >= shape.heads * shape.batches ||
+      shape.head_dim == 0 || shape.head_dim > 128 ||
+      shape.key_length == 0 || shape.key_length > 256 ||
+      shape.value_dim == 0 || shape.value_dim > 128 || shape.heads == 0) return;
+
+  uint query_offset = (bh * shape.query_length + row) * shape.head_dim;
+  uint key_offset = bh * shape.key_length * shape.head_dim;
+  for (uint d = lane; d < shape.head_dim; d += WORKGROUP_SIZE)
+    query[d] = q[query_offset + d];
+  barrier();
+
+  float maximum = -3.402823466e+38;
+  float scale = inversesqrt(float(shape.head_dim));
+  for (uint key = lane; key < shape.key_length; key += WORKGROUP_SIZE) {
+    float score = 0.0;
+    for (uint d = 0; d < shape.head_dim; ++d)
+      score = fma(query[d], k[key_offset + key * shape.head_dim + d], score);
+    score *= scale;
+    if (shape.use_mask != 0)
+      score += mask[(bh / shape.heads) * shape.mask_batch_stride + key];
+    scores[key] = score;
+    maximum = max(maximum, score);
+  }
+  reduction[lane] = maximum;
+  barrier();
+  for (uint step = WORKGROUP_SIZE / 2; step > 0; step >>= 1) {
+    if (lane < step) reduction[lane] = max(reduction[lane], reduction[lane + step]);
+    barrier();
+  }
+  maximum = reduction[0];
+  // Every lane must finish reading the maximum before reusing reduction[].
+  barrier();
+
+  float denominator = 0.0;
+  for (uint key = lane; key < shape.key_length; key += WORKGROUP_SIZE) {
+    float weight = exp(scores[key] - maximum);
+    scores[key] = weight;
+    denominator += weight;
+  }
+  reduction[lane] = denominator;
+  barrier();
+  for (uint step = WORKGROUP_SIZE / 2; step > 0; step >>= 1) {
+    if (lane < step) reduction[lane] += reduction[lane + step];
+    barrier();
+  }
+  denominator = reduction[0];
+  uint value_offset = bh * shape.key_length * shape.value_dim;
+  uint output_offset = (bh * shape.query_length + row) * shape.value_dim;
+  for (uint d = lane; d < shape.value_dim; d += WORKGROUP_SIZE) {
+    float sum = 0.0;
+    for (uint key = 0; key < shape.key_length; ++key)
+      sum = fma(scores[key] / denominator,
+                v[value_offset + key * shape.value_dim + d], sum);
+    output_data[output_offset + d] = sum;
+  }
+}

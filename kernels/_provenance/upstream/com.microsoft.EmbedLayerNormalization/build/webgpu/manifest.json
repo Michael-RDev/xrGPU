@@ -1,0 +1,1079 @@
+{
+  "domain": "com.microsoft",
+  "name": "EmbedLayerNormalization",
+  "sinceVersion": 1,
+  "inputs": {
+    "inputIdsT": { "onnx": "input_ids", "dtype": "T1", "rank": 2, "storage": "int32" },
+    "segmentIdsT": { "onnx": "segment_ids", "dtype": "T1", "rank": 2, "optional": true, "storage": "int32" },
+    "wordEmbeddingT": { "onnx": "word_embedding", "dtype": "T", "rank": 2 },
+    "positionEmbeddingT": { "onnx": "position_embedding", "dtype": "T", "rank": 2 },
+    "segmentEmbeddingT": { "onnx": "segment_embedding", "dtype": "T", "rank": 2, "optional": true },
+    "gammaT": { "onnx": "gamma", "dtype": "T", "rank": 1 },
+    "betaT": { "onnx": "beta", "dtype": "T", "rank": 1 },
+    "maskT": { "onnx": "mask", "dtype": "T1", "rank": 2, "optional": true, "storage": "int32" },
+    "positionIdsT": { "onnx": "position_ids", "dtype": "T1", "rank": 2, "optional": true, "storage": "int32" }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.inputIdsT, 0), dim(shapes.inputIdsT, 1), hidden]"
+    },
+    "maskIndexT": {
+      "onnx": "mask_index",
+      "dtype": "T1",
+      "rank": 1,
+      "optional": true,
+      "shape": "[dim(shapes.inputIdsT, 0)]",
+      "storage": "int32"
+    },
+    "embeddingSumT": {
+      "onnx": "embedding_sum",
+      "dtype": "T",
+      "rank": 3,
+      "optional": true,
+      "shape": "[dim(shapes.inputIdsT, 0), dim(shapes.inputIdsT, 1), hidden]"
+    }
+  },
+  "attributes": { "epsilon": { "default": 9.999999960041972e-13 }, "mask_index_type": {} },
+  "attributeConstraints": { "mask_index_type": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16"], "T1": ["int32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 128 }, "MASK_WORKGROUP_SIZE": { "default": 64 } },
+  "derive": {
+    "batchSize": "dim(shapes.inputIdsT, 0)",
+    "sequenceLength": "dim(shapes.inputIdsT, 1)",
+    "tokens": "batchSize * sequenceLength",
+    "hidden": "dim(shapes.wordEmbeddingT, 1)",
+    "epsilonValue": "attrs.epsilon",
+    "epsilonOk": "epsilonValue >= 0",
+    "tableShapeOk": "ranks.wordEmbeddingT == 2 and dim(shapes.wordEmbeddingT, 0) > 0 and ranks.positionEmbeddingT == 2 and dim(shapes.positionEmbeddingT, 0) > 0 and dim(shapes.positionEmbeddingT, 1) == hidden and ranks.gammaT == 1 and ranks.betaT == 1 and dim(shapes.gammaT, 0) == hidden and dim(shapes.betaT, 0) == hidden and hidden > 0",
+    "segmentContract": "(not present.segmentIdsT or present.segmentEmbeddingT) and (ranks.segmentIdsT == 2 and sameShape(shapes.segmentIdsT, shapes.inputIdsT) if present.segmentIdsT else true) and (ranks.segmentEmbeddingT == 2 and dim(shapes.segmentEmbeddingT, 0) > 0 and dim(shapes.segmentEmbeddingT, 1) == hidden if present.segmentEmbeddingT else true)",
+    "positionIdsContract": "(ranks.positionIdsT == 2 and dim(shapes.positionIdsT, 1) == sequenceLength and (dim(shapes.positionIdsT, 0) == batchSize or dim(shapes.positionIdsT, 0) == 1) if present.positionIdsT else dim(shapes.positionEmbeddingT, 0) >= sequenceLength)",
+    "broadcastPositionIds": "dim(shapes.positionIdsT, 0) == 1 if present.positionIdsT else false",
+    "maskContract": "ranks.maskT == 2 and sameShape(shapes.maskT, shapes.inputIdsT) if present.maskT else true",
+    "maskIndexTypeOk": "not has(attrs, \"mask_index_type\") or attrs.mask_index_type == 0 or attrs.mask_index_type == 1",
+    "ioShapeOk": "ranks.inputIdsT == 2 and ranks.outputT == 3 and dim(shapes.outputT, 0) == batchSize and dim(shapes.outputT, 1) == sequenceLength and dim(shapes.outputT, 2) == hidden and tensorDtypes.outputT == tensorDtypes.wordEmbeddingT and tensorDtypes.positionEmbeddingT == tensorDtypes.wordEmbeddingT and tensorDtypes.gammaT == tensorDtypes.wordEmbeddingT and tensorDtypes.betaT == tensorDtypes.wordEmbeddingT and f16Ok(tensorDtypes.wordEmbeddingT)",
+    "embeddingSumContract": "ranks.embeddingSumT == 3 and sameShape(shapes.embeddingSumT, shapes.outputT) and tensorDtypes.embeddingSumT == tensorDtypes.wordEmbeddingT if present.embeddingSumT else true",
+    "maskIndexShapeOk": "ranks.maskIndexT == 1 and dim(shapes.maskIndexT, 0) == batchSize if present.maskIndexT else true",
+    "embedContractOk": "epsilonOk and tableShapeOk and segmentContract and positionIdsContract and maskContract and maskIndexTypeOk and ioShapeOk and embeddingSumContract and maskIndexShapeOk and batchSize > 0 and sequenceLength > 0",
+    "dispatchFits": "tunables.WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.MASK_WORKGROUP_SIZE <= device.limits.maxComputeInvocationsPerWorkgroup",
+    "aScalar": "dtypes.T",
+    "scalar": "dtypes.T",
+    "epsilon": "epsilonValue",
+    "workgroupSize": "tunables.WORKGROUP_SIZE",
+    "maskWorkgroupSize": "tunables.MASK_WORKGROUP_SIZE",
+    "wordRows": "dim(shapes.wordEmbeddingT, 0)",
+    "positionRows": "dim(shapes.positionEmbeddingT, 0)",
+    "segmentRows": "dim(shapes.segmentEmbeddingT, 0) if present.segmentEmbeddingT else 1",
+    "hasSegment": "present.segmentEmbeddingT",
+    "hasSegmentIds": "present.segmentIdsT",
+    "hasPositionIds": "present.positionIdsT",
+    "writeEmbeddingSum": "present.embeddingSumT",
+    "hasMask": "present.maskT",
+    "HIDDEN_LEN": "hidden"
+  },
+  "when": ["embedContractOk", "dispatchFits"],
+  "bindings": {
+    "input_ids": { "arg": "inputIdsT", "elementType": "i32" },
+    "word_embedding": { "arg": "wordEmbeddingT", "elementType": "$aScalar" },
+    "position_embedding": { "arg": "positionEmbeddingT", "elementType": "$aScalar" },
+    "output": { "arg": "outputT", "elementType": "$aScalar" },
+    "params": { "struct": [{ "name": "tokens", "type": "u32", "value": "tokens" }] },
+    "embedding_sum": { "arg": "embeddingSumT", "elementType": "$aScalar" },
+    "position_ids": { "arg": "positionIdsT", "elementType": "i32" },
+    "segment_ids": { "arg": "segmentIdsT", "elementType": "i32" },
+    "segment_embedding": { "arg": "segmentEmbeddingT", "elementType": "$aScalar" },
+    "gamma": { "arg": "gammaT", "elementType": "$aScalar", "length": "$HIDDEN_LEN" },
+    "beta": { "arg": "betaT", "elementType": "$aScalar", "length": "$HIDDEN_LEN" },
+    "mask": { "arg": "maskT", "elementType": "i32" },
+    "mask_index": { "arg": "maskIndexT", "elementType": "i32" },
+    "params_batch": { "name": "params", "struct": [{ "name": "batch", "type": "u32", "value": "batchSize" }] }
+  },
+  "variants": [
+    {
+      "id": "noseg_nopos_nosum_nomask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "noseg_nopos_nosum_mask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_nopos_nosum_mask_without_input",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_nopos_sum_nomask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "noseg_nopos_sum_mask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_nopos_sum_mask_without_input",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_nosum_nomask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_nosum_mask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_nosum_mask_without_input",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_sum_nomask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_sum_mask",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noseg_posids_sum_mask_without_input",
+      "when": ["not present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_nosum_nomask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_nosum_mask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_nosum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_sum_nomask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_sum_mask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_nopos_sum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_nosum_nomask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_nosum_mask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_nosum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_sum_nomask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_sum_mask",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "segdefault_posids_sum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "not present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_nosum_nomask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_nosum_mask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_nosum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_sum_nomask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_sum_mask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_nopos_sum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "not present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_nosum_nomask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_nosum_mask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_nosum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "not present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_sum_nomask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "not present.maskIndexT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_sum_mask",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.MaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask", "mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seg_posids_sum_mask_without_input",
+      "when": ["present.segmentEmbeddingT", "present.segmentIdsT", "present.positionIdsT", "present.embeddingSumT", "present.maskIndexT", "not present.maskT"],
+      "passes": [
+        {
+          "id": "sum",
+          "name": "EmbedLayerNormalization.EmbeddingSum",
+          "shader": "embed-sum.wgsl.jinja",
+          "bindings": ["input_ids", "segment_ids", "position_ids", "word_embedding", "position_embedding", "segment_embedding", "output", "embedding_sum", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "normalize",
+          "name": "EmbedLayerNormalization.Normalize",
+          "shader": "embed-normalize.wgsl.jinja",
+          "bindings": ["output", "gamma", "beta", "params"],
+          "dispatch": { "x": "min(tokens, 65535)", "y": "ceilDiv(tokens, 65535)", "z": 1 }
+        },
+        {
+          "id": "maskIndex",
+          "name": "EmbedLayerNormalization.ZeroMaskIndex",
+          "shader": "embed-mask-index.wgsl.jinja",
+          "bindings": ["mask_index", "params_batch"],
+          "dispatch": {
+            "x": "min(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((batchSize), (tunables.MASK_WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

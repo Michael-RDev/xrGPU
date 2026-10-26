@@ -1,0 +1,75 @@
+{
+  "domain": "ai.onnx",
+  "name": "GlobalAveragePool",
+  "sinceVersion": 1,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "PLANE_PARALLEL_MIN_SPATIAL": { "default": 65 },
+    "PLANE_PARALLEL_AMORTIZED_SPATIAL": { "default": 768 },
+    "PLANE_PARALLEL_STARVED_PLANES": { "default": 1024 }
+  },
+  "derive": {
+    "baseContract": "f16Ok(dtypes.T) and ranks.x >= 3 and ranks.y == ranks.x and dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.x, 1) and inner(shapes.y, 1) == 1",
+    "planeParallelEligible": "inner(shapes.x, 1) >= tunables.PLANE_PARALLEL_MIN_SPATIAL and (inner(shapes.x, 1) >= tunables.PLANE_PARALLEL_AMORTIZED_SPATIAL or numel(shapes.y) <= tunables.PLANE_PARALLEL_STARVED_PLANES) and numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "scalar": "dtypes.T"
+  },
+  "when": ["baseContract"],
+  "variants": [
+    {
+      "id": "wg_plane_parallel",
+      "priority": 30,
+      "when": ["planeParallelEligible"],
+      "demoteWhen": ["not device.features.has(\"subgroups\") and dtypes.T == \"f32\" and numel(shapes.y) >= tunables.PLANE_PARALLEL_STARVED_PLANES and inner(shapes.x, 1) <= 2 * tunables.PLANE_PARALLEL_AMORTIZED_SPATIAL"],
+      "derive": { "planeInput": "\"vec4<\" ~ dtypes.T ~ \">\" if inner(shapes.x, 1) % 4 == 0 else dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GlobalAveragePool.WgPlaneParallel",
+          "shader": "pool-global-reduction.wgsl.jinja",
+          "derive": {
+            "vec4": "inner(shapes.x, 1) % 4 == 0",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")"
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$planeInput" },
+            "y",
+            { "name": "params", "struct": [{ "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" }] }
+          ],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "nchw",
+      "passes": [
+        {
+          "id": "main",
+          "name": "GlobalAveragePool.Nchw",
+          "shader": "pool-global-serial.wgsl.jinja",
+          "derive": { "outputsPerInvocation": 1 },
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "bindings": {}
+}

@@ -72,10 +72,21 @@ def apply_patch():
 
 
 def timestamp_hook(source):
-    return '#include "graph/ops/impl/XrGpuDispatch.h"\n' + once(
+    source = '#include "graph/ops/impl/XrGpuDispatch.h"\n' + once(
         source,
         "config.enable_querypool = true;",
         "config.enable_querypool = xrgpu::gpu_timestamps_supported;",
+    )
+    # Several qualified linear variants share one SPIR-V binary. Preserve the
+    # actual dispatch geometry so xrBench can verify workgroup specialization.
+    return once(
+        source,
+        r'''", \"dispatch_id\": " + std::to_string(r.dispatch_id) + "}";''',
+        r'''", \"dispatch_id\": " + std::to_string(r.dispatch_id) +
+          ", \"global_size\": [" + std::to_string(r.metadata.global_workgroup_size[0]) + "," +
+          std::to_string(r.metadata.global_workgroup_size[1]) + "," + std::to_string(r.metadata.global_workgroup_size[2]) +
+          "], \"local_size\": [" + std::to_string(r.metadata.local_workgroup_size[0]) + "," +
+          std::to_string(r.metadata.local_workgroup_size[1]) + "," + std::to_string(r.metadata.local_workgroup_size[2]) + "]}";''',
     )
 
 

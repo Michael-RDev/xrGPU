@@ -1,0 +1,173 @@
+{
+  "domain": "ai.onnx",
+  "name": "Scan",
+  "conformance": "internal-lowering",
+  "sinceVersion": 25,
+  "inputs": { "initial_state": { "dtype": "T", "rank": 1 }, "scan_input": { "dtype": "T", "rank": 2 } },
+  "outputs": {
+    "final_state": { "dtype": "T", "rank": 1, "shape": "shapes.initial_state" },
+    "scan_output": { "dtype": "T", "rank": 2, "shape": "shapes.scan_input" }
+  },
+  "attributes": { "reverse": { "default": 0 } },
+  "attributeConstraints": { "reverse": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "subgroupsWave32": "device.features.has(\"subgroups\") and wave32Adapter",
+    "variableNarrowSubgroups": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "parallelSubgroupScan": "subgroupsWave32 or variableNarrowSubgroups",
+    "scanUseSubgroups": "parallelSubgroupScan",
+    "vectorScanChannels": "dim(shapes.scan_input, 1) / 4",
+    "vectorScanWg": "pow2ceil(min(tunables.WORKGROUP_SIZE, pow2ceil(dim(shapes.scan_input, 0)), device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX, floor((device.limits.maxComputeWorkgroupStorageSize - 4) / 16)) + 1) / 2",
+    "vectorScanUseSubgroups": "scanUseSubgroups and vectorScanWg >= device.adapterInfo.subgroupMaxSize"
+  },
+  "when": ["ranks.initial_state == 1", "ranks.scan_input == 2", "ranks.final_state == 1", "ranks.scan_output == 2", "dim(shapes.initial_state, 0) == dim(shapes.scan_input, 1)", "dim(shapes.final_state, 0) == dim(shapes.initial_state, 0)", "dim(shapes.scan_output, 0) == dim(shapes.scan_input, 0)", "dim(shapes.scan_output, 1) == dim(shapes.scan_input, 1)"],
+  "bindings": {
+    "scan_input": { "elementType": "f32" },
+    "scan_output": { "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "steps", "type": "u32", "value": "dim(shapes.scan_input, 0)" },
+        { "name": "dim", "type": "u32", "value": "dim(shapes.scan_input, 1)" },
+        { "name": "reverse", "type": "u32", "value": "attrs.reverse" }
+      ]
+    },
+    "initial_state": { "elementType": "f32" },
+    "final_state": { "elementType": "f32" },
+    "vectorInitial": { "arg": "initial_state", "name": "initial_state", "elementType": "vec4<f32>" },
+    "vectorInput": { "arg": "scan_input", "name": "x", "elementType": "vec4<f32>" },
+    "vectorOutput": { "arg": "scan_output", "name": "y", "elementType": "vec4<f32>" },
+    "vectorFinal": { "arg": "final_state", "name": "final_state", "elementType": "vec4<f32>" },
+    "vectorParams": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "vectorScanChannels" },
+        { "name": "dim", "type": "u32", "value": "dim(shapes.scan_input, 0)" },
+        { "name": "inner", "type": "u32", "value": "vectorScanChannels" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "multichunk_small_state",
+      "priority": 30,
+      "when": ["dim(shapes.scan_input, 1) >= 1", "dim(shapes.scan_input, 1) <= 32", "dim(shapes.scan_input, 0) >= 4096", "dim(shapes.scan_input, 1) >= 1"],
+      "derive": {
+        "chunks": "ceil(dim(shapes.scan_input, 0) / tunables.WORKGROUP_SIZE)",
+        "totalChunks": "dim(shapes.scan_input, 1) * chunks"
+      },
+      "intermediates": [
+        { "id": "chunkTotals", "dtype": "float32", "shape": "[totalChunks]" },
+        { "id": "chunkCarries", "dtype": "float32", "shape": "[totalChunks]" }
+      ],
+      "passes": [
+        {
+          "id": "local",
+          "name": "Scan.MultichunkLocal",
+          "shader": "scan-multichunk-local.wgsl.jinja",
+          "derive": { "useSubgroups": "scanUseSubgroups" },
+          "bindings": ["scan_input", "scan_output", { "name": "chunkTotals", "elementType": "f32" }, "params"],
+          "dispatch": { "x": "min(totalChunks, 65535)", "y": "ceilDiv(totalChunks, 65535)", "z": 1 }
+        },
+        {
+          "id": "carries",
+          "name": "Scan.MultichunkCarries",
+          "shader": "scan-multichunk-carries.wgsl.jinja",
+          "bindings": [
+            "initial_state",
+            { "name": "chunkTotals", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "chunkCarries", "elementType": "f32" },
+            "final_state",
+            { "name": "params", "struct": [{ "name": "dim", "type": "u32", "value": "dim(shapes.scan_input, 1)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.scan_input, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.scan_input, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "Scan.MultichunkApply",
+          "shader": "scan-multichunk-apply.wgsl.jinja",
+          "bindings": [
+            { "name": "chunkCarries", "buffer": "read-only-storage", "elementType": "f32" },
+            "scan_output",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.scan_output)" },
+                { "name": "steps", "type": "u32", "value": "dim(shapes.scan_input, 0)" },
+                { "name": "dim", "type": "u32", "value": "dim(shapes.scan_input, 1)" },
+                { "name": "reverse", "type": "u32", "value": "attrs.reverse" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.scan_output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.scan_output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "coop_channel_prefix_sum",
+      "priority": 10,
+      "when": ["dim(shapes.scan_input, 1) >= 1", "dim(shapes.scan_input, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "dim(shapes.scan_input, 0) >= 64", "dim(shapes.scan_input, 1) >= 1"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Scan.CoopChannel",
+          "shader": "scan-coop-channel.wgsl.jinja",
+          "derive": { "reverse": "attrs.reverse != 0", "useSubgroups": "scanUseSubgroups" },
+          "bindings": ["initial_state", "scan_input", "final_state", "scan_output", "params"],
+          "dispatch": {
+            "x": "min(dim(shapes.scan_input, 1), 65535)",
+            "y": "ceilDiv(dim(shapes.scan_input, 1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "lowered_prefix_sum",
+      "passes": [
+        {
+          "id": "main",
+          "name": "Scan",
+          "shader": "scan-prefix-sum.wgsl.jinja",
+          "bindings": ["initial_state", "scan_input", "final_state", "scan_output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.scan_input, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.scan_input, 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vector_channel_prefix_sum",
+      "priority": 20,
+      "when": ["dim(shapes.scan_input, 1) >= 4", "dim(shapes.scan_input, 1) % 4 == 0", "dim(shapes.scan_input, 0) >= 64", "vectorScanWg >= 1", "ceilDiv(vectorScanChannels, DISPATCH_FOLD_WIDTH) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {
+        "scalar": "\"vec4<f32>\"",
+        "accType": "\"vec4<f32>\"",
+        "workgroupSize": "vectorScanWg",
+        "reverse": "attrs.reverse != 0",
+        "useSubgroups": "vectorScanUseSubgroups"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Scan.VectorChannelPrefix",
+          "shader": "scan-strided-row.wgsl.jinja",
+          "bindings": ["vectorInitial", "vectorInput", "vectorOutput", "vectorFinal", "vectorParams"],
+          "dispatch": { "x": "min(vectorScanChannels, 65535)", "y": "ceilDiv(vectorScanChannels, 65535)", "z": 1 }
+        }
+      ],
+      "demoteWhen": ["dim(shapes.scan_input, 1) < vectorScanWg"]
+    }
+  ]
+}

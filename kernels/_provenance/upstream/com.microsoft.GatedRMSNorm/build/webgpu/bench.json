@@ -1,0 +1,283 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [64, 128, 256, 512], "LANE_WORDS": [1, 2, 4, 8] },
+  "cases": [
+    {
+      "name": "gated-rmsnorm-decode-h16-d128-f32",
+      "preset": "smoke",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "One decoded token: 16 value heads of 128. The whole operator is 24 KB of traffic, so the measurement is launch latency rather than bandwidth."
+      },
+      "vars": { "dtype": "float32", "count": 2048, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 1, 2048], "dtype": "float32", "dist": "normal", "seed": 501, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float32", "dist": "uniform", "seed": 502, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 1, 2048], "dtype": "float32", "dist": "normal", "seed": 503, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 1, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-decode-h16-d128-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "The float16 decode step, the dtype the shipped model graphs use."
+      },
+      "vars": { "dtype": "float16", "count": 2048, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 1, 2048], "dtype": "float16", "dist": "normal", "seed": 501, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float16", "dist": "uniform", "seed": 502, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 1, 2048], "dtype": "float16", "dist": "normal", "seed": 503, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 1, 2048], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-prefill-s512-h16-d128-f32",
+      "preset": "smoke",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "Measures gated RMS normalization over a 512-token prefill: 8192 rows (512 tokens x 16 heads) of 128 float32 channels each."
+      },
+      "vars": { "dtype": "float32", "count": 1048576, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 512, 2048], "dtype": "float32", "dist": "normal", "seed": 511, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float32", "dist": "uniform", "seed": 512, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 512, 2048], "dtype": "float32", "dist": "normal", "seed": 513, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 512, 2048], "dtype": "float32" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-prefill-s512-h16-d128-f16",
+      "preset": "smoke",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "The float16 prefill of the same 8192 spans."
+      },
+      "vars": { "dtype": "float16", "count": 1048576, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 512, 2048], "dtype": "float16", "dist": "normal", "seed": 511, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float16", "dist": "uniform", "seed": 512, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 512, 2048], "dtype": "float16", "dist": "normal", "seed": 513, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 512, 2048], "dtype": "float16" } },
+      "bench": {
+        "primary": true,
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-single-group-d1536-f16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 512 rows of 1536 float16 channels each, normalized as a single group (H=1) rather than split across multiple heads."
+      },
+      "vars": { "dtype": "float16", "count": 786432, "span": 1536 },
+      "inputs": {
+        "xT": { "shape": [1, 512, 1536], "dtype": "float16", "dist": "normal", "seed": 521, "scale": 1 },
+        "scaleT": { "shape": [1536], "dtype": "float16", "dist": "uniform", "seed": 522, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 512, 1536], "dtype": "float16", "dist": "normal", "seed": 523, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 512, 1536], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-single-group-d5120-f32",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "A 5120-wide span: wide enough that the row no longer fits in registers at this workgroup width, so the statistic and the store each walk it."
+      },
+      "vars": { "dtype": "float32", "count": 1310720, "span": 5120 },
+      "inputs": {
+        "xT": { "shape": [1, 256, 5120], "dtype": "float32", "dist": "normal", "seed": 531, "scale": 1 },
+        "scaleT": { "shape": [5120], "dtype": "float32", "dist": "uniform", "seed": 532, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 256, 5120], "dtype": "float32", "dist": "normal", "seed": 533, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 256, 5120], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-small-span-d48-f16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "A 48-element span over the same tensor: 16384 very short rows, where a workgroup-per-row schedule would leave most of every workgroup idle."
+      },
+      "vars": { "dtype": "float16", "count": 786432, "span": 48 },
+      "inputs": {
+        "xT": { "shape": [1, 512, 1536], "dtype": "float16", "dist": "normal", "seed": 541, "scale": 1 },
+        "scaleT": { "shape": [48], "dtype": "float16", "dist": "uniform", "seed": 542, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 512, 1536], "dtype": "float16", "dist": "normal", "seed": 543, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 512, 1536], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-span-six-scalar-f32",
+      "preset": "smoke",
+      "provenance": { "notes": "A normalization span of six values leaves a two-element tail after four-wide groups." },
+      "vars": { "dtype": "float32", "count": 786432, "span": 6 },
+      "inputs": {
+        "xT": { "shape": [1, 512, 1536], "dtype": "float32", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [6], "dtype": "float32", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 512, 1536], "dtype": "float32", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 512, 1536], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-prefill-s4096-h16-d128-f16",
+      "preset": "model",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "A 4096-token prefill: 65536 spans, a working set far past cache so the bandwidth figure is a DRAM figure."
+      },
+      "vars": { "dtype": "float16", "count": 8388608, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 4096, 2048], "dtype": "float16", "dist": "normal", "seed": 561, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float16", "dist": "uniform", "seed": 562, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 4096, 2048], "dtype": "float16", "dist": "normal", "seed": 563, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 4096, 2048], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-prefill-s2048-h16-d128-f32",
+      "preset": "model",
+      "provenance": {
+        "model": "Qwen3.5 / Qwen3-Next gated linear attention output norm",
+        "notes": "The float32 counterpart at the same 48 MB working set."
+      },
+      "vars": { "dtype": "float32", "count": 4194304, "span": 128 },
+      "inputs": {
+        "xT": { "shape": [1, 2048, 2048], "dtype": "float32", "dist": "normal", "seed": 571, "scale": 1 },
+        "scaleT": { "shape": [128], "dtype": "float32", "dist": "uniform", "seed": 572, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 2048, 2048], "dtype": "float32", "dist": "normal", "seed": 573, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 2048, 2048], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c5-r8193-float32",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 8193 rows of 5 channels in float32, one row past a full 256-row group. Its smaller row count sets an overhead baseline against the float32 131,073-row sibling."
+      },
+      "vars": { "dtype": "float32", "count": 40965, "span": 5 },
+      "inputs": {
+        "xT": { "shape": [1, 8193, 5], "dtype": "float32", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [5], "dtype": "float32", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 8193, 5], "dtype": "float32", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 8193, 5], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c5-r131073-float32",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 131,073 rows of 5 channels in float32, one row past a full 256-row group. Its larger row count isolates per-row cost from the 8193-row float32 sibling's per-dispatch overhead."
+      },
+      "vars": { "dtype": "float32", "count": 655365, "span": 5 },
+      "inputs": {
+        "xT": { "shape": [1, 131073, 5], "dtype": "float32", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [5], "dtype": "float32", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 131073, 5], "dtype": "float32", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 131073, 5], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c5-r131073-float16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 131,073 rows of 5 channels in float16, one row past a full 256-row group; compares against its float32 counterpart at the same shape."
+      },
+      "vars": { "dtype": "float16", "count": 655365, "span": 5 },
+      "inputs": {
+        "xT": { "shape": [1, 131073, 5], "dtype": "float16", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [5], "dtype": "float16", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 131073, 5], "dtype": "float16", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 131073, 5], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c6-r131073-float16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 131,073 rows of 6 channels in float16, one row past a full 256-row group."
+      },
+      "vars": { "dtype": "float16", "count": 786438, "span": 6 },
+      "inputs": {
+        "xT": { "shape": [1, 131073, 6], "dtype": "float16", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [6], "dtype": "float16", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 131073, 6], "dtype": "float16", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 131073, 6], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c7-r131073-float32",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 131,073 rows of 7 channels in float32, one row past a full 256-row group; compares against its float16 counterpart at the same shape."
+      },
+      "vars": { "dtype": "float32", "count": 917511, "span": 7 },
+      "inputs": {
+        "xT": { "shape": [1, 131073, 7], "dtype": "float32", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [7], "dtype": "float32", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 131073, 7], "dtype": "float32", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 131073, 7], "dtype": "float32" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    },
+    {
+      "name": "gated-rmsnorm-short-c7-r131073-float16",
+      "preset": "smoke",
+      "provenance": {
+        "notes": "Measures gated RMS normalization over 131,073 rows of 7 channels in float16, one row past a full 256-row group; compares against its float32 counterpart at the same shape."
+      },
+      "vars": { "dtype": "float16", "count": 917511, "span": 7 },
+      "inputs": {
+        "xT": { "shape": [1, 131073, 7], "dtype": "float16", "dist": "normal", "seed": 551, "scale": 1 },
+        "scaleT": { "shape": [7], "dtype": "float16", "dist": "uniform", "seed": 552, "min": 0.2, "max": 1.8 },
+        "gateT": { "shape": [1, 131073, 7], "dtype": "float16", "dist": "normal", "seed": 553, "scale": 2 }
+      },
+      "outputs": { "yT": { "shape": [1, 131073, 7], "dtype": "float16" } },
+      "bench": {
+        "metrics": [{ "type": "bandwidth", "value": "(args.count * 3 + args.span) * dtypeBytes(args.dtype)" }]
+      }
+    }
+  ]
+}

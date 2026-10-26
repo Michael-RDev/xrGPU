@@ -1,0 +1,743 @@
+{
+  "domain": "com.microsoft",
+  "name": "SkipSimplifiedLayerNormalization",
+  "sinceVersion": 1,
+  "inputs": {
+    "inputT": { "onnx": "input", "dtype": "T" },
+    "skipT": { "onnx": "skip", "dtype": "T" },
+    "gammaT": { "onnx": "gamma", "dtype": "T", "rank": 1 },
+    "biasT": { "onnx": "bias", "dtype": "T", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "outputT": { "onnx": "output", "dtype": "T", "rank": "ranks.inputT", "shape": "shapes.inputT" },
+    "meanT": {
+      "onnx": "mean",
+      "dtype": "U",
+      "optional": true,
+      "rank": "ranks.inputT",
+      "shape": "prefix(shapes.inputT, ranks.inputT - 1) + [1]"
+    },
+    "invStdT": {
+      "onnx": "inv_std_var",
+      "dtype": "U",
+      "optional": true,
+      "rank": "ranks.inputT",
+      "shape": "prefix(shapes.inputT, ranks.inputT - 1) + [1]"
+    },
+    "residualT": {
+      "onnx": "input_skip_bias_sum",
+      "dtype": "T",
+      "rank": "ranks.inputT",
+      "optional": true,
+      "shape": "shapes.inputT"
+    }
+  },
+  "attributes": { "epsilon": { "default": 9.999999960041972e-13 } },
+  "typeConstraints": { "T": ["float32", "float16"], "U": ["float32"] },
+  "tunables": { "MAX_WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "rowCount": "numel(shapes.inputT) / max(1, dim(shapes.inputT, -1))",
+    "hiddenSize": "dim(shapes.inputT, -1)",
+    "skipWg": "max(1, min(tunables.MAX_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX, pow2ceil(hiddenSize)))",
+    "skipWgVec4": "max(1, min(tunables.MAX_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX, pow2ceil(ceilDiv(hiddenSize, 4))))",
+    "rowDispatchFits": "rowCount <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "normResourcesFit": "skipWg * 8 <= device.limits.maxComputeWorkgroupStorageSize and skipWgVec4 * 8 <= device.limits.maxComputeWorkgroupStorageSize",
+    "epsilonOk": "attrs.epsilon >= 0",
+    "coreContract": "epsilonOk and (ranks.inputT == 2 or ranks.inputT == 3) and ranks.skipT == ranks.inputT and ranks.gammaT == 1 and ranks.outputT == ranks.inputT and sameShape(shapes.inputT, shapes.skipT) and sameShape(shapes.outputT, shapes.inputT) and dim(shapes.inputT, -1) > 0 and dim(shapes.gammaT, 0) == dim(shapes.inputT, -1)",
+    "residualOutputContract": "present.residualT and sameShape(shapes.residualT, shapes.inputT)",
+    "outputOnlyContract": "not present.residualT",
+    "f32MainDtypes": "tensorDtypes.inputT == \"float32\" and tensorDtypes.skipT == \"float32\" and tensorDtypes.gammaT == \"float32\" and tensorDtypes.outputT == \"float32\"",
+    "f16MainDtypes": "tensorDtypes.inputT == \"float16\" and tensorDtypes.skipT == \"float16\" and tensorDtypes.gammaT == \"float16\" and tensorDtypes.outputT == \"float16\"",
+    "f32ResidualDtypes": "f32MainDtypes and tensorDtypes.residualT == \"float32\" if present.residualT else false",
+    "f16ResidualDtypes": "f16MainDtypes and tensorDtypes.residualT == \"float16\" if present.residualT else false",
+    "vec4Aligned": "dim(shapes.inputT, -1) % 4 == 0",
+    "hasSubgroups": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "hasF16": "device.features.has(\"shader-f16\")",
+    "statsRequested": "present.meanT or present.invStdT",
+    "no_bias_contract": "not present.biasT",
+    "f32_bias_contract": "false if not present.biasT else (ranks.biasT == 1 and tensorDtypes.biasT == \"float32\" and dim(shapes.biasT, 0) == hiddenSize)",
+    "f16_bias_contract": "false if not present.biasT else (ranks.biasT == 1 and tensorDtypes.biasT == \"float16\" and dim(shapes.biasT, 0) == hiddenSize)",
+    "f32_no_bias_residual_contract": "coreContract and residualOutputContract and f32ResidualDtypes and no_bias_contract",
+    "f32_bias_residual_contract": "coreContract and residualOutputContract and f32ResidualDtypes and f32_bias_contract",
+    "f16_no_bias_residual_contract": "hasF16 and coreContract and residualOutputContract and f16ResidualDtypes and no_bias_contract",
+    "f16_bias_residual_contract": "hasF16 and coreContract and residualOutputContract and f16ResidualDtypes and f16_bias_contract",
+    "f32_no_bias_output_contract": "coreContract and outputOnlyContract and f32MainDtypes and no_bias_contract",
+    "f32_bias_output_contract": "coreContract and outputOnlyContract and f32MainDtypes and f32_bias_contract",
+    "f16_no_bias_output_contract": "hasF16 and coreContract and outputOnlyContract and f16MainDtypes and no_bias_contract",
+    "f16_bias_output_contract": "hasF16 and coreContract and outputOnlyContract and f16MainDtypes and f16_bias_contract",
+    "statsContract": "statsRequested and coreContract and f16Ok(dtypes.T) and (not present.biasT or (ranks.biasT == 1 and dim(shapes.biasT, 0) == hiddenSize)) and (not present.residualT or sameShape(shapes.residualT, shapes.inputT))"
+  },
+  "when": ["normResourcesFit", "rowDispatchFits"],
+  "bindings": {
+    "input": { "arg": "inputT", "elementType": "$vectorScalar" },
+    "skip": { "arg": "skipT", "elementType": "$vectorScalar" },
+    "gamma": { "arg": "gammaT", "elementType": "$vectorScalar", "length": "$HIDDEN_LEN" },
+    "output": { "arg": "outputT", "elementType": "$vectorScalar" },
+    "input_skip_bias_sum": { "arg": "residualT", "elementType": "$vectorScalar" },
+    "params": {
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rowCount" },
+        {
+          "name": "rowStride",
+          "type": "u32",
+          "value": "max(1, min(rowCount, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+        },
+        { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+      ]
+    },
+    "bias": { "arg": "biasT", "elementType": "$vectorScalar", "length": "$HIDDEN_LEN" },
+    "input_main": { "arg": "inputT", "name": "input", "elementType": "$scalar" },
+    "skip_main": { "arg": "skipT", "name": "skip", "elementType": "$scalar" },
+    "gamma_main": { "arg": "gammaT", "name": "gamma", "elementType": "$scalar", "length": "$HIDDEN_LEN" },
+    "output_main": { "arg": "outputT", "name": "output", "elementType": "$scalar" },
+    "input_skip_bias_sum_main": { "arg": "residualT", "name": "input_skip_bias_sum", "elementType": "$scalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "rows", "type": "u32", "value": "rowCount" },
+        { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+      ]
+    },
+    "bias_main": { "arg": "biasT", "name": "bias", "elementType": "$scalar", "length": "$HIDDEN_LEN" },
+    "mean": { "arg": "meanT", "elementType": "f32" },
+    "inv_std_var": { "arg": "invStdT", "elementType": "f32" }
+  },
+  "variants": [
+    {
+      "id": "no_bias_vec4_f16",
+      "priority": 21,
+      "when": ["f16_no_bias_residual_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f16>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": true,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f16>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "output", "input_skip_bias_sum", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_f16",
+      "priority": 0,
+      "when": ["f16_no_bias_residual_contract", "not present.meanT and not present.invStdT"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": true,
+        "hasBias": "present.biasT",
+        "scalar": "\"f16\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "input_skip_bias_sum_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_vec4",
+      "priority": 20,
+      "when": ["f32_no_bias_residual_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f32>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": true,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f32>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "output", "input_skip_bias_sum", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias",
+      "priority": 0,
+      "when": ["f32_no_bias_residual_contract", "not present.meanT and not present.invStdT"],
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": true,
+        "hasBias": "present.biasT",
+        "scalar": "\"f32\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "input_skip_bias_sum_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_output_only_vec4_f16",
+      "priority": 21,
+      "when": ["f16_no_bias_output_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f16>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4OutputOnly",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": false,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f16>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "output", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_output_only_f16",
+      "priority": 0,
+      "when": ["f16_no_bias_output_contract", "not present.meanT and not present.invStdT"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": false,
+        "hasBias": "present.biasT",
+        "scalar": "\"f16\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.OutputOnly",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_output_only_vec4",
+      "priority": 20,
+      "when": ["f32_no_bias_output_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f32>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4OutputOnly",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": false,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f32>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "output", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "no_bias_output_only",
+      "priority": 0,
+      "when": ["f32_no_bias_output_contract", "not present.meanT and not present.invStdT"],
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": false,
+        "hasBias": "present.biasT",
+        "scalar": "\"f32\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.OutputOnly",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_vec4_f16",
+      "priority": 21,
+      "when": ["f16_bias_residual_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f16>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": true,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f16>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "bias", "output", "input_skip_bias_sum", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_f16",
+      "priority": 0,
+      "when": ["f16_bias_residual_contract", "not present.meanT and not present.invStdT"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": true,
+        "hasBias": "present.biasT",
+        "scalar": "\"f16\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "input_skip_bias_sum_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_vec4",
+      "priority": 20,
+      "when": ["f32_bias_residual_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f32>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": true,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f32>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "bias", "output", "input_skip_bias_sum", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias",
+      "priority": 0,
+      "when": ["f32_bias_residual_contract", "not present.meanT and not present.invStdT"],
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": true,
+        "hasBias": "present.biasT",
+        "scalar": "\"f32\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "input_skip_bias_sum_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_output_only_vec4_f16",
+      "priority": 21,
+      "when": ["f16_bias_output_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f16>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4OutputOnly",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": false,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f16>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "bias", "output", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_output_only_f16",
+      "priority": 0,
+      "when": ["f16_bias_output_contract", "not present.meanT and not present.invStdT"],
+      "requires": { "features": ["shader-f16"] },
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": false,
+        "hasBias": "present.biasT",
+        "scalar": "\"f16\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.OutputOnly",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_output_only_vec4",
+      "priority": 20,
+      "when": ["f32_bias_output_contract", "vec4Aligned", "not present.meanT and not present.invStdT"],
+      "derive": { "vectorScalar": "\"vec4<f32>\"", "HIDDEN_LEN": "hiddenSize / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.Vec4OutputOnly",
+          "shader": "norm-skip-row-vec4.wgsl.jinja",
+          "derive": {
+            "hasBias": "present.biasT",
+            "writeResidualSum": false,
+            "hidden": "hiddenSize",
+            "hiddenVec": "hiddenSize / 4",
+            "wg": "skipWgVec4",
+            "vecType": "\"vec4<f32>\"",
+            "useSubgroups": "hasSubgroups"
+          },
+          "bindings": ["input", "skip", "gamma", "bias", "output", "params"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "bias_output_only",
+      "priority": 0,
+      "when": ["f32_bias_output_contract", "not present.meanT and not present.invStdT"],
+      "derive": {
+        "useSubgroups": false,
+        "writeResidualSum": false,
+        "hasBias": "present.biasT",
+        "scalar": "\"f32\"",
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SkipSimplifiedLayerNormalization.OutputOnly",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_mean_plain",
+      "when": ["statsContract", "present.meanT", "not present.invStdT", "not present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "mean", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_mean_residual",
+      "when": ["statsContract", "present.meanT", "not present.invStdT", "not present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "input_skip_bias_sum_main", "output_main", "mean", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_mean_bias",
+      "when": ["statsContract", "present.meanT", "not present.invStdT", "present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "mean", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_mean_bias_residual",
+      "when": ["statsContract", "present.meanT", "not present.invStdT", "present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "input_skip_bias_sum_main", "output_main", "mean", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_inv_plain",
+      "when": ["statsContract", "not present.meanT", "present.invStdT", "not present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_inv_residual",
+      "when": ["statsContract", "not present.meanT", "present.invStdT", "not present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "input_skip_bias_sum_main", "output_main", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_inv_bias",
+      "when": ["statsContract", "not present.meanT", "present.invStdT", "present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_inv_bias_residual",
+      "when": ["statsContract", "not present.meanT", "present.invStdT", "present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "input_skip_bias_sum_main", "output_main", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_both_plain",
+      "when": ["statsContract", "present.meanT", "present.invStdT", "not present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "output_main", "mean", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_both_residual",
+      "when": ["statsContract", "present.meanT", "present.invStdT", "not present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "input_skip_bias_sum_main", "output_main", "mean", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_both_bias",
+      "when": ["statsContract", "present.meanT", "present.invStdT", "present.biasT", "not present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "output_main", "mean", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "stats_both_bias_residual",
+      "when": ["statsContract", "present.meanT", "present.invStdT", "present.biasT", "present.residualT", "normResourcesFit", "rowDispatchFits"],
+      "derive": {
+        "hasBias": "present.biasT",
+        "writeResidualSum": "present.residualT",
+        "writeMean": "present.meanT",
+        "writeInvStd": "present.invStdT",
+        "scalar": "dtypes.T",
+        "useSubgroups": false,
+        "workgroupSize": "skipWg",
+        "HIDDEN_LEN": "hiddenSize"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "norm-skip-row.wgsl.jinja",
+          "bindings": ["input_main", "skip_main", "gamma_main", "bias_main", "input_skip_bias_sum_main", "output_main", "mean", "inv_std_var", "params_main"],
+          "dispatch": { "x": "min(rowCount, 65535)", "y": "ceilDiv(rowCount, 65535)", "z": 1 }
+        }
+      ]
+    }
+  ]
+}

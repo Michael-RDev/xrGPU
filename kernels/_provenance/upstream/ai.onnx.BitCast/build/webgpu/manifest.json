@@ -1,0 +1,76 @@
+{
+  "domain": "ai.onnx",
+  "name": "BitCast",
+  "sinceVersion": 26,
+  "inputs": { "input": { "dtype": "T" } },
+  "outputs": { "output": { "dtype": "U", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "to": {} },
+  "attributeConstraints": { "to": { "required": true } },
+  "typeConstraints": {
+    "T": ["float32", "int8", "int32", "uint8", "uint32"],
+    "U": ["float32", "int8", "int32", "uint8", "uint32"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "bitcastShapeOk": "ranks.input >= 0 and ranks.output == ranks.input and numel(shapes.input) == numel(shapes.output)",
+    "bitcastTypeOk": "attrs.to == onnxDtypeCode(logicalDtypes.U) and (((tensorDtypes.input == \"int8\" or tensorDtypes.input == \"uint8\") and (tensorDtypes.output == \"int8\" or tensorDtypes.output == \"uint8\")) or (tensorDtypes.input != \"int8\" and tensorDtypes.input != \"uint8\" and tensorDtypes.output != \"int8\" and tensorDtypes.output != \"uint8\"))",
+    "bitcastWorkgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "bitcastDispatchFits": "ceilDiv(ceilDiv(numel(shapes.output), bitcastWorkgroupSize), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "bitcastBaseOk": "bitcastShapeOk and bitcastTypeOk and bitcastDispatchFits",
+    "inScalar": "dtypes.T",
+    "outScalar": "dtypes.U",
+    "inputIsInt8": "tensorDtypes.input == \"int8\"",
+    "inputIsUint8": "tensorDtypes.input == \"uint8\"",
+    "outputIsInt8": "tensorDtypes.output == \"int8\"",
+    "outputIsUint8": "tensorDtypes.output == \"uint8\""
+  },
+  "when": ["bitcastBaseOk"],
+  "variants": [
+    {
+      "id": "slot32_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.input) % 4 == 0"],
+      "derive": { "inVec4": "\"vec4<\" ~ dtypes.T ~ \">\"", "outVec4": "\"vec4<\" ~ dtypes.U ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitCast.Vec4",
+          "shader": "bitcast.wgsl.jinja",
+          "derive": { "vectorizedSpec": true, "workgroupSizeSpec": "bitcastWorkgroupSize" },
+          "bindings": [
+            { "arg": "input", "elementType": "$inVec4" },
+            { "arg": "output", "elementType": "$outVec4" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (bitcastWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (bitcastWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "slot32",
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitCast",
+          "shader": "bitcast.wgsl.jinja",
+          "derive": { "workgroupSizeSpec": "bitcastWorkgroupSize" },
+          "bindings": [
+            "input",
+            "output",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (bitcastWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (bitcastWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

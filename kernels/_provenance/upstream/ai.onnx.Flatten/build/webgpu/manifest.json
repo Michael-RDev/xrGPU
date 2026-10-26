@@ -1,0 +1,74 @@
+{
+  "domain": "ai.onnx",
+  "name": "Flatten",
+  "sinceVersion": 13,
+  "inputs": { "input": { "dtype": "T" } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": 2,
+      "shape": ["numel(prefix(shapes.input, axisNorm))", "numel(suffix(shapes.input, axisNorm))"]
+    }
+  },
+  "attributes": { "axis": { "default": 1 } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32", "int16", "int8", "uint8", "bool", "int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "axisInRange": "attrs.axis == floor(attrs.axis) and attrs.axis >= 0 - ranks.input and attrs.axis <= ranks.input",
+    "axisNorm": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.input",
+    "flattenShapeOk": "axisInRange and ranks.output == 2 and sameShape(shapes.output, [numel(prefix(shapes.input, axisNorm)), numel(suffix(shapes.input, axisNorm))])",
+    "baseContract": "flattenShapeOk and f16Ok(dtypes.T)"
+  },
+  "when": ["baseContract"],
+  "bindings": {
+    "src": { "arg": "input", "elementType": "$vectorScalar" },
+    "dst": { "arg": "output", "elementType": "$vectorScalar" },
+    "x": { "arg": "input", "elementType": "$scalar" },
+    "y": { "arg": "output", "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "copy_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "numel(shapes.input) > 0", "numel(shapes.input) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Flatten.CopyVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "copy",
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Flatten",
+          "shader": "datamove-elementwise-copy.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "x", "output": "y" }]
+        }
+      ]
+    }
+  ]
+}

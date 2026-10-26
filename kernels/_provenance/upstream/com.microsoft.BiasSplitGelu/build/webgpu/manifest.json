@@ -1,0 +1,108 @@
+{
+  "domain": "com.microsoft",
+  "name": "BiasSplitGelu",
+  "sinceVersion": 1,
+  "inputs": { "X": { "dtype": "T", "rank": 3 }, "bias": { "dtype": "T", "rank": 1 } },
+  "outputs": { "Y": { "dtype": "T", "rank": 3, "shape": "[dim(shapes.X, 0), dim(shapes.X, 1), dim(shapes.X, 2) / 2]" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+  "when": ["ranks.X == 3", "ranks.Y == 3", "dim(shapes.Y, 0) == dim(shapes.X, 0)", "dim(shapes.Y, 1) == dim(shapes.X, 1)", "dim(shapes.X, 2) % 2 == 0", "dim(shapes.Y, 2) == dim(shapes.X, 2) / 2", "f16Ok(dtypes.T)", "ranks.bias == 1", "dim(shapes.bias, 0) == dim(shapes.X, 2)"],
+  "bindings": {
+    "x": { "arg": "X", "elementType": "$scalar" },
+    "bias": { "elementType": "$scalar", "length": "$twice" },
+    "y_y": { "arg": "Y", "name": "y", "elementType": "$scalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        {
+          "name": "count",
+          "type": "u32",
+          "value": "(numel(shapes.Y) / (dim(shapes.X, ranks.X - 1) / 2)) * ceilDiv(dim(shapes.X, ranks.X - 1) / 2, 4)"
+        }
+      ]
+    },
+    "bias_main": { "name": "bias", "elementType": "$scalar" },
+    "params_count": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.Y)" }] }
+  },
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 30,
+      "when": ["numel(shapes.Y) > 0", "numel(shapes.Y) % 4 == 0", "dim(shapes.Y, 2) % 4 == 0"],
+      "derive": {
+        "vec4": true,
+        "vec4Tail": false,
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "hidden": "dim(shapes.X, ranks.X - 1) / 2 if dim(shapes.X, ranks.X - 1) > 0 else 1",
+        "twice": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 2"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasSplitGelu.Vec4",
+          "shader": "bias-split-gelu.wgsl.jinja",
+          "bindings": [
+            "x",
+            "bias",
+            { "arg": "Y", "name": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.Y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.Y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.Y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail",
+      "priority": 20,
+      "when": ["numel(shapes.Y) > 0"],
+      "derive": {
+        "vec4": false,
+        "vec4Tail": true,
+        "hidden": "dim(shapes.X, ranks.X - 1) / 2 if dim(shapes.X, ranks.X - 1) > 0 else 1",
+        "twice": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 2"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasSplitGelu.Vec4Tail",
+          "shader": "bias-split-gelu.wgsl.jinja",
+          "bindings": ["x", "bias", "y_y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv(((numel(shapes.Y) / (dim(shapes.X, ranks.X - 1) / 2)) * ceilDiv(dim(shapes.X, ranks.X - 1) / 2, 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv(((numel(shapes.Y) / (dim(shapes.X, ranks.X - 1) / 2)) * ceilDiv(dim(shapes.X, ranks.X - 1) / 2, 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "priority": 0,
+      "when": ["true"],
+      "derive": {
+        "vec4": false,
+        "vec4Tail": false,
+        "hidden": "dim(shapes.X, ranks.X - 1) / 2 if dim(shapes.X, ranks.X - 1) > 0 else 1",
+        "twice": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 2"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BiasSplitGelu.Scalar",
+          "shader": "bias-split-gelu.wgsl.jinja",
+          "bindings": ["x", "bias_main", "y_y", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.Y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.Y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "derive": { "scalar": "dtypes.T" }
+}

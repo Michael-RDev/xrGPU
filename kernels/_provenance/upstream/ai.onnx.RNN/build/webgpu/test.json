@@ -1,0 +1,1536 @@
+{
+  "cases": [
+    {
+      "name": "forward_tanh",
+      "attrs": { "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 1, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [0.5, -0.25, 0.1, 0.2] } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [0.3, 0.1, -0.2, 0.4] } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.01, -0.02, 0.03, 0.04] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 1, 2], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "tanh_saturation_no_nan",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [50.0, 50.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [1.0, 1.0, -1.0, -1.0] } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 1, 2], "tolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "ort_forward_relu_activation",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_bidirectional_1",
+        "notes": "A forward RNN with Relu verifies a nondefault ONNX activation."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2, "activations": ["Relu"] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [3.0, -4.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [-1.0, 2.0, 0.0, 0.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 2.0, 0.0, 2.0] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 2.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_forward_activation_alpha",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/rnn/rnn_helpers.cc",
+        "test": "ActivationFuncs LeakyRelu alpha path",
+        "notes": "LeakyRelu with activation_alpha=0.25 maps a pre-activation of -2 to -0.5."
+      },
+      "attrs": {
+        "layout": 0,
+        "direction": "forward",
+        "hidden_size": 1,
+        "activations": ["LeakyRelu"],
+        "activation_alpha": [0.25]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [-2.0] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-0.5] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 1],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-0.5] }
+        }
+      }
+    },
+    {
+      "name": "hard_sigmoid_activation_default_alpha_beta",
+      "provenance": {
+        "notes": "Covers HardSigmoid with omitted activation_alpha/beta, asserting the ONNX defaults alpha=0.2 and beta=0.5. The pre-activations exercise both clamp branches and the linear segment away from its knees. Pinned float32 expectations follow the ONNX RNN equation and kernel term order; substituting alpha=1 or beta=0 moves the result well beyond tolerance."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2, "activations": ["HardSigmoid"] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.0, 0.5, -4.0, 1.0, 0.25, -1.5] }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [0.25, -0.75, 0.5, -2.0] }
+        },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [-1.0, 1.0, -1.0, 0.25] } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.5, -0.5, 0.5, -0.25] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [1.0, 1.0, 0.775, 0.45, 0.35, 0.0, 0.8725, 0.84250003] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.35, 0.0, 0.8725, 0.84250003] }
+        }
+      }
+    },
+    {
+      "name": "zero_sequence_length_outputs_empty_y_and_zero_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_seq_length_zero",
+        "notes": "Diverges from the upstream test's inputs (inputs.w values [0.2, -0.1, 0.3, -0.4, 0.5, 0.1] -> constant 0.2; inputs.r values [0.1, 0.2, -0.3, 0.4] -> constant 0.1; inputs.b values [0.01, -0.02, 0.03, 0.04] -> constant 0.01); the expected output is recomputed by the CPU reference for the new inputs. Exercises a zero-length sequence with explicit B, requiring an empty Y and a zero final hidden state. No timestep reads the weights, so they are uniform: a kernel that applied the bias once would emit tanh(0.01)."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 2, 3], "data": { "kind": "values", "values": [] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 3], "data": { "kind": "constant", "value": 0.2 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.1 } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.01 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [0, 1, 2, 2], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 2], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_sequence_lens_partial_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_forward_sequence_lens_with_zero",
+        "notes": "Valid ONNX sequence_lens edge: the second batch has length zero, so Y and Y_h are zero-filled for that batch."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 10.0, 2.0, 20.0, 3.0, 30.0] }
+        },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.5] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.1] } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.46211719512939453, 0.0, 0.7803291082382202, 0.0, 0.0, 0.0] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.7803291082382202, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_sequence_lens_shorter_than_input",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_forward_sequence_lens_with_zero",
+        "notes": "Valid ONNX sequence_lens edge: each batch stops before the full input sequence length, so later Y positions are zero-filled and Y_h comes from the last valid timestep."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 10.0, 2.0, 20.0, 3.0, 30.0] }
+        },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.5] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.1] } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [1, 2] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.46211719512939453, 0.9999091625213623, 0.0, 1.0, 0.0, 0.0] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.46211719512939453, 1.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_sequence_lens_all_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_reverse_sequence_lens_all_zero",
+        "notes": "Diverges from the upstream test's inputs (inputs.w values [0.5] -> constant 0.5; inputs.x values [1.0, 10.0, 2.0, 20.0, 3.0, 30.0] -> constant 1.0; inputs.r values [0.1] -> constant 0.1); the expected output is recomputed by the CPU reference for the new inputs. Compact forward projection of ORT's all-zero sequence_lens edge; all Y and Y_h values must be zero. With every sequence length zero no timestep runs, so the outputs are zero whatever the input and the weights hold and those operands are uniform: a kernel that ignored sequence_lens would emit the nonzero recurrence instead."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3, 2, 1], "data": { "kind": "constant", "value": 1.0 } },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.5 } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.1 } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "constant", "value": 0.0 }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "constant", "value": 0.0 }
+        }
+      }
+    },
+    {
+      "name": "ort_reverse_sequence_lens_all_zero_initial_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_reverse_sequence_lens_all_zero",
+        "notes": "Diverges from the upstream test's inputs (inputs.w values [-0.1, 0.2, 1.0, -2.0, -1.0, 3.0] -> constant 0.2; inputs.initial_h values [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] -> constant 3.0; inputs.x values [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] -> constant 0.5); the expected output is recomputed by the CPU reference for the new inputs. In reverse direction, sequence_lens=0 must zero-fill Y and Y_h even when initial_h is nonzero. The answer is zero whatever those operands hold, so they are uniform: a kernel that passed the initial state through would emit 3."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 2], "data": { "kind": "constant", "value": 0.5 } },
+        "w": { "dtype": "float32", "shape": [1, 3, 2], "data": { "kind": "constant", "value": 0.2 } },
+        "r": { "dtype": "float32", "shape": [1, 3, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 6], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 0] } },
+        "initial_h": { "dtype": "float32", "shape": [1, 2, 3], "data": { "kind": "constant", "value": 3.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 2, 3], "tolerance": 0, "data": { "kind": "constant", "value": 0.0 } },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 3], "tolerance": 0, "data": { "kind": "constant", "value": 0.0 } }
+      }
+    },
+    {
+      "name": "ort_reverse_sequence_lens_mixed_zero_initial_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_reverse_sequence_lens_mixed_zero",
+        "notes": "In reverse direction, a zero-length batch lane must zero-fill its outputs instead of returning nonzero initial_h."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 3 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [-0.1, 0.2, 1.0, -2.0, -1.0, 3.0] }
+        },
+        "r": { "dtype": "float32", "shape": [1, 3, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 6], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 0] } },
+        "initial_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [0.5, -0.5, 0.1, 1.0, 2.0, 3.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 3],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [0.02999100275337696, -0.2913126051425934, 0.46211716532707214, 0.0, 0.0, 0.0, 0.06988588720560074, -0.6043677926063538, 0.8617231845855713, 0.0, 0.0, 0.0]
+          }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 3],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [0.02999100275337696, -0.2913126051425934, 0.46211716532707214, 0.0, 0.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_reverse_direction_with_explicit_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_reverse_direction",
+        "notes": "Valid reverse-direction RNN with explicit B, sequence_lens, and initial_h."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 3 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5, 1, 2],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352, 0.71518934, 0.60276335, 0.54488319, 0.42365479, 0.64589411, 0.4375872, 0.891773, 0.96366274, 0.38344151]
+          }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": [-0.74535543, 0.21360011, 1.0782362, 0.092641734, -1.0087538, -0.97021431]
+          }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [-0.7322467, -0.95795155, -0.058495734, -0.7271859, -0.29820377, -0.85114992, -0.097570196, 0.82271612, 0.1396943]
+          }
+        },
+        "b": { "dtype": "float32", "shape": [1, 6], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [5] } },
+        "initial_h": { "dtype": "float32", "shape": [1, 1, 3], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [5, 1, 1, 3],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [-0.55397642, 0.83026606, -0.51471221, -0.55358219, 0.8341592, -0.44313878, -0.60828412, 0.78948581, -0.34582433, -0.40591392, 0.89962566, -0.61860478, -0.56242156, 0.79118007, -0.872658]
+          }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 3],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [-0.55397642, 0.83026606, -0.51471221] }
+        }
+      }
+    },
+    {
+      "name": "ort_forward_one_step_initial_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_bidirectional_1",
+        "notes": "Diverges from the upstream test's inputs (inputs.r constant 1.0 -> values [1.0, 1.0, 1.0, 0.0]); the expected output is recomputed by the CPU reference for the new inputs. A one-step forward RNN verifies that initial_h contributes to the recurrence; R weights the two initial hidden values differently per unit, so each unit lands on its own answer."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1.0, 1.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 1.0 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 0.0] } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "initial_h": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [0.1, 0.2] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.97045194] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.97045194] }
+        }
+      }
+    },
+    {
+      "name": "ort_bidirectional_one_step_initial_state",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_bidirectional_1",
+        "notes": "Tiny bidirectional RNN with explicit B, sequence_lens, and initial_h."
+      },
+      "attrs": { "layout": 0, "direction": "bidirectional", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1.0, 1.0] } },
+        "w": { "dtype": "float32", "shape": [2, 2, 2], "data": { "kind": "constant", "value": 1.0 } },
+        "r": { "dtype": "float32", "shape": [2, 2, 2], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "sequence_lens": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } },
+        "initial_h": {
+          "dtype": "float32",
+          "shape": [2, 1, 2],
+          "data": { "kind": "values", "values": [0.1, 0.2, 0.3, 0.4] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.98009639, 0.99100745, 0.99100745] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [2, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.98009639, 0.99100745, 0.99100745] }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_initial_bias_batch3",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_simple_rnn_with_initial_bias" },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }
+        },
+        "w": { "dtype": "float32", "shape": [1, 5, 3], "data": { "kind": "constant", "value": 0.1 } },
+        "r": { "dtype": "float32", "shape": [1, 5, 5], "data": { "kind": "constant", "value": 0.1 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 10],
+          "data": { "kind": "values", "values": [0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 3, 5], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 3, 5], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_opset22_forward_default_activations_zero_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_ForwardDefaultActivations_OpSet22_CUDA",
+        "notes": "Supplies an explicit zero-valued B tensor to represent the optional ONNX bias omitted by the upstream case."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 3 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 1, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6] }
+        },
+        "r": { "dtype": "float32", "shape": [1, 3, 3], "data": { "kind": "constant", "value": 0.1 } },
+        "b": { "dtype": "float32", "shape": [1, 6], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 1, 3], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 3], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "ort_forward_default_attrs_five_steps_zero_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.DISABLED_RNN_default_attributes_and_forward_direction",
+        "notes": "Uses the upstream forward/default-activation tensors with explicit default attributes and a zero-valued B tensor."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 3 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5, 1, 2],
+          "data": {
+            "kind": "values",
+            "values": [0.061169811, 0.26296741, 0.80939841, 0.080034949, 0.21000224, 0.65772671, 0.20081005, 0.95461535, 0.93818879, 0.76034665]
+          }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": [-0.49937296, -0.082866333, 0.40978807, -0.33496389, -0.40066367, -0.72275674]
+          }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.16146433, -0.36291042, 0.61149812, -0.018460333, -0.19345543, 0.35175204, 0.84270394, 0.94917566, -0.76469761]
+          }
+        },
+        "b": { "dtype": "float32", "shape": [1, 6], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [5, 1, 1, 3], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 3], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "onnx_backend_simple_rnn_defaults_zero_bias",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_simple_rnn_defaults",
+        "notes": "Supplies an explicit zero-valued B tensor for the omitted optional bias and requests Y so the fixture checks both sequence and final hidden outputs."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "w": { "dtype": "float32", "shape": [1, 4, 2], "data": { "kind": "constant", "value": 0.1 } },
+        "r": { "dtype": "float32", "shape": [1, 4, 4], "data": { "kind": "constant", "value": 0.1 } },
+        "b": { "dtype": "float32", "shape": [1, 8], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 3, 4], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 3, 4], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "onnx_backend_rnn_seq_length_full_sequence",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_rnn_seq_length",
+        "notes": "This node omits sequence_lens and requests both Y and Y_h for a full-sequence recurrence."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 5 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 3],
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0]
+          }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 5, 3],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876]
+          }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 5, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 10],
+          "data": {
+            "kind": "values",
+            "values": [-1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527]
+          }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 3, 5], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 3, 5], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "parallel_vec4_hidden4_input4_batch2_seq3",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.2 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17, "scale": 0.1 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 1, 2, 4], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 4], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "parallel_hidden10_input7_batch3_seq3_not_divisible_by_4",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 10 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 3, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 10, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.15 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 10, 10],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.12 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 20],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17, "scale": 0.1 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 1, 3, 10], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 3, 10], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "parallel_hidden256_input64_batch4_seq2_shared_mem_edge",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 256 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 4, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 256, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.05 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.02 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17, "scale": 0.05 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 4, 256], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 4, 256], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "parallel_batch200_hidden8_input4_seq2",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 8 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 200, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 8, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.15 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.12 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17, "scale": 0.1 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 200, 8], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 200, 8], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "forward_large_hidden512_vec4",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 512 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 2, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 512, 64],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 512, 512],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.005, "cosStep": 0.019 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 1, 2, 512], "tolerance": 0.002 },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 512], "tolerance": 0.002 }
+      }
+    },
+    {
+      "name": "ort_caseB_empty",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 1, 2], "data": { "kind": "values", "values": [] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.5 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.3 } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.01 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [0, 1, 1, 2],
+          "data": { "kind": "values", "values": [] },
+          "tolerance": 0.001
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 2],
+          "data": { "kind": "values", "values": [0.0, 0.0] },
+          "tolerance": 0.001
+        }
+      },
+      "provenance": {
+        "notes": "A zero-length sequence leaves Y empty and Y_h zero whatever the weights hold, so they are uniform: a kernel that applied the bias once would emit tanh(0.01)."
+      }
+    },
+    {
+      "name": "fold_batch_over_65535_hidden4_seq1_forward",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 65537, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.3 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.19, "scale": 0.15 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.12 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17, "scale": 0.1 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 65537, 4], "tolerance": 0.00001 },
+        "y_h": { "dtype": "float32", "shape": [1, 65537, 4], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "global_path_hidden4096_seq3_b2_nonzero_clip",
+      "provenance": {
+        "notes": "Input size 63 is not a multiple of four, and hidden size 4096 gives a 4096x4096 recurrent weight matrix; nonzero clip (0.125) checks the clipped tanh activation at this scale."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4096, "clip": 0.125 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 63],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4096, 63],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4096, 4096],
+          "data": { "kind": "fillFloat32", "scale": 0.005, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8192],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.005, "cosStep": 0.019 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 1, 2, 4096], "tolerance": 0.01 },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 4096], "tolerance": 0.01 }
+      }
+    },
+    {
+      "name": "empty_seq_hidden4096_global_path_y_h_zero",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4096 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [0, 2, 64], "data": { "kind": "values", "values": [] } },
+        "w": { "dtype": "float32", "shape": [1, 4096, 64], "data": { "kind": "constant", "value": 0.05 } },
+        "r": { "dtype": "float32", "shape": [1, 4096, 4096], "data": { "kind": "constant", "value": 0.01 } },
+        "b": { "dtype": "float32", "shape": [1, 8192], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [0, 1, 2, 4096],
+          "data": { "kind": "values", "values": [] },
+          "tolerance": 0
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 4096],
+          "data": { "kind": "constant", "value": 0.0 },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "tanh_saturation_large_hidden_global_path_no_nan",
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4096 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 1, 32], "data": { "kind": "constant", "value": 1.0 } },
+        "w": { "dtype": "float32", "shape": [1, 4096, 32], "data": { "kind": "constant", "value": 1.0 } },
+        "r": { "dtype": "float32", "shape": [1, 4096, 4096], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [1, 8192], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 4096],
+          "data": { "kind": "constant", "value": 1.0 },
+          "tolerance": 0.0001
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 4096],
+          "data": { "kind": "constant", "value": 1.0 },
+          "tolerance": 0.0001
+        }
+      }
+    },
+    {
+      "name": "parallel_mixed_vector_hidden6",
+      "provenance": { "notes": "hidden=6 keeps aligned X/W as vec4<f32> while recurrent rows bind as vec2<f32>." },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 6 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.021, "cosStep": 0.033, "scale": 0.4 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 6, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.3 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 6, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.023, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.019, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 1, 2, 6], "tolerance": 0.00001 },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 6], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "layout1_batch_major",
+      "provenance": {
+        "source": "ONNX RNN-22 layout semantics and ONNX Runtime's CPU provider through the layout-0 transpose equivalence",
+        "notes": "Exercises batch-major RNN with batch=2 and sequence length 2. Inline expectations were generated by transposing X to layout 0, running ONNX Runtime's CPU provider, and transposing Y and Y_h back according to the ONNX layout contract."
+      },
+      "attrs": { "layout": 1, "direction": "forward", "hidden_size": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 1], "data": { "kind": "values", "values": [1.0, 2.0, 10.0, 20.0] } },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.5] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [0.1] } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 2, 1, 1],
+          "data": { "kind": "values", "values": [0.46211719512939453, 0.7803291082382202, 0.9999091625213623, 1.0] },
+          "tolerance": 0.000001
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [2, 1, 1],
+          "data": { "kind": "values", "values": [0.7803291082382202, 1.0] },
+          "tolerance": 0.000001
+        }
+      }
+    },
+    {
+      "name": "tiled_input_proj_subgroup_gemv_b5_h256",
+      "provenance": {
+        "notes": "A non-power-of-two batch size of 5 exercises tiled input projection followed by cooperative recurrence."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 256 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 5, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.047, "scale": 0.2 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 256, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.03 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023, "scale": 0.01 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.02 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 1, 5, 256], "tolerance": 0.0005, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 5, 256], "tolerance": 0.0005, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "parallel_input_proj_vec4_nonzero_clip",
+      "provenance": {
+        "notes": "Aligned vector inputs exercise nonzero pre-activation clipping across separate input-projection and recurrence passes."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 128, "clip": 0.125 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [32, 4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.047, "scale": 0.7 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 128, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.4 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.023, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.2 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [32, 1, 4, 128], "tolerance": 0.00001 },
+        "y_h": { "dtype": "float32", "shape": [1, 4, 128], "tolerance": 0.00001 }
+      }
+    },
+    {
+      "name": "parallel_input_proj_vector_hidden126_input64_batch17_seq8",
+      "provenance": {
+        "notes": "Two-pass mixed-vector branch: aligned X/W bind as vec4<f32>, while even non-vec4 recurrent rows bind as vec2<f32>."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 126 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8, 17, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.027, "scale": 0.2 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 126, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.007, "cosStep": 0.019, "scale": 0.03 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 126, 126],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.017, "scale": 0.02 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 252],
+          "data": { "kind": "fillFloat32", "sinStep": 0.003, "cosStep": 0.011, "scale": 0.03 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [8, 1, 17, 126], "tolerance": 0.0005 },
+        "y_h": { "dtype": "float32", "shape": [1, 17, 126], "tolerance": 0.0005 }
+      }
+    },
+    {
+      "name": "two_pass_blocked_hidden2_h1024_seq16_exact",
+      "provenance": {
+        "notes": "A large batch-one hidden state checks recurrent output across all hidden lanes. The bias is offset off zero so the hidden state settles at O(1) and the declared tolerance stays proportional to it."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1024 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16, 1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.1 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.017, "scale": 0.01 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.011, "scale": 0.002 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.3, "offset": 0.5 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [16, 1, 1, 1024], "tolerance": 0.0005, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 1024], "tolerance": 0.0005, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "subgroup_recur_h1024_seq16_nonzero_clip",
+      "provenance": {
+        "notes": "A speech-encoder-shaped recurrence with hidden size 1,024 verifies that clipping precedes Tanh during cooperative recurrence."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1024, "clip": 0.125 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16, 1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.3 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.017, "scale": 0.03 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.011, "scale": 0.01 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.003, "cosStep": 0.007, "scale": 0.3 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [16, 1, 1, 1024], "tolerance": 0.0005, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 1024], "tolerance": 0.0005, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "fast_seqlens_postmask_short_prefix_h4",
+      "provenance": {
+        "notes": "Checks projected recurrence plus the shared sequence mask: the sequence stops after two of four timesteps, so Y has a zero tail and Y_h gathers timestep one."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 4 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4, 2, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "w": { "dtype": "float32", "shape": [1, 4, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "r": { "dtype": "float32", "shape": [1, 4, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 8], "data": { "kind": "constant", "value": 0.1 } },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4, 1, 2, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.19737532, 0.19737532, 0.19737532, 0.19737532, 0.0, 0.0, 0.0, 0.0, 0.19737532, 0.19737532, 0.19737532, 0.19737532, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+          },
+          "tolerance": 0.00001
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 4],
+          "data": { "kind": "values", "values": [0.19737532, 0.19737532, 0.19737532, 0.19737532, 0.0, 0.0, 0.0, 0.0] },
+          "tolerance": 0.00001
+        }
+      }
+    },
+    {
+      "name": "packed_recurrent_hidden512_seq32_batch1_below_multiwg_band",
+      "provenance": {
+        "notes": "hidden=512 stays under the multiWorkgroupRecurrentPreferred band and batch=1 is under the tiled path's batch floor, so the transposed packed recurrence owns aligned long single-stream sequences. The bias is offset off zero so the hidden state settles at O(1) and the declared tolerance stays proportional to it."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 512 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [32, 1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.1 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 512, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.017, "scale": 0.01 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 512, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.011, "scale": 0.002 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.3, "offset": 0.5 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [32, 1, 1, 512], "tolerance": 0.0005, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 512], "tolerance": 0.0005, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "multiworkgroup_medium_row_h1280_seq16",
+      "provenance": {
+        "notes": "A hidden size of 1,280 exercises multi-workgroup recurrence with four outputs per workgroup inside the aligned [1,024, 2,048) band."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 1280 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [16, 1, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.1 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 1280, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.017, "scale": 0.01 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 1280, 1280],
+          "data": { "kind": "fillFloat32", "sinStep": 0.005, "cosStep": 0.011, "scale": 0.002 }
+        },
+        "b": { "dtype": "float32", "shape": [1, 2560], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [16, 1, 1, 1280], "tolerance": 0.0005, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 1280], "tolerance": 0.0005, "relTolerance": 0.0001 }
+      }
+    },
+    {
+      "name": "general_inith_no_sequence_lens",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/rnn/rnn_op_test.cc",
+        "test": "RNNTest.RNN_bidirectional_1",
+        "notes": "Diverges from the upstream test's inputs (inputs.r constant 1.0 -> values [1.0, 1.0, 1.0, 0.0]); the expected output is recomputed by the CPU reference for the new inputs. ONNX allows initial_h without sequence_lens. R gives each hidden unit a different view of initial_h, so for this one-step input tanh(W*x + R*h0) is tanh(2 + 0.3) and tanh(2 + 0.1), verifying the omitted-sequence-length input layout."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1.0, 1.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 1.0 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 0.0] } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "initial_h": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [0.1, 0.2] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.97045194] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 2],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.98009639, 0.97045194] }
+        }
+      }
+    },
+    {
+      "name": "general_inith_distinct_hidden_units",
+      "provenance": {
+        "notes": "Initial_h is supplied while sequence_lens is omitted. Per-unit W and R values produce distinct hidden outputs, making hidden-axis permutations observable."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "hidden_size": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1.0, 1.0] } },
+        "w": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [1.0, 0.5, 0.25, 2.0] } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "values", "values": [0.5, 0.25, 1.0, 0.5] } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "constant", "value": 0.0 } },
+        "initial_h": { "dtype": "float32", "shape": [1, 1, 2], "data": { "kind": "values", "values": [0.1, 0.2] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 1, 2], "tolerance": 0.000001 },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 2], "tolerance": 0.000001 }
+      }
+    },
+    {
+      "name": "reverse_hidden4104_general_state",
+      "provenance": {
+        "notes": "A reverse-direction RNN with hidden size 4,104 checks the base recurrence at the default 1e-5 tolerance, keeping forward and reverse results distinguishable."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 4104 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 1, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4104, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4104, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.0005, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8208],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.005, "cosStep": 0.019 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 1, 4104] },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 4104] }
+      }
+    },
+    {
+      "name": "reverse_hidden4104_seqlens_general_state",
+      "requires": { "limits": { "maxStorageBuffersPerShaderStage": 9 } },
+      "provenance": {
+        "notes": "A reverse-direction RNN with hidden size 4,104 and explicit sequence lengths checks partial sequence handling at the default 1e-5 tolerance."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 4104 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 2, 8],
+          "data": {
+            "kind": "values",
+            "values": [0.5, 0.515253, 0.529052, 0.540081, 0.547289, 0.549989, 0.547924, 0.541289, -0.5, -0.515253, -0.529052, -0.540081, -0.547289, -0.549989, -0.547924, -0.541289, 0.530719, 0.51722, 0.502079, 0.48674, 0.472665, 0.461197, 0.453427, 0.450097, -0.530719, -0.51722, -0.502079, -0.48674, -0.472665, -0.461197, -0.453427, -0.450097, 0.451525, 0.457574, 0.467667, 0.480843, 0.495846, 0.511244, 0.52557, 0.537459, -0.451525, -0.457574, -0.467667, -0.480843, -0.495846, -0.511244, -0.52557, -0.537459]
+          }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4104, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4104, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.0005, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8208],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.005, "cosStep": 0.019 }
+        },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [1, 3] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 1, 2, 4104] },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 4104] }
+      }
+    },
+    {
+      "name": "reverse_hidden4104_initial_state_general_state",
+      "requires": { "limits": { "maxStorageBuffersPerShaderStage": 9 } },
+      "provenance": {
+        "notes": "A reverse-direction RNN with hidden size 4,104 and supplied initial state checks state propagation at the default 1e-5 tolerance."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 4104 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4104, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4104, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.0005, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8208],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.005, "cosStep": 0.019 }
+        },
+        "initial_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.03, "sinStep": 0.009, "cosStep": 0.021 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 2, 4104] },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 4104] }
+      }
+    },
+    {
+      "name": "reverse_hidden4104_seqlens_initial_state_general_state",
+      "requires": { "limits": { "maxStorageBuffersPerShaderStage": 10 } },
+      "provenance": {
+        "notes": "A reverse-direction RNN with hidden size 4,104, sequence lengths, and supplied initial state checks their combined effect at the default 1e-5 tolerance."
+      },
+      "attrs": { "layout": 0, "direction": "reverse", "hidden_size": 4104 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 2, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.05, "sinStep": 0.013, "cosStep": 0.027 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 4104, 8],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.011, "cosStep": 0.023 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 4104, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.0005, "sinStep": 0.007, "cosStep": 0.017 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 8208],
+          "data": { "kind": "fillFloat32", "scale": 0.02, "sinStep": 0.005, "cosStep": 0.019 }
+        },
+        "sequence_lens": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [1, 2] } },
+        "initial_h": {
+          "dtype": "float32",
+          "shape": [1, 2, 4104],
+          "data": { "kind": "fillFloat32", "scale": 0.03, "sinStep": 0.009, "cosStep": 0.021 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [2, 1, 2, 4104] },
+        "y_h": { "dtype": "float32", "shape": [1, 2, 4104] }
+      }
+    },
+    {
+      "name": "bidirectional_per_direction_activations",
+      "provenance": {
+        "notes": "A bidirectional RNN assigns distinct activations and activation parameters to the forward and reverse slots. Both directions share weights over one timestep, so their outputs differ only through those activation choices; reusing the forward activation for the reverse direction makes the outputs incorrectly equal."
+      },
+      "attrs": {
+        "layout": 0,
+        "direction": "bidirectional",
+        "hidden_size": 1,
+        "activations": ["LeakyRelu", "Affine"],
+        "activation_alpha": [0.5, 3],
+        "activation_beta": [0.5]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.0] } },
+        "w": { "dtype": "float32", "shape": [2, 1, 1], "data": { "kind": "values", "values": [-2.0, -2.0] } },
+        "r": { "dtype": "float32", "shape": [2, 1, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [-1.0, -5.5] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [2, 1, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [-1.0, -5.5] }
+        }
+      }
+    },
+    {
+      "name": "hidden_size_and_clip_omitted_infer_h1",
+      "provenance": {
+        "source": "ONNX RNN-22 schema and ONNX Runtime's CPU provider",
+        "notes": "With hidden_size and clip omitted, hidden size is inferred as 1 from W/R, and the 3.2 pre-activation remains unclipped."
+      },
+      "attrs": { "layout": 0, "direction": "forward" },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [2.0] } },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.5] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [0.3, -0.1] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.9966824054718018] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 1],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.9966824054718018] }
+        }
+      }
+    },
+    {
+      "name": "hidden_size_omitted_explicit_clip_zero",
+      "provenance": {
+        "source": "ONNX RNN-22 schema and ONNX Runtime's CPU provider",
+        "notes": "hidden_size remains omitted and inferred as 1, while clip is present with the legal value 0. Every pre-activation is therefore clamped to zero before Tanh."
+      },
+      "attrs": { "layout": 0, "direction": "forward", "clip": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [2.0] } },
+        "w": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "values", "values": [1.5] } },
+        "r": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [0.3, -0.1] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1, 1, 1], "tolerance": 0, "data": { "kind": "constant", "value": 0.0 } },
+        "y_h": { "dtype": "float32", "shape": [1, 1, 1], "tolerance": 0, "data": { "kind": "constant", "value": 0.0 } }
+      }
+    },
+    {
+      "name": "softplus_activation_large_preactivation_finite",
+      "provenance": {
+        "notes": "Softplus(100) is finite and rounds to 100 in f32 even though a naive log(1 + exp(100)) overflows. Zero X, W, and R isolate the bias; a second unit checks Softplus(2). Expected values follow the ONNX RNN equation."
+      },
+      "attrs": { "hidden_size": 2, "activations": ["Softplus"] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "w": { "dtype": "float32", "shape": [1, 2, 1], "data": { "kind": "constant", "value": 0.0 } },
+        "r": { "dtype": "float32", "shape": [1, 2, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "b": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [100.0, 2.0, 0.0, 0.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 2],
+          "tolerance": 0.00001,
+          "data": { "kind": "values", "values": [100.0, 2.1269280110429727] }
+        },
+        "y_h": {
+          "dtype": "float32",
+          "shape": [1, 1, 2],
+          "tolerance": 0.00001,
+          "data": { "kind": "values", "values": [100.0, 2.1269280110429727] }
+        }
+      }
+    },
+    {
+      "name": "layout1_batch_major_projected_forward_h256",
+      "provenance": {
+        "notes": "A batch-major forward RNN large enough for the projected recurrence. The layout changes only how (timestep, batch) maps to a row."
+      },
+      "attrs": { "layout": 1, "direction": "forward", "hidden_size": 256 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4, 4, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.07 }
+        },
+        "w": {
+          "dtype": "float32",
+          "shape": [1, 256, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.05, "scale": 0.05 }
+        },
+        "r": {
+          "dtype": "float32",
+          "shape": [1, 256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.02, "cosStep": 0.09, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.17, "scale": 0.02 }
+        }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 4, 1, 256], "tolerance": 0.00001, "relTolerance": 0.0001 },
+        "y_h": { "dtype": "float32", "shape": [4, 1, 256], "tolerance": 0.00001, "relTolerance": 0.0001 }
+      }
+    }
+  ]
+}

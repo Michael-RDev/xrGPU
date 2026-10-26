@@ -1,0 +1,58 @@
+{
+  "domain": "ai.onnx",
+  "name": "BitwiseNot",
+  "sinceVersion": 18,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "typeConstraints": { "T": ["uint32", "int32", "int16", "uint8", "int8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "shapeContract": "numel(shapes.x) == numel(shapes.y)", "logicalDtype": "tensorDtypes.y" },
+  "when": ["shapeContract"],
+  "variants": [
+    {
+      "id": "elementwise_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.x) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitwiseNot.Vec4",
+          "shader": "bitwise-not.wgsl.jinja",
+          "derive": { "vectorizedSpec": true },
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "elementwise",
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitwiseNot",
+          "shader": "bitwise-not.wgsl.jinja",
+          "derive": { "vectorizedSpec": false },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

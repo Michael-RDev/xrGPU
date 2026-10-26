@@ -1,0 +1,57 @@
+{
+  "domain": "ai.onnx",
+  "name": "Constant",
+  "sinceVersion": 24,
+  "inputs": {},
+  "outputs": { "output": { "dtype": "T" } },
+  "attributes": { "value": {}, "value_float": {}, "value_floats": {} },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int16", "uint32", "int8", "uint8", "bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T", "count": "numel(shapes.output)" },
+  "variants": [
+    {
+      "id": "literal_values",
+      "when": ["has(attrs, \"value\") != has(attrs, \"value_floats\")", "not has(attrs, \"value_float\")", "f16Ok(dtypes.T)", "(has(attrs, \"value\") and attrs.value.dtype == logicalDtypes.T and sameShape(attrs.value.shape, shapes.output) and numel(shapes.output) == attrs.value.values|length) or (has(attrs, \"value_floats\") and logicalDtypes.T == \"float32\" and ranks.output == 1 and numel(shapes.output) == attrs.value_floats|length)"],
+      "derive": {
+        "hasValues": true,
+        "valueCount": "attrs.value.values|length if has(attrs, \"value\") else attrs.value_floats|length"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Constant",
+          "shader": "constant.wgsl.jinja",
+          "derive": { "values": "attrs.value.values if has(attrs, \"value\") else attrs.value_floats" },
+          "bindings": ["output"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "fill_float",
+      "when": ["has(attrs, \"value_float\")", "not has(attrs, \"value\") and not has(attrs, \"value_floats\")", "logicalDtypes.T == \"float32\"", "ranks.output == 0"],
+      "derive": { "hasValues": false, "valueCount": 0 },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Constant",
+          "shader": "constant.wgsl.jinja",
+          "derive": { "values": [] },
+          "bindings": [
+            "output",
+            { "name": "params", "struct": [{ "name": "value", "type": "f32", "value": "attrs.value_float" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

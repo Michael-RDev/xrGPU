@@ -1,0 +1,136 @@
+{
+  "domain": "ai.onnx",
+  "name": "TensorScatter",
+  "sinceVersion": 24,
+  "inputs": {
+    "past": { "onnx": "past_cache", "dtype": "T" },
+    "update": { "dtype": "T" },
+    "writeIndices": {
+      "onnx": "write_indices",
+      "dtype": "I",
+      "rank": 1,
+      "optional": true,
+      "storage": "uint32",
+      "narrowing": "checked"
+    }
+  },
+  "outputs": { "present": { "onnx": "present_cache", "dtype": "T", "rank": "ranks.past", "shape": "shapes.past" } },
+  "attributes": { "axis": { "default": -2 }, "mode": { "default": "linear" } },
+  "attributeConstraints": { "mode": { "values": ["linear", "circular"] } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8", "bool"],
+    "I": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "when": ["(attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.past) < ranks.past", "(attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.past) >= 1", "f16Ok(dtypes.T)", "numel(shapes.past) == numel(shapes.present)", "ranks.past == ranks.present", "ranks.past == ranks.update", "ranks.past >= 2"],
+  "bindings": {
+    "update": { "elementType": "$scalar" },
+    "present": { "elementType": "$scalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.update)" }] },
+    "writeIndices": { "elementType": "u32" }
+  },
+  "variants": [
+    {
+      "id": "no_write_indices",
+      "priority": 0,
+      "when": ["not present.writeIndices"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "copyElementType": "(\"vec4<\" ~ dtypes.T ~ \">\") if numel(shapes.present) % 4 == 0 else dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "TensorScatter.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))",
+            "copyWidth": "16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4)",
+            "elementCount": "numel(shapes.present)",
+            "scalarTailSafe": "numel(shapes.present) % 4 != 0"
+          },
+          "bindings": [
+            { "arg": "past", "name": "src", "elementType": "$copyElementType" },
+            { "arg": "present", "name": "dst", "elementType": "$copyElementType" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "scatter",
+          "name": "TensorScatter.Scatter",
+          "shader": "tensor-scatter.wgsl.jinja",
+          "derive": {
+            "pastShape": "shapes.past",
+            "updateShape": "shapes.update",
+            "rank": "ranks.past",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.past",
+            "circular": "attrs.mode == \"circular\"",
+            "hasIndices": "false"
+          },
+          "bindings": ["update", "present", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.update)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.update)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "with_write_indices",
+      "priority": 20,
+      "when": ["present.writeIndices", "dtypes.I == \"u32\""],
+      "derive": {
+        "scalar": "dtypes.T",
+        "copyElementType": "(\"vec4<\" ~ dtypes.T ~ \">\") if numel(shapes.present) % 4 == 0 else dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "copy",
+          "name": "TensorScatter.Copy",
+          "shader": "scatter-flat-copy.wgsl.jinja",
+          "derive": {
+            "count": "ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))",
+            "copyWidth": "16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4)",
+            "elementCount": "numel(shapes.present)",
+            "scalarTailSafe": "numel(shapes.present) % 4 != 0"
+          },
+          "bindings": [
+            { "arg": "past", "name": "src", "elementType": "$copyElementType" },
+            { "arg": "present", "name": "dst", "elementType": "$copyElementType" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.present), 16 if dtypes.T == \"f16\" and numel(shapes.present) % 4 != 0 else (8 if numel(shapes.present) % 4 != 0 else 4))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        },
+        {
+          "id": "scatter",
+          "name": "TensorScatter.Scatter",
+          "shader": "tensor-scatter.wgsl.jinja",
+          "derive": {
+            "pastShape": "shapes.past",
+            "updateShape": "shapes.update",
+            "rank": "ranks.past",
+            "axisSpec": "attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.past",
+            "circular": "attrs.mode == \"circular\"",
+            "hasIndices": "true"
+          },
+          "bindings": ["update", "writeIndices", "present", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.update)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.update)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

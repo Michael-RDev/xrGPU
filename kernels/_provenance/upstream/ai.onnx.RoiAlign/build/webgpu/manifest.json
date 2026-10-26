@@ -1,0 +1,143 @@
+{
+  "domain": "ai.onnx",
+  "name": "RoiAlign",
+  "sinceVersion": 22,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T", "rank": 4 },
+    "rois": { "dtype": "T", "rank": 2 },
+    "batch_indices": { "dtype": "I", "rank": 1, "storage": "uint32", "narrowing": "checked" }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": 4,
+      "shape": ["dim(shapes.rois, 0)", "dim(shapes.x, 1)", "attrs.output_height", "attrs.output_width"]
+    }
+  },
+  "attributes": {
+    "coordinate_transformation_mode": { "default": "half_pixel" },
+    "mode": { "default": "avg" },
+    "output_height": { "default": 1 },
+    "output_width": { "default": 1 },
+    "sampling_ratio": { "default": 0 },
+    "spatial_scale": { "default": 1 }
+  },
+  "attributeConstraints": {
+    "coordinate_transformation_mode": { "values": ["half_pixel", "output_half_pixel"] },
+    "mode": { "values": ["avg", "max"] }
+  },
+  "typeConstraints": { "T": ["float32", "float16"], "I": ["int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "TARGET_SPLIT_WORKGROUPS": { "default": 1024 },
+    "MAX_SPLITS": { "default": 64 },
+    "COOPERATIVE_MIN_SAMPLE_RATIO": { "default": 4096 },
+    "SPLIT_MIN_SAMPLE_RATIO": { "default": 65536 }
+  },
+  "derive": {
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "baseContract": "ranks.x == 4 and ranks.rois == 2 and dim(shapes.rois, 1) == 4 and ranks.batch_indices == 1 and dim(shapes.batch_indices, 0) == dim(shapes.rois, 0) and ranks.y == 4 and dim(shapes.y, 0) == dim(shapes.rois, 0) and dim(shapes.y, 1) == dim(shapes.x, 1) and dim(shapes.y, 2) == attrs.output_height and dim(shapes.y, 3) == attrs.output_width and tensorDtypes.batch_indices == \"uint32\" and f16Ok(dtypes.T)",
+    "adaptiveContract": "baseContract and attrs.sampling_ratio == 0",
+    "splitCount": "min(tunables.MAX_SPLITS, max(2, ceilDiv(tunables.TARGET_SPLIT_WORKGROUPS, max(1, numel(shapes.y)))))",
+    "splitWorkgroups": "numel(shapes.y) * splitCount",
+    "dispatchLimit": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "splitScratchFits": "4 * splitWorkgroups <= storageBufferLimit",
+    "splitDispatchFits": "ceilDiv(splitWorkgroups, dispatchLimit) <= dispatchLimit",
+    "cooperativeDispatchFits": "ceilDiv(numel(shapes.y), dispatchLimit) <= dispatchLimit",
+    "threadDispatchFits": "ceilDiv(ceilDiv(numel(shapes.y), tunables.WORKGROUP_SIZE), dispatchLimit) <= dispatchLimit",
+    "scalar": "dtypes.T",
+    "mode": "attrs.mode",
+    "coordinateMode": "attrs.coordinate_transformation_mode"
+  },
+  "bindings": {
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "samplingRatio", "type": "u32", "value": "attrs.sampling_ratio" },
+        { "name": "spatialScale", "type": "f32", "value": "attrs.spatial_scale" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "nchw2d_cooperative_split",
+      "priority": 6,
+      "when": ["adaptiveContract", "dim(shapes.x, 2) * dim(shapes.x, 3) >= tunables.SPLIT_MIN_SAMPLE_RATIO * dim(shapes.y, 2) * dim(shapes.y, 3)", "splitScratchFits", "splitDispatchFits", "threadDispatchFits"],
+      "derive": {
+        "splitPass": true,
+        "splits": "splitCount",
+        "tileX": "32 if numel(shapes.y) >= 16 else 16",
+        "tileY": "8 if numel(shapes.y) >= 16 else 16"
+      },
+      "intermediates": [{ "id": "roi_split_partial", "dtype": "float32", "shape": "[splitWorkgroups]" }],
+      "passes": [
+        {
+          "id": "partial",
+          "name": "RoiAlign.CooperativeSplit",
+          "shader": "roi-align-cooperative.wgsl.jinja",
+          "bindings": [
+            "x",
+            "rois",
+            "batch_indices",
+            { "scratch": "roi_split_partial", "name": "partial", "elementType": "f32" },
+            "params"
+          ],
+          "dispatch": { "x": "min(splitWorkgroups, 65535)", "y": "ceilDiv(splitWorkgroups, 65535)", "z": 1 }
+        },
+        {
+          "id": "combine",
+          "name": "RoiAlign.SplitCombine",
+          "shader": "roi-align-split-combine.wgsl.jinja",
+          "bindings": [
+            { "scratch": "roi_split_partial", "name": "partial", "buffer": "read-only-storage", "elementType": "f32" },
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_cooperative",
+      "priority": 5,
+      "when": ["adaptiveContract", "dim(shapes.x, 2) * dim(shapes.x, 3) >= tunables.COOPERATIVE_MIN_SAMPLE_RATIO * dim(shapes.y, 2) * dim(shapes.y, 3)", "cooperativeDispatchFits"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RoiAlign.Cooperative",
+          "shader": "roi-align-cooperative.wgsl.jinja",
+          "bindings": ["x", "rois", "batch_indices", "y", "params"],
+          "dispatch": { "x": "min(numel(shapes.y), 65535)", "y": "ceilDiv(numel(shapes.y), 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "when": ["baseContract", "attrs.sampling_ratio >= 0", "threadDispatchFits"],
+      "supersededBy": ["nchw2d_cooperative_split", "nchw2d_cooperative"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RoiAlign",
+          "shader": "roi-align.wgsl.jinja",
+          "bindings": ["x", "rois", "batch_indices", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "domain": "com.microsoft",
+  "name": "FastGelu",
+  "sinceVersion": 1,
+  "inputs": { "X": { "dtype": "T" }, "bias": { "dtype": "T", "rank": 1, "optional": true } },
+  "outputs": { "Y": { "dtype": "T", "rank": "ranks.X", "shape": "shapes.X" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "buffersFit": "numel(shapes.X) * dtypeBytes(dtypes.T) <= storageBufferLimit and numel(shapes.Y) * dtypeBytes(dtypes.T) <= storageBufferLimit and (not present.bias or numel(shapes.bias) * dtypeBytes(dtypes.T) <= storageBufferLimit)",
+    "dispatchFits": "numel(shapes.X) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * workgroupSize * 4",
+    "baseOk": "workgroupSize > 0 and ranks.X >= 1 and numel(shapes.X) == numel(shapes.Y) and f16Ok(dtypes.T) and buffersFit and dispatchFits",
+    "biasOk": "present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == dim(shapes.X, ranks.X - 1)",
+    "noBiasOk": "not present.bias",
+    "vec4Ok": "numel(shapes.X) > 0 and numel(shapes.X) % 4 == 0 and dim(shapes.X, ranks.X - 1) % 4 == 0",
+    "scalar": "dtypes.T"
+  },
+  "when": ["baseOk"],
+  "bindings": {
+    "x": { "arg": "X", "elementType": "$vectorScalar" },
+    "y": { "arg": "Y", "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X) / 4" }] },
+    "x_x": { "arg": "X", "name": "x", "elementType": "$scalar" },
+    "y_y": { "arg": "Y", "name": "y", "elementType": "$scalar" },
+    "params_main": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X)" }] }
+  },
+  "variants": [
+    {
+      "id": "vec4_bias",
+      "priority": 30,
+      "when": ["biasOk", "vec4Ok"],
+      "derive": {
+        "vec4": true,
+        "vec4Tail": false,
+        "hasBias": true,
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "hidden": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FastGelu.Vec4Bias",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": ["x", { "arg": "bias", "elementType": "$scalar", "length": "$hidden" }, "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_no_bias",
+      "priority": 25,
+      "when": ["noBiasOk", "vec4Ok"],
+      "derive": { "vec4": true, "vec4Tail": false, "hasBias": false, "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FastGelu.Vec4",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail_bias",
+      "priority": 20,
+      "when": ["biasOk"],
+      "derive": {
+        "vec4": false,
+        "vec4Tail": "numel(shapes.X) > 0",
+        "hasBias": true,
+        "hidden": "dim(shapes.X, ranks.X - 1) if dim(shapes.X, ranks.X - 1) > 0 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FastGelu.Vec4TailBias",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": ["x_x", "bias", "y_y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.X), 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.X), 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail_no_bias",
+      "priority": 15,
+      "when": ["noBiasOk"],
+      "derive": { "vec4": false, "vec4Tail": "numel(shapes.X) > 0", "hasBias": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "FastGelu.Vec4Tail",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": ["x_x", "y_y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.X), 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.X), 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

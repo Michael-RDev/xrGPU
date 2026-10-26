@@ -1,0 +1,1283 @@
+{
+  "fixtureArrays": {
+    "ort_sectioned_rank3_input_x": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+    "ort_sectioned_rank3_output_y": [0.6, 1.42, 2.34, 4.1, 5.87, 7.98, 6, 7.12, 8.34, 10.7, 13.49, 16.62, 11.9, 13.37, 14.94, 19.55, 23.51, 27.81, 17.6, 19.37, 21.24, 27.05, 32.03, 37.35],
+    "ort_interleaved_rank4_output_y": [0.4, 1.05, 1.345, 2.46, 2.39, 4.21, 3.25, 4.925, 4.395, 6.995, 5.64, 9.405, 5.8, 7.65, 7.045, 10.08, 8.39, 12.85, 8.95, 12.425, 10.395, 15.515, 11.94, 18.945]
+  },
+  "cases": [
+    {
+      "name": "rank4_odd_head_even_partial_rotation",
+      "provenance": {
+        "source": "onnxruntime/contrib_ops/cuda/bert/mrotary_embedding_impl.cu",
+        "notes": "The effective rotary dimension is even while the full head size is odd, leaving one unrotated tail element that must be copied unchanged."
+      },
+      "attrs": {
+        "num_heads": 1,
+        "rotary_embedding_dim": 4,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [1, 1, 0]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 2, 5], "data": { "kind": "linspace", "start": -1.25, "end": 1.5 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 0] }
+        },
+        "cos": { "dtype": "float32", "shape": [3, 2], "data": { "kind": "linspace", "start": 0.25, "end": 1.0 } },
+        "sin": { "dtype": "float32", "shape": [3, 2], "data": { "kind": "linspace", "start": -0.5, "end": 0.5 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 2, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_sectioned_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "ContribOpMRotaryEmbeddingTest.SectionedRank3",
+        "notes": "Pinned from ORT. Sectioned layout over three one-column sections, so each cache column is fed by a different position stream (T=[0,1], H=[1,2], W=[2,3]) and a stream mix-up changes every output."
+      },
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "scale": 1,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 12],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_input_x" } }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 3] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.01, 1.02, 1.1, 1.11, 1.12, 1.2, 1.21, 1.22, 1.3, 1.31, 1.32] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.1, 0.11, 0.12, 0.15, 0.16, 0.17, 0.2, 0.21, 0.22, 0.25, 0.26, 0.27] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 12],
+          "tolerance": 0.00001,
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_output_y" } }
+        }
+      }
+    },
+    {
+      "name": "ort_interleaved_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "ContribOpMRotaryEmbeddingTest.InterleavedRank4",
+        "notes": "Pinned from ORT. Interleaved mrope_layout together with interleaved rotation pairing and a non-unit scale, so the two independent 'interleaved' knobs and the scale are exercised at once."
+      },
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 1,
+        "interleaved": 1,
+        "scale": 0.5,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_input_x" } }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 3] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.01, 1.02, 1.1, 1.11, 1.12, 1.2, 1.21, 1.22, 1.3, 1.31, 1.32] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.1, 0.11, 0.12, 0.15, 0.16, 0.17, 0.2, 0.21, 0.22, 0.25, 0.26, 0.27] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 6],
+          "tolerance": 0.00001,
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_interleaved_rank4_output_y" } }
+        }
+      }
+    },
+    {
+      "name": "rank3_layout1_interleaved0",
+      "provenance": {
+        "notes": "Interleaved mrope_layout with the split (non-interleaved) rotation pairing — the layout/pairing knobs are independent, and this is the combination neither pinned case covers."
+      },
+      "attrs": {
+        "num_heads": 4,
+        "rotary_embedding_dim": 0,
+        "mrope_layout": 1,
+        "interleaved": 0,
+        "scale": 1,
+        "mrope_section": [2, 1, 1]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 3, 32], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 3],
+          "data": { "kind": "values", "values": [0, 1, 2, 1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7] }
+        },
+        "cos": { "dtype": "float32", "shape": [8, 4], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } },
+        "sin": { "dtype": "float32", "shape": [8, 4], "data": { "kind": "linspace", "start": 1.0, "end": -1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 32], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "rank4_layout0_partial_rotary_tail",
+      "provenance": {
+        "notes": "Sectioned layout with rotary_embedding_dim < head_size, so the lanes past the rotary window copy their tail values unchanged."
+      },
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 8,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "scale": 1,
+        "mrope_section": [1, 2, 1]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 2, 4, 12], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 5] }
+        },
+        "cos": { "dtype": "float32", "shape": [6, 4], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } },
+        "sin": { "dtype": "float32", "shape": [6, 4], "data": { "kind": "linspace", "start": 1.0, "end": -1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 4, 12], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "rank3_text_only_streams_collapse",
+      "provenance": {
+        "notes": "Text-only tokens set T == H == W, which ORT documents as reducing M-RoPE to standard RoPE; the section split must then become unobservable."
+      },
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 4, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3] }
+        },
+        "cos": { "dtype": "float32", "shape": [8, 4], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } },
+        "sin": { "dtype": "float32", "shape": [8, 4], "data": { "kind": "linspace", "start": 1.0, "end": -1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 16], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "f16_rank4_layout1_interleaved",
+      "provenance": {
+        "notes": "The interleaved layout uses float16 storage, including float16 rounding of the scaled cache intermediate before pairing."
+      },
+      "attrs": {
+        "rotary_embedding_dim": 0,
+        "mrope_layout": 1,
+        "interleaved": 1,
+        "scale": 0.3,
+        "mrope_section": [2, 2, 2]
+      },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [1, 2, 3, 12], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 3],
+          "data": { "kind": "values", "values": [0, 1, 2, 1, 2, 3, 2, 3, 4] }
+        },
+        "cos": { "dtype": "float16", "shape": [6, 6], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } },
+        "sin": { "dtype": "float16", "shape": [6, 6], "data": { "kind": "linspace", "start": 1.0, "end": -1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 2, 3, 12], "tolerance": 0.01, "relTolerance": 0.01 } }
+    },
+    {
+      "name": "rank3_scale_half_sectioned",
+      "provenance": { "notes": "Non-unit scale on the sectioned layout; scale multiplies both gathered cos and sin." },
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 0,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "scale": 0.5,
+        "mrope_section": [1, 1, 2]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 3, 3, 4, 4, 0, 0, 1] }
+        },
+        "cos": { "dtype": "float32", "shape": [5, 4], "data": { "kind": "linspace", "start": -1.0, "end": 1.0 } },
+        "sin": { "dtype": "float32", "shape": [5, 4], "data": { "kind": "linspace", "start": 1.0, "end": -1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 16], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "vector_boundary_float32_rank3_d8_layout0_zero1",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 8,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [0, 3, 1],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 5, 24],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 5, 24], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float32_rank3_d16_layout0_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 16,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [1, 2, 5],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 5, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 5, 48], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float32_rank3_d24_layout0_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 24,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [1, 2, 9],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 5, 72],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 5, 72], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float32_rank4_d8_layout1_zero1",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 8,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [0, 3, 1],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 5, 8], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float32_rank4_d16_layout1_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 16,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [1, 2, 5],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 5, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 5, 16], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float32_rank4_d24_layout1_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 24,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [1, 2, 9],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [2, 3, 5, 24],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 5, 24], "tolerance": 0.00001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank3_d8_layout0_zero1",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 8,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [0, 3, 1],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 5, 24],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 5, 24], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank3_d16_layout0_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 16,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [1, 2, 5],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 5, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 5, 48], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank3_d24_layout0_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 24,
+        "interleaved": 0,
+        "mrope_layout": 0,
+        "mrope_section": [1, 2, 9],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 5, 72],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 5, 72], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank4_d8_layout1_zero1",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 8,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [0, 3, 1],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 5, 8], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank4_d16_layout1_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 16,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [1, 2, 5],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 5, 16],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 5, 16], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "vector_boundary_float16_rank4_d24_layout1_zero0",
+      "attrs": {
+        "num_heads": 3,
+        "rotary_embedding_dim": 24,
+        "interleaved": 0,
+        "mrope_layout": 1,
+        "mrope_section": [1, 2, 9],
+        "scale": 0.3
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3, 5, 24],
+          "data": { "kind": "fillFloat32", "sinStep": 0.113, "cosStep": 0.317, "scale": 3.0 }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "cycle", "values": [0, 4, 2, 1, 3, 4, 0] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.213, "cosStep": 0.437, "scale": 0.71 }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [5, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.619, "cosStep": 0.137, "scale": 0.83 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3, 5, 24], "tolerance": 0.01, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Aligned vector pairs with a partial final workgroup, section-crossing cache columns, multiple batches, non-unit scale and both tensor ranks. Zero temporal section is covered at the smallest head width."
+      }
+    },
+    {
+      "name": "ort_partial_rotary_dim_copies_tail_rank3",
+      "attrs": {
+        "num_heads": 1,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "scale": 1,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 8],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, 0, 0] } },
+        "cos": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }
+        },
+        "sin": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 8], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_empty_rank3_input",
+      "attrs": { "num_heads": 1, "mrope_layout": 0, "interleaved": 0, "mrope_section": [0, 0, 0] },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 1, 0], "data": { "kind": "values", "values": [] } },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, 0, 0] } },
+        "cos": { "dtype": "float32", "shape": [1, 0], "data": { "kind": "values", "values": [] } },
+        "sin": { "dtype": "float32", "shape": [1, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1, 0], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_empty_rank4_input",
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 2, 0, 6], "data": { "kind": "values", "values": [] } },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 0], "data": { "kind": "values", "values": [] } },
+        "cos": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } },
+        "sin": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2, 0, 6], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_sectioned_rank3_f16",
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 0,
+        "interleaved": 0,
+        "scale": 1,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 12],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_input_x" } }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 3] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.01, 1.02, 1.1, 1.11, 1.12, 1.2, 1.21, 1.22, 1.3, 1.31, 1.32] }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.1, 0.11, 0.12, 0.15, 0.16, 0.17, 0.2, 0.21, 0.22, 0.25, 0.26, 0.27] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 2, 12],
+          "tolerance": 0.01,
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_output_y" } },
+          "relTolerance": 0.01
+        }
+      }
+    },
+    {
+      "name": "ort_interleaved_rank4_f16",
+      "attrs": {
+        "num_heads": 2,
+        "rotary_embedding_dim": 6,
+        "mrope_layout": 1,
+        "interleaved": 1,
+        "scale": 0.5,
+        "mrope_section": [1, 1, 1]
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_sectioned_rank3_input_x" } }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 2],
+          "data": { "kind": "values", "values": [0, 1, 1, 2, 2, 3] }
+        },
+        "cos": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.01, 1.02, 1.1, 1.11, 1.12, 1.2, 1.21, 1.22, 1.3, 1.31, 1.32] }
+        },
+        "sin": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.1, 0.11, 0.12, 0.15, 0.16, 0.17, 0.2, 0.21, 0.22, 0.25, 0.26, 0.27] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 6],
+          "tolerance": 0.01,
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_interleaved_rank4_output_y" } },
+          "relTolerance": 0.01
+        }
+      }
+    },
+    {
+      "name": "ort_oob_negative_stream0",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [-1, 0, 0] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, -5.0, -6.0, 4.0, 2.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_upper_bound_stream0",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [2, 0, 0] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, -5.0, -6.0, 4.0, 2.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_high_stream0",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [2147483647, 0, 0] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, -5.0, -6.0, 4.0, 2.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_low_stream0",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [-2147483648, 0, 0] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, -5.0, -6.0, 4.0, 2.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_negative_stream1",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, -1, 0] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, 2.0, -6.0, 1.0, 5.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_upper_bound_stream1",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, 2, 0] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, 2.0, -6.0, 1.0, 5.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_high_stream1",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [0, 2147483647, 0] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, 2.0, -6.0, 1.0, 5.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_low_stream1",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [0, -2147483648, 0] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, 2.0, -6.0, 1.0, 5.0, 3.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_negative_stream2",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, 0, -1] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, -5.0, 3.0, 1.0, 2.0, 6.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_upper_bound_stream2",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": { "dtype": "int32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [0, 0, 2] } },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, -5.0, 3.0, 1.0, 2.0, 6.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_high_stream2",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [0, 0, 2147483647] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, -5.0, 3.0, 1.0, 2.0, 6.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_oob_saturated_low_stream2",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/mrotary_embedding_op_test.cc",
+        "test": "PositionIdsOOBPassthroughAllStreams",
+        "notes": "Each invalid stream copies only its own rotation pair. Values outside int32 are saturated by the host projection."
+      },
+      "attrs": { "num_heads": 1, "rotary_embedding_dim": 6, "mrope_section": [1, 1, 1] },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 1, 1],
+          "data": { "kind": "values", "values": [0, 0, -2147483648] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "sin": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 1, 1, 6],
+          "data": { "kind": "values", "values": [-4.0, -5.0, 3.0, 1.0, 2.0, 6.0] }
+        }
+      }
+    },
+    {
+      "name": "oob_mixed_rank3_float32_interleaved0",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 0, "interleaved": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 16], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "oob_mixed_rank3_float32_interleaved1",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 1, "interleaved": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 16], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "oob_mixed_rank3_float16_interleaved0",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 0, "interleaved": 0 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2, 16], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "oob_mixed_rank3_float16_interleaved1",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 1, "interleaved": 1 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2, 16], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2, 16], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "oob_mixed_rank4_float32_interleaved0",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 0, "interleaved": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 2, 8], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 8], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "oob_mixed_rank4_float32_interleaved1",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 1, "interleaved": 1 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 2, 2, 8], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 8], "tolerance": 0.00001, "relTolerance": 0.00001 } }
+    },
+    {
+      "name": "oob_mixed_rank4_float16_interleaved0",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 0, "interleaved": 0 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2, 2, 8], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2, 2, 8], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "oob_mixed_rank4_float16_interleaved1",
+      "attrs": { "num_heads": 2, "mrope_section": [2, 1, 1], "mrope_layout": 1, "interleaved": 1 },
+      "inputs": {
+        "x": { "dtype": "float16", "shape": [2, 2, 2, 8], "data": { "kind": "linspace", "start": -2.0, "end": 2.0 } },
+        "positionIds": {
+          "dtype": "int32",
+          "shape": [3, 2, 2],
+          "data": { "kind": "values", "values": [-1, 0, 1, 2, 0, -1, 2, 1, 2, 1, 0, -1] }
+        },
+        "cos": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": 0.1, "end": 0.8 } },
+        "sin": { "dtype": "float16", "shape": [2, 4], "data": { "kind": "linspace", "start": -0.8, "end": -0.1 } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 2, 2, 8], "tolerance": 0.002, "relTolerance": 0.001 } }
+    }
+  ]
+}

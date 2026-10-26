@@ -1,0 +1,67 @@
+{
+  "cases": [
+    {
+      "name": "linear-attention-standard-gqa-f32",
+      "preset": "smoke",
+      "vars": { "batch": 1, "seq": 32, "qHeads": 4, "kvHeads": 2, "dk": 16, "dv": 16 },
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "linear", "scale": 0.25 },
+      "inputs": {
+        "queryT": { "shape": [1, 32, 64], "dtype": "float32", "dist": "normal", "seed": 401, "scale": 0.2 },
+        "keyT": { "shape": [1, 32, 32], "dtype": "float32", "dist": "normal", "seed": 402, "scale": 0.2 },
+        "valueT": { "shape": [1, 32, 32], "dtype": "float32", "dist": "normal", "seed": 403, "scale": 0.2 }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 32, 64], "dtype": "float32" },
+        "presentStateT": { "shape": [1, 2, 16, 16], "dtype": "float32" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          { "type": "gflops", "value": "2 * args.batch * args.seq * (args.qHeads + args.kvHeads) * args.dk * args.dv" }
+        ]
+      }
+    },
+    {
+      "name": "linear-attention-standard-gated-delta-state-f16",
+      "preset": "smoke",
+      "vars": { "batch": 1, "seq": 32, "qHeads": 4, "kvHeads": 2, "dk": 16, "dv": 16 },
+      "attrs": { "q_num_heads": 4, "kv_num_heads": 2, "update_rule": "gated_delta", "scale": 0.25 },
+      "inputs": {
+        "queryT": { "shape": [1, 32, 64], "dtype": "float16", "dist": "normal", "seed": 411, "scale": 0.2 },
+        "keyT": { "shape": [1, 32, 32], "dtype": "float16", "dist": "normal", "seed": 412, "scale": 0.2 },
+        "valueT": { "shape": [1, 32, 32], "dtype": "float16", "dist": "normal", "seed": 413, "scale": 0.2 },
+        "pastStateT": { "shape": [1, 2, 16, 16], "dtype": "float16", "dist": "normal", "seed": 414, "scale": 0.1 },
+        "decayT": {
+          "shape": [1, 32, 32],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 415,
+          "scale": 0.19,
+          "offset": -0.2
+        },
+        "betaT": {
+          "shape": [1, 32, 2],
+          "dtype": "float16",
+          "dist": "uniform",
+          "seed": 416,
+          "scale": 0.5,
+          "offset": 0.4
+        }
+      },
+      "outputs": {
+        "outputT": { "shape": [1, 32, 64], "dtype": "float16" },
+        "presentStateT": { "shape": [1, 2, 16, 16], "dtype": "float16" }
+      },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * args.batch * args.seq * (args.qHeads + 2 * args.kvHeads) * args.dk * args.dv"
+          }
+        ]
+      }
+    }
+  ],
+  "tunableSpace": { "tileV": [4, 8], "gatedTileV": [2, 4], "dvGroups": [1, 2, 4] }
+}

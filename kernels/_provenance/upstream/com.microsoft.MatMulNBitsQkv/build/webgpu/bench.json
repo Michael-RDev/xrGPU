@@ -1,0 +1,297 @@
+{
+  "tunableSpace": { "TILE_N": [4, 8, 16], "LANES": [4, 8, 16] },
+  "cases": [
+    {
+      "name": "qkv-q4-decode-k2048-nq2048-nkv512",
+      "tunableSpace": {},
+      "preset": "smoke",
+      "vars": { "dtype": "float32" },
+      "attrs": { "K": 2048, "Nq": 2048, "Nkv": 512, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2048], "dtype": "float32", "dist": "normal", "seed": 9101, "scale": 1 },
+        "normScaleT": { "shape": [2048], "dtype": "float32", "dist": "normal", "seed": 9102, "scale": 1 },
+        "qBT": { "shape": [2048, 64, 16], "dtype": "uint8", "dist": "uniform", "seed": 9103, "min": 0, "max": 256 },
+        "qScalesT": { "shape": [2048, 64], "dtype": "float32", "dist": "normal", "seed": 9104, "scale": 0.05 },
+        "kBT": { "shape": [512, 64, 16], "dtype": "uint8", "dist": "uniform", "seed": 9105, "min": 0, "max": 256 },
+        "kScalesT": { "shape": [512, 64], "dtype": "float32", "dist": "normal", "seed": 9106, "scale": 0.05 },
+        "vBT": { "shape": [512, 64, 16], "dtype": "uint8", "dist": "uniform", "seed": 9107, "min": 0, "max": 256 },
+        "vScalesT": { "shape": [512, 64], "dtype": "float32", "dist": "normal", "seed": 9108, "scale": 0.05 }
+      },
+      "outputs": {
+        "qT": { "shape": [1, 2048], "dtype": "float32" },
+        "kT": { "shape": [1, 512], "dtype": "float32" },
+        "vT": { "shape": [1, 512], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(2048 + 512 + 512) * 64 * 16" }] }
+    },
+    {
+      "name": "qkv-q4-llama-decode-k4096-nq4096-nkv4096",
+      "tunableSpace": {},
+      "preset": "model",
+      "provenance": {
+        "notes": "Llama class defaults (hidden_size 4096, num_attention_heads 32, no GQA so num_key_value_heads matches) at a decode step. Bytes are the packed blob: the weight ports bind in the packed storage layout (four blob bytes per u32 word), so a 4-bit code costs half a byte of traffic and the projection moves its on-disk size."
+      },
+      "vars": { "dtype": "float32", "tokens": 1, "K": 4096, "Nq": 4096, "Nkv": 4096 },
+      "attrs": { "K": 4096, "Nq": 4096, "Nkv": 4096, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 4096], "dtype": "float32", "dist": "normal", "seed": 7100, "scale": 0.5 },
+        "normScaleT": {
+          "shape": [4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7101,
+          "scale": 0.1,
+          "offset": 1
+        },
+        "qBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7102, "min": 0, "max": 255 },
+        "qScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7103,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "kBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7104, "min": 0, "max": 255 },
+        "kScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7105,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "vBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7106, "min": 0, "max": 255 },
+        "vScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7107,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": {
+        "qT": { "shape": [1, 4096], "dtype": "float32" },
+        "kT": { "shape": [1, 4096], "dtype": "float32" },
+        "vT": { "shape": [1, 4096], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(args.Nq + 2 * args.Nkv) * args.K / 2" }] }
+    },
+    {
+      "name": "qkv-q4-mistral-decode-k4096-nq4096-nkv1024",
+      "tunableSpace": {},
+      "preset": "model",
+      "provenance": {
+        "notes": "Mistral class defaults (hidden_size 4096, 32 query heads, 8 key/value heads, head_dim 128) -- the GQA case, where K and V projections are a quarter of Q. Bytes are the packed blob: the weight ports bind in the packed storage layout (four blob bytes per u32 word), so a 4-bit code costs half a byte of traffic and the projection moves its on-disk size."
+      },
+      "vars": { "dtype": "float32", "tokens": 1, "K": 4096, "Nq": 4096, "Nkv": 1024 },
+      "attrs": { "K": 4096, "Nq": 4096, "Nkv": 1024, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 4096], "dtype": "float32", "dist": "normal", "seed": 7200, "scale": 0.5 },
+        "normScaleT": {
+          "shape": [4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7201,
+          "scale": 0.1,
+          "offset": 1
+        },
+        "qBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7202, "min": 0, "max": 255 },
+        "qScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7203,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "kBT": { "shape": [1024, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7204, "min": 0, "max": 255 },
+        "kScalesT": {
+          "shape": [1024, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7205,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "vBT": { "shape": [1024, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7206, "min": 0, "max": 255 },
+        "vScalesT": {
+          "shape": [1024, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7207,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": {
+        "qT": { "shape": [1, 4096], "dtype": "float32" },
+        "kT": { "shape": [1, 1024], "dtype": "float32" },
+        "vT": { "shape": [1, 1024], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(args.Nq + 2 * args.Nkv) * args.K / 2" }] }
+    },
+    {
+      "name": "qkv-q4-gemma3-decode-k2304-nq2048-nkv1024",
+      "tunableSpace": {},
+      "preset": "model",
+      "provenance": {
+        "notes": "Gemma3 class defaults (hidden_size 2304, 8 query heads, 4 key/value heads, head_dim 256); the projection is wider than hidden, so K does not equal Nq. Bytes are the packed blob: the weight ports bind in the packed storage layout (four blob bytes per u32 word), so a 4-bit code costs half a byte of traffic and the projection moves its on-disk size."
+      },
+      "vars": { "dtype": "float32", "tokens": 1, "K": 2304, "Nq": 2048, "Nkv": 1024 },
+      "attrs": { "K": 2304, "Nq": 2048, "Nkv": 1024, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 2304], "dtype": "float32", "dist": "normal", "seed": 7300, "scale": 0.5 },
+        "normScaleT": {
+          "shape": [2304],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7301,
+          "scale": 0.1,
+          "offset": 1
+        },
+        "qBT": { "shape": [2048, 72, 16], "dtype": "uint8", "dist": "uniform", "seed": 7302, "min": 0, "max": 255 },
+        "qScalesT": {
+          "shape": [2048, 72],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7303,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "kBT": { "shape": [1024, 72, 16], "dtype": "uint8", "dist": "uniform", "seed": 7304, "min": 0, "max": 255 },
+        "kScalesT": {
+          "shape": [1024, 72],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7305,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "vBT": { "shape": [1024, 72, 16], "dtype": "uint8", "dist": "uniform", "seed": 7306, "min": 0, "max": 255 },
+        "vScalesT": {
+          "shape": [1024, 72],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7307,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": {
+        "qT": { "shape": [1, 2048], "dtype": "float32" },
+        "kT": { "shape": [1, 1024], "dtype": "float32" },
+        "vT": { "shape": [1, 1024], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(args.Nq + 2 * args.Nkv) * args.K / 2" }] }
+    },
+    {
+      "name": "qkv-q4-phi3-decode-k3072-nq3072-nkv3072",
+      "tunableSpace": {},
+      "preset": "model",
+      "provenance": {
+        "notes": "Phi-3 class defaults (hidden_size 3072, num_attention_heads 32, no GQA). Bytes are the packed blob: the weight ports bind in the packed storage layout (four blob bytes per u32 word), so a 4-bit code costs half a byte of traffic and the projection moves its on-disk size."
+      },
+      "vars": { "dtype": "float32", "tokens": 1, "K": 3072, "Nq": 3072, "Nkv": 3072 },
+      "attrs": { "K": 3072, "Nq": 3072, "Nkv": 3072, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [1, 3072], "dtype": "float32", "dist": "normal", "seed": 7400, "scale": 0.5 },
+        "normScaleT": {
+          "shape": [3072],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7401,
+          "scale": 0.1,
+          "offset": 1
+        },
+        "qBT": { "shape": [3072, 96, 16], "dtype": "uint8", "dist": "uniform", "seed": 7402, "min": 0, "max": 255 },
+        "qScalesT": {
+          "shape": [3072, 96],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7403,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "kBT": { "shape": [3072, 96, 16], "dtype": "uint8", "dist": "uniform", "seed": 7404, "min": 0, "max": 255 },
+        "kScalesT": {
+          "shape": [3072, 96],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7405,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "vBT": { "shape": [3072, 96, 16], "dtype": "uint8", "dist": "uniform", "seed": 7406, "min": 0, "max": 255 },
+        "vScalesT": {
+          "shape": [3072, 96],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7407,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": {
+        "qT": { "shape": [1, 3072], "dtype": "float32" },
+        "kT": { "shape": [1, 3072], "dtype": "float32" },
+        "vT": { "shape": [1, 3072], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(args.Nq + 2 * args.Nkv) * args.K / 2" }] }
+    },
+    {
+      "name": "qkv-q4-llama-spec8-k4096-nq4096-nkv4096",
+      "preset": "model",
+      "provenance": {
+        "notes": "Llama class defaults with 8 rows, the shape speculative decoding verifies in one pass. Bytes are the packed blob: the weight ports bind in the packed storage layout (four blob bytes per u32 word), so a 4-bit code costs half a byte of traffic and the projection moves its on-disk size."
+      },
+      "vars": { "dtype": "float32", "tokens": 8, "K": 4096, "Nq": 4096, "Nkv": 4096 },
+      "attrs": { "K": 4096, "Nq": 4096, "Nkv": 4096, "block_size": 32 },
+      "inputs": {
+        "aT": { "shape": [8, 4096], "dtype": "float32", "dist": "normal", "seed": 7500, "scale": 0.5 },
+        "normScaleT": {
+          "shape": [4096],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7501,
+          "scale": 0.1,
+          "offset": 1
+        },
+        "qBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7502, "min": 0, "max": 255 },
+        "qScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7503,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "kBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7504, "min": 0, "max": 255 },
+        "kScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7505,
+          "min": 0.005,
+          "max": 0.05
+        },
+        "vBT": { "shape": [4096, 128, 16], "dtype": "uint8", "dist": "uniform", "seed": 7506, "min": 0, "max": 255 },
+        "vScalesT": {
+          "shape": [4096, 128],
+          "dtype": "float32",
+          "dist": "uniform",
+          "seed": 7507,
+          "min": 0.005,
+          "max": 0.05
+        }
+      },
+      "outputs": {
+        "qT": { "shape": [8, 4096], "dtype": "float32" },
+        "kT": { "shape": [8, 4096], "dtype": "float32" },
+        "vT": { "shape": [8, 4096], "dtype": "float32" }
+      },
+      "bench": { "metrics": [{ "type": "bandwidth", "value": "(args.Nq + 2 * args.Nkv) * args.K / 2" }] }
+    }
+  ]
+}

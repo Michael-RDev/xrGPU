@@ -1,0 +1,253 @@
+{
+  "domain": "ai.onnx",
+  "name": "DeformConv",
+  "sinceVersion": 22,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T", "rank": 4 },
+    "w": { "onnx": "W", "dtype": "T", "rank": 4 },
+    "offset": { "dtype": "T", "rank": 4 },
+    "bias": { "onnx": "B", "dtype": "T", "rank": 1, "optional": true },
+    "mask": { "dtype": "T", "rank": 4, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": 4,
+      "shape": ["dim(shapes.x, 0)", "dim(shapes.w, 0)", "floor((dim(shapes.x, 2) + padTop + padBottom - ((dim(shapes.w, 2) - 1) * dilationH + 1)) / strideH) + 1", "floor((dim(shapes.x, 3) + padLeft + padRight - ((dim(shapes.w, 3) - 1) * dilationW + 1)) / strideW) + 1"]
+    }
+  },
+  "attributes": {
+    "group": { "default": 1 },
+    "offset_group": { "default": 1 },
+    "dilations": {},
+    "kernel_shape": {},
+    "pads": {},
+    "strides": {}
+  },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 128 } },
+  "derive": {
+    "spatialRank": 2,
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "spatialAttributesOk": "kernelShapeLengthOk and stridesLengthOk and dilationsLengthOk and padsLengthOk and strideH >= 1 and strideW >= 1 and dilationH >= 1 and dilationW >= 1 and padTop >= 0 and padLeft >= 0 and padBottom >= 0 and padRight >= 0 and (not has(attrs, \"kernel_shape\") or (kernelH == dim(shapes.w, 2) and kernelW == dim(shapes.w, 3)))",
+    "alignedGroupsCoreOk": "spatialAttributesOk and ranks.x == 4 and ranks.w == 4 and ranks.offset == 4 and ranks.y == 4 and attrs.group >= 1 and attrs.offset_group == attrs.group and dim(shapes.w, 2) >= 1 and dim(shapes.w, 2) <= 7 and dim(shapes.w, 3) >= 1 and dim(shapes.w, 3) <= 7 and dim(shapes.w, 1) * attrs.group == dim(shapes.x, 1) and dim(shapes.w, 0) % attrs.group == 0 and dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.w, 0) and dim(shapes.y, 2) == floor((dim(shapes.x, 2) + padTop + padBottom - ((dim(shapes.w, 2) - 1) * dilationH + 1)) / strideH) + 1 and dim(shapes.y, 3) == floor((dim(shapes.x, 3) + padLeft + padRight - ((dim(shapes.w, 3) - 1) * dilationW + 1)) / strideW) + 1 and dim(shapes.offset, 0) == dim(shapes.x, 0) and dim(shapes.offset, 1) == attrs.offset_group * dim(shapes.w, 2) * dim(shapes.w, 3) * 2 and dim(shapes.offset, 2) == dim(shapes.y, 2) and dim(shapes.offset, 3) == dim(shapes.y, 3)",
+    "alignedBiasMaskOk": "alignedGroupsCoreOk and present.bias and present.mask and ranks.bias == 1 and ranks.mask == 4 and dim(shapes.bias, 0) == dim(shapes.w, 0) and dim(shapes.mask, 0) == dim(shapes.x, 0) and dim(shapes.mask, 1) == attrs.offset_group * dim(shapes.w, 2) * dim(shapes.w, 3) and dim(shapes.mask, 2) == dim(shapes.y, 2) and dim(shapes.mask, 3) == dim(shapes.y, 3)",
+    "alignedPlainOk": "alignedGroupsCoreOk and not present.bias and not present.mask",
+    "genericCoreOk": "spatialAttributesOk and ranks.x == 4 and ranks.w == 4 and ranks.offset == 4 and ranks.y == 4 and attrs.group >= 1 and attrs.offset_group >= 1 and dim(shapes.w, 1) * attrs.group == dim(shapes.x, 1) and dim(shapes.x, 1) % attrs.offset_group == 0 and dim(shapes.w, 0) % attrs.group == 0 and dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.w, 0) and dim(shapes.y, 2) == floor((dim(shapes.x, 2) + padTop + padBottom - ((dim(shapes.w, 2) - 1) * dilationH + 1)) / strideH) + 1 and dim(shapes.y, 3) == floor((dim(shapes.x, 3) + padLeft + padRight - ((dim(shapes.w, 3) - 1) * dilationW + 1)) / strideW) + 1 and dim(shapes.offset, 0) == dim(shapes.x, 0) and dim(shapes.offset, 1) == attrs.offset_group * dim(shapes.w, 2) * dim(shapes.w, 3) * 2 and dim(shapes.offset, 2) == dim(shapes.y, 2) and dim(shapes.offset, 3) == dim(shapes.y, 3)",
+    "genericBiasShapeOk": "present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == dim(shapes.w, 0)",
+    "genericMaskShapeOk": "present.mask and ranks.mask == 4 and dim(shapes.mask, 0) == dim(shapes.x, 0) and dim(shapes.mask, 1) == attrs.offset_group * dim(shapes.w, 2) * dim(shapes.w, 3) and dim(shapes.mask, 2) == dim(shapes.y, 2) and dim(shapes.mask, 3) == dim(shapes.y, 3)",
+    "genericPlainOk": "genericCoreOk and not present.bias and not present.mask",
+    "genericBiasOk": "genericCoreOk and genericBiasShapeOk and not present.mask",
+    "genericMaskOk": "genericCoreOk and not present.bias and genericMaskShapeOk",
+    "genericBiasMaskOk": "genericCoreOk and genericBiasShapeOk and genericMaskShapeOk",
+    "alignedOcBlock": "16 if (dim(shapes.w, 0) / attrs.group) % 16 == 0 else (8 if (dim(shapes.w, 0) / attrs.group) % 8 == 0 else (4 if (dim(shapes.w, 0) / attrs.group) % 4 == 0 else 1))",
+    "alignedOcVecs": "4 if alignedOcBlock == 16 else (2 if alignedOcBlock == 8 else (1 if alignedOcBlock == 4 else 0))"
+  },
+  "bindings": {
+    "x": { "elementType": "f32" },
+    "w": { "elementType": "f32" },
+    "offset": { "elementType": "f32" },
+    "bias": { "elementType": "f32" },
+    "mask": { "elementType": "f32" },
+    "y": { "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "inChannelsPerOffsetGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.offset_group" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "padTop" },
+        { "name": "padW", "type": "i32", "value": "padLeft" },
+        { "name": "offsetGroup", "type": "u32", "value": "attrs.offset_group" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "nchw2d_bias_mask_aligned_groups_blocked",
+      "priority": 35,
+      "when": ["alignedBiasMaskOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv.AlignedGroupsBlocked",
+          "shader": "deform-conv2d-aligned-groups.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.y) / alignedOcBlock",
+            "inC": "dim(shapes.x, 1)",
+            "inCPerGroup": "dim(shapes.x, 1) / attrs.group",
+            "inH": "dim(shapes.x, 2)",
+            "inW": "dim(shapes.x, 3)",
+            "outC": "dim(shapes.y, 1)",
+            "outCPerGroup": "dim(shapes.y, 1) / attrs.group",
+            "outChannelBlock": "alignedOcBlock",
+            "outChannelVecs": "alignedOcVecs",
+            "groups": "attrs.group",
+            "outH": "dim(shapes.y, 2)",
+            "outW": "dim(shapes.y, 3)",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padH": "padTop",
+            "padW": "padLeft",
+            "hasBias": true,
+            "hasMask": true
+          },
+          "bindings": ["x", "w", "offset", "bias", "mask", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / alignedOcBlock), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / alignedOcBlock), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_aligned_groups_blocked",
+      "priority": 35,
+      "when": ["alignedPlainOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv.AlignedGroupsBlocked",
+          "shader": "deform-conv2d-aligned-groups.wgsl.jinja",
+          "derive": {
+            "count": "numel(shapes.y) / alignedOcBlock",
+            "inC": "dim(shapes.x, 1)",
+            "inCPerGroup": "dim(shapes.x, 1) / attrs.group",
+            "inH": "dim(shapes.x, 2)",
+            "inW": "dim(shapes.x, 3)",
+            "outC": "dim(shapes.y, 1)",
+            "outCPerGroup": "dim(shapes.y, 1) / attrs.group",
+            "outChannelBlock": "alignedOcBlock",
+            "outChannelVecs": "alignedOcVecs",
+            "groups": "attrs.group",
+            "outH": "dim(shapes.y, 2)",
+            "outW": "dim(shapes.y, 3)",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padH": "padTop",
+            "padW": "padLeft",
+            "hasBias": false,
+            "hasMask": false
+          },
+          "bindings": ["x", "w", "offset", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / alignedOcBlock), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / alignedOcBlock), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "when": ["genericPlainOk"],
+      "derive": { "hasBias": false, "hasMask": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv",
+          "shader": "deform-conv2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w", "offset", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_bias_mask",
+      "priority": 10,
+      "when": ["genericBiasMaskOk"],
+      "derive": { "hasBias": true, "hasMask": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv",
+          "shader": "deform-conv2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w", "offset", "bias", "mask", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_bias",
+      "priority": 5,
+      "when": ["genericBiasOk"],
+      "derive": { "hasBias": true, "hasMask": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv",
+          "shader": "deform-conv2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w", "offset", "bias", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_mask",
+      "priority": 5,
+      "when": ["genericMaskOk"],
+      "derive": { "hasBias": false, "hasMask": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "DeformConv",
+          "shader": "deform-conv2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w", "offset", "mask", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

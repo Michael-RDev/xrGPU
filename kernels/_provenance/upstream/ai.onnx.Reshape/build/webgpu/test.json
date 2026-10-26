@@ -1,0 +1,539 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_input_data": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312]
+  },
+  "cases": [
+    {
+      "name": "2d_to_3d",
+      "provenance": {
+        "notes": "A nonzero 3x8 to 2x3x4 reshape makes allowzero=1 exercise ordinary shape inference; this file's zero-dimension allowzero case separately checks that a 0 in the target shape is kept literal rather than copied from the input."
+      },
+      "attrs": { "allowzero": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [3, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "backend_flatten_to_1d",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "shape": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [24] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [24], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_bool_2d_to_3d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape",
+        "notes": "Same reshape copy pattern with an ONNX-valid bool payload."
+      },
+      "inputs": {
+        "data": { "dtype": "bool", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 1, 1, 0, 0] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [1, 3, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "bool", "shape": [1, 3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_int16_2d_to_3d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape",
+        "notes": "Same reshape copy pattern with ONNX-valid int16 payloads, including min/max sentinels."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "int16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-32768, -1, 0, 1, 1234, 32767] }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [1, 3, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int16", "shape": [1, 3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_rank1_to_rank4",
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.5, -4.5, 5.0, -6.0] }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [1, 2, 1, 3] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float16", "shape": [1, 2, 1, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "uint32_rank2_to_rank4",
+      "inputs": {
+        "data": { "dtype": "uint32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 0, 2, 0, 3, 0] } },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [1, 2, 3, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "uint32", "shape": [1, 2, 3, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "scalar_to_scalar_empty_shape",
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-7.25] } },
+        "shape": { "dtype": "int32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_dim_copies_input_same_rank",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_WithOutAllowZero",
+        "notes": "ONNX default allowzero=0 behavior: zero in requested shape copies the corresponding input dimension."
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "shape": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 3] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_diff_rank_without_zero_shape",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_WithOutAllowZeroToDiffRank"
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2, 3, 12], "data": { "kind": "constant", "value": 1.0 } },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [2, 3, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 3, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "zero_dim_copies_input_dim",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_WithOutAllowZeroToDiffRankOneZero",
+        "notes": "ONNX default allowzero=0 behavior: zero in requested shape copies the corresponding input dimension."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.17 }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [0, 3, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "two_zero_dims_copy_input_dims",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_WithOutAllowZeroToDiffRankTwoZeroes",
+        "notes": "ONNX default allowzero=0 behavior: multiple zero dimensions copy from the input shape."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 12],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [0, 0, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_input_to_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeWithEmptyInput"
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [0, 10], "data": { "kind": "values", "values": [] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [0, 10, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [0, 10, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_empty_shape_output_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeWithEmptyDim"
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1, 1, 1], "data": { "kind": "constant", "value": 1.0 } },
+        "shape": { "dtype": "int32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_six_dim_new_shape",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeSixDimNewShape"
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [8, 8, 8], "data": { "kind": "constant", "value": 1.0 } },
+        "shape": { "dtype": "int32", "shape": [6], "data": { "kind": "values", "values": [2, 4, 4, 2, 8, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 4, 4, 2, 8, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_six_dim_input_shape_to_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeSixDimInputShape"
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [2, 4, 4, 2, 8, 1], "data": { "kind": "constant", "value": 1.0 } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [8, 8, 8] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [8, 8, 8], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_basic_reshape_int32_dtype_path",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape",
+        "notes": "A basic Reshape transform uses supported int32 payload storage."
+      },
+      "inputs": {
+        "data": { "dtype": "int32", "shape": [2, 3], "data": { "kind": "values", "values": [1, 2, 3, 4, 5, 6] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [1, 3, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int32", "shape": [1, 3, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_unknown_dim_inferred",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_UnknownDimWithoutAllowZero",
+        "notes": "The int32 shape tensor exactly represents the source ONNX int64 values."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "shape": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [-1, 6] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [1, 6], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_empty_input_dynamic_shape_success",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeWithEmptyInputAndDynamicShape",
+        "notes": "Input shape {1,0} with requested shape {1,1,-1} infers the zero-length dimension and produces {1,1,0}."
+      },
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [1, 0], "data": { "kind": "values", "values": [] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [1, 1, -1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [1, 1, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_reshape_allowzero_reordered",
+      "inputs": {
+        "data": { "dtype": "float32", "shape": [0, 3, 4], "data": { "kind": "values", "values": [] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, 4, 0] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [3, 4, 0] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_allowzero_reordered",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values. With `allowzero=1`, the declared output shape is [3,4,0], so the empty copy performs no element reads."
+      },
+      "attrs": { "allowzero": 1 }
+    },
+    {
+      "name": "onnx_backend_reshape_extended_dims",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [2, 3, 2, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 2, 2] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_extended_dims",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_reshape_one_dim",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [24] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [24] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_one_dim",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_reshape_reduced_dims",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [2, 12] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 12] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_reduced_dims",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_reshape_reordered_all_dims",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [4, 2, 3] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [4, 2, 3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_reordered_all_dims",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_reshape_reordered_last_dims",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 4, 3] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 4, 3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_reordered_last_dims",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_reshape_zero_dim",
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [2, 0, 4, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 4, 1] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_zero_dim",
+        "notes": "The integer shape tensor exactly represents the source ONNX int64 values."
+      }
+    },
+    {
+      "name": "onnx_backend_negative_dim_infer_middle",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_negative_dim",
+        "notes": "Projects signed int64 shape metadata to int32 storage."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, -1, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 6, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_negative_dim_infer_leading",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_negative_extended_dims",
+        "notes": "Projects signed int64 shape metadata to int32 storage."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-1, 2, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [1, 2, 3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_zero_copy_and_negative_dim",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_reshape_zero_and_negative_dim",
+        "notes": "Projects signed int64 shape metadata to int32 storage."
+      },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [2, 3, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_input_data" } }
+        },
+        "shape": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [2, 0, 1, -1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [2, 3, 1, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_unknown_dim_edge_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_UnknownDimWithoutAllowZero",
+        "notes": "Same inferred-dimension pattern with logical int8 edge values."
+      },
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [2, 3], "data": { "kind": "values", "values": [-128, -1, 0, 1, 2, 127] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, -1, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int8", "shape": [3, 2, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "uint8_empty_shape_output_scalar",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.ReshapeWithEmptyDim",
+        "notes": "Empty shape tensor produces a scalar output for logical uint8 data."
+      },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [1, 1], "data": { "kind": "values", "values": [255] } },
+        "shape": { "dtype": "int32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "reshaped": { "dtype": "uint8", "shape": [], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_vec4_2x4_to_8",
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.5, -4.5, 5.0, -6.0, 7.25, -8.75] }
+        },
+        "shape": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [8] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float16", "shape": [8], "tolerance": 0 } }
+    },
+    {
+      "name": "scalar_copy_dispatch_clamp",
+      "provenance": {
+        "notes": "Reshape to the same 262,141-element shape, one more than 65,535 groups of four and past the WebGPU per-dimension workgroup limit; every element must be copied exactly once."
+      },
+      "tunables": { "WORKGROUP_SIZE": 4 },
+      "inputs": {
+        "data": {
+          "dtype": "float32",
+          "shape": [262141],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "shape": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [262141] } }
+      },
+      "outputs": { "reshaped": { "dtype": "float32", "shape": [262141], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_numel2_scalar_copy_minus1_dim",
+      "inputs": {
+        "data": { "dtype": "int8", "shape": [2], "data": { "kind": "values", "values": [-128, 127] } },
+        "shape": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [1, -1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int8", "shape": [1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "uint8_numel3_with_zero_copy_dim",
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [3, 1], "data": { "kind": "values", "values": [0, 128, 255] } },
+        "shape": { "dtype": "int32", "shape": [2], "data": { "kind": "values", "values": [0, 1] } }
+      },
+      "outputs": { "reshaped": { "dtype": "uint8", "shape": [3, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_numel6_rank1_to_rank3",
+      "inputs": {
+        "data": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-65504.0, -1.0, 0.0, 1.0, 100.0, 65504.0] }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [1, 2, 3] } }
+      },
+      "outputs": {
+        "reshaped": {
+          "dtype": "float16",
+          "shape": [1, 2, 3],
+          "data": { "kind": "values", "values": [-65504.0, -1.0, 0.0, 1.0, 100.0, 65504.0] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_uint8_rank2_to_rank3_full_byte_range",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/tensor_op_test.cc",
+        "test": "TensorOpTest.Reshape_uint8_webgpu"
+      },
+      "inputs": {
+        "data": { "dtype": "uint8", "shape": [2, 3], "data": { "kind": "values", "values": [1, 2, 10, 100, 200, 255] } },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [3, 1, 2] } }
+      },
+      "outputs": { "reshaped": { "dtype": "uint8", "shape": [3, 1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "int64_full_range_2d_to_3d",
+      "provenance": {
+        "notes": "Reshaping int64 data spanning the full 64-bit range, including INT64_MIN and INT64_MAX, from 3x8 to 2x3x4 with allowzero=1 verifies exact bit-for-bit reshaping without float rounding."
+      },
+      "attrs": { "allowzero": 1 },
+      "inputs": {
+        "data": {
+          "dtype": "int64",
+          "shape": [3, 8],
+          "data": {
+            "kind": "cycle",
+            "values": ["0", "4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1"]
+          }
+        },
+        "shape": { "dtype": "int32", "shape": [3], "data": { "kind": "values", "values": [2, 3, 4] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int64", "shape": [2, 3, 4], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    },
+    {
+      "name": "int64_full_range_backend_flatten_to_1d",
+      "inputs": {
+        "data": {
+          "dtype": "int64",
+          "shape": [2, 3, 4],
+          "data": {
+            "kind": "cycle",
+            "values": ["4294967296", "8589934593", "-4294967297", "9223372036854775807", "-9223372036854775808", "9223372036854775806", "-1", "0"]
+          }
+        },
+        "shape": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [24] } }
+      },
+      "outputs": { "reshaped": { "dtype": "int64", "shape": [24], "tolerance": 0, "relTolerance": 0 } },
+      "tolerance": 0,
+      "relTolerance": 0
+    }
+  ]
+}

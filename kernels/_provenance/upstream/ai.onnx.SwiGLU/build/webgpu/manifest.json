@@ -1,0 +1,74 @@
+{
+  "domain": "ai.onnx",
+  "name": "SwiGLU",
+  "sinceVersion": 28,
+  "inputs": { "a": { "onnx": "A", "dtype": "T" }, "b": { "onnx": "B", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.a", "shape": "shapes.a" } },
+  "attributes": { "alpha": { "default": 1 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "exactShapeContract": "sameShape(shapes.a, shapes.b) and sameShape(shapes.a, shapes.y)" },
+  "when": ["exactShapeContract", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "same_shape_vec4",
+      "priority": 20,
+      "when": ["numel(shapes.y) > 0", "numel(shapes.y) % 4 == 0"],
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SwiGLU.Vec4",
+          "shader": "swiglu-elementwise.wgsl.jinja",
+          "derive": { "vectorizedSpec": true },
+          "bindings": [
+            { "arg": "a", "elementType": "$vectorScalar" },
+            { "arg": "b", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$vectorScalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y) / 4" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "same_shape_scalar_x4",
+      "derive": { "scalar": "dtypes.T", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SwiGLU.Scalar",
+          "shader": "swiglu-elementwise.wgsl.jinja",
+          "derive": { "vectorizedSpec": false, "itemsPerInvocation": 4 },
+          "bindings": [
+            { "arg": "a", "elementType": "$scalar" },
+            { "arg": "b", "elementType": "$scalar" },
+            { "arg": "y", "elementType": "$scalar" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+                { "name": "alpha", "type": "f32", "value": "attrs.alpha" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

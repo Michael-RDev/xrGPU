@@ -1,0 +1,234 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0, 1.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Tan",
+        "notes": "For tiny finite inputs tan(x) rounds back to x in float32; zero-flushing erases the signed tail."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-1e-39, -1e-40, 1e-40, 1e-39] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Tan",
+        "notes": "On the scalar path, subnormal inputs produce valid finite Tan outputs."
+      },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-1.0, -0.5, 0.0, 0.5, 1.0, 1.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.002
+    },
+    {
+      "name": "large_argument_range_reduction",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [1000000.0, 10000000.0, 10000000000000.0, 100000000000000000000.0, -1000000000000000.0, -123456.78, 314159.265, 2500000000.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.001 } }
+    },
+    {
+      "name": "f32_large_argument_range_reduction_accuracy_gpu_gap",
+      "skipGpu": {
+        "category": "todo",
+        "reason": "The package's f32 large-argument range reduction differs from the correctly rounded expected value by about one ULP. More accurate range reduction or software-extended precision could close the gap."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Tan",
+        "notes": "Finite large arguments stress Tan's range reduction and expose a one-ULP float32 accuracy gap."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [1000000.0, 10000000.0, 10000000000000.0, 100000000000000000000.0, -1000000000000000.0, -123456.78, 314159.265, 2500000000.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001, "relTolerance": 0 } }
+    },
+    {
+      "name": "ort_float_large_arguments",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Tan"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-100.0, -50.0, 0.0, 50.0, 100.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_nonfinite_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Tan",
+        "notes": "Extends ORT's large-argument case with signed infinities and NaN."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 0.0, 0.0, 1.0, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [7], "tolerance": 0.0001, "allowNaN": true } }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tan_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_tan",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tan" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_tan_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tan_example" },
+      "inputs": { "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "vec4_f16_lanes",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [16],
+          "data": {
+            "kind": "values",
+            "values": [-1.2, -1.0, -0.75, -0.5, -0.25, -0.125, 0.0, 0.125, 0.25, 0.5, 0.75, 1.0, 1.2, 2.0, 3.0, 5.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16], "tolerance": 0.001, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "vec4_f32_nonfinite",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": ["-Infinity", -1.0, 0.0, 0.5, 1.0, "Infinity", "NaN", 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "near_pole_argument_accuracy",
+      "provenance": {
+        "source": "ai.onnx.Tan reference (Math.tan)",
+        "notes": "Near odd multiples of pi/2, tan(x) is highly sensitive to argument error. These moderate arguments stay below the 1e4 range-reduction threshold and exercise the direct tan implementation with an appropriate relative tolerance."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [1.5706963267948966, 1.5697963267948967, -1.5706963267948966, 4.711388980384689, 0.7853981633974483, -0.7853981633974483, 3.1405926535897932, 0.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.01, "relTolerance": 0.0005 } }
+    },
+    {
+      "name": "f16_scalar_near_f16_max",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [65504.0, -65504.0, 20000.0, -20000.0, 50000.0, -50000.0, 0.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7], "tolerance": 0.05, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Float16 arguments near the format's maximum (65,504) require argument reduction in float32 before evaluating tan; tolerance is scaled to the result magnitude with headroom for the reduction residue."
+      }
+    },
+    {
+      "name": "f16_vec4_large_arg_above_reduce_threshold",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [20000.0, -20000.0, 40000.0, -40000.0, 0.5, -0.5, 1.0, -1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8], "tolerance": 0.05, "relTolerance": 0.01 } },
+      "provenance": {
+        "notes": "Float16 arguments up to 40,000, mixed with values near 1, require argument reduction in float32 before evaluating tan across two vec4 words; tolerance is scaled to the result magnitude with headroom for the reduction residue."
+      }
+    }
+  ]
+}

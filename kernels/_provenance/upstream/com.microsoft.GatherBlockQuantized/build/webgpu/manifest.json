@@ -1,0 +1,212 @@
+{
+  "domain": "com.microsoft",
+  "name": "GatherBlockQuantized",
+  "sinceVersion": 1,
+  "inputs": {
+    "dataT": { "onnx": "data", "dtype": "T1", "rank": 2 },
+    "indicesT": { "onnx": "indices", "dtype": "Tind", "rank": 1, "storage": "uint32", "narrowing": "checked" },
+    "scalesT": { "onnx": "scales", "dtype": "T2", "rank": 2 },
+    "zeroPointsT": { "onnx": "zero_points", "dtype": "T1", "rank": 2, "optional": true }
+  },
+  "outputs": {
+    "outputT": {
+      "onnx": "output",
+      "dtype": "T2",
+      "rank": 2,
+      "shape": "[dim(shapes.indicesT, 0), dim(shapes.dataT, 1) * (8 / attrs.bits)]"
+    }
+  },
+  "attributes": {
+    "bits": { "default": 4 },
+    "block_size": { "default": 128 },
+    "gather_axis": { "default": 0 },
+    "quantize_axis": { "default": 1 }
+  },
+  "attributeConstraints": {
+    "bits": { "values": [4, 8] },
+    "gather_axis": { "values": [0] },
+    "quantize_axis": { "values": [1] }
+  },
+  "typeConstraints": { "T1": ["uint8"], "T2": ["float32"], "Tind": ["int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "bits": "attrs.bits",
+    "blockSize": "attrs.block_size",
+    "blockSizeOk": "blockSize >= 16 and pow2ceil(blockSize) == blockSize",
+    "outBlocks": "ceilDiv(dim(shapes.outputT, 1), blockSize)",
+    "zeroPointCols": "ceilDiv(outBlocks, 2) if bits == 4 else outBlocks",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "commonShapeValid": "blockSizeOk and ranks.dataT == 2 and ranks.indicesT == 1 and ranks.scalesT == 2 and ranks.outputT == 2 and tensorDtypes.indicesT == \"uint32\" and tensorDtypes.scalesT == \"float32\" and tensorDtypes.outputT == \"float32\" and dim(shapes.outputT, 0) == dim(shapes.indicesT, 0) and dim(shapes.scalesT, 0) == dim(shapes.dataT, 0) and dim(shapes.scalesT, 1) == outBlocks",
+    "q4ShapeValid": "commonShapeValid and tensorDtypes.dataT == \"uint8\" and dim(shapes.outputT, 1) == dim(shapes.dataT, 1) * 2",
+    "q8ShapeValid": "commonShapeValid and tensorDtypes.dataT == \"uint8\" and dim(shapes.outputT, 1) == dim(shapes.dataT, 1)",
+    "zeroPointsValid": "present.zeroPointsT and ranks.zeroPointsT == 2 and tensorDtypes.zeroPointsT == \"uint8\" and dim(shapes.zeroPointsT, 0) == dim(shapes.dataT, 0) and dim(shapes.zeroPointsT, 1) == zeroPointCols",
+    "noZeroMode": "not present.zeroPointsT",
+    "zeroMode": "zeroPointsValid",
+    "hasZero": "zeroMode",
+    "indexScalar": "\"u32\"",
+    "scaleScalar": "\"f32\"",
+    "zeroPointElement": "\"u32\"",
+    "workgroupFits": "workgroupSize > 0",
+    "foldedDispatchFits": "ceil(ceil(numel(shapes.outputT) / min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) / workgroupSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"
+  },
+  "when": ["foldedDispatchFits", "workgroupFits"],
+  "bindings": {
+    "data": { "arg": "dataT", "elementType": "$dataElement" },
+    "indices": { "arg": "indicesT", "elementType": "$indexScalar" },
+    "scales": { "arg": "scalesT", "elementType": "$scaleScalar" },
+    "output": { "arg": "outputT", "elementType": "$outputElement" },
+    "params": {
+      "struct": [
+        { "name": "indexCount", "type": "u32", "value": "dim(shapes.indicesT, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.outputT, 1)" },
+        { "name": "blocks", "type": "u32", "value": "dim(shapes.scalesT, 1)" },
+        { "name": "blockSize", "type": "u32", "value": "blockSize" },
+        { "name": "rows", "type": "u32", "value": "dim(shapes.dataT, 0)" }
+      ]
+    },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "indexCount", "type": "u32", "value": "dim(shapes.indicesT, 0)" },
+        { "name": "packedCols", "type": "u32", "value": "dim(shapes.dataT, 1)" },
+        { "name": "blocks", "type": "u32", "value": "dim(shapes.scalesT, 1)" },
+        { "name": "blockSize", "type": "u32", "value": "blockSize" },
+        { "name": "rows", "type": "u32", "value": "dim(shapes.dataT, 0)" }
+      ]
+    },
+    "zero_points": { "arg": "zeroPointsT", "elementType": "$zeroPointElement" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "indexCount", "type": "u32", "value": "dim(shapes.indicesT, 0)" },
+        { "name": "packedCols", "type": "u32", "value": "dim(shapes.dataT, 1)" },
+        { "name": "blocks", "type": "u32", "value": "dim(shapes.scalesT, 1)" },
+        { "name": "zeroPointCols", "type": "u32", "value": "zeroPointCols" },
+        { "name": "blockSize", "type": "u32", "value": "blockSize" },
+        { "name": "rows", "type": "u32", "value": "dim(shapes.dataT, 0)" }
+      ]
+    },
+    "params_q8_zero_tail4": {
+      "name": "params",
+      "struct": [
+        { "name": "indexCount", "type": "u32", "value": "dim(shapes.indicesT, 0)" },
+        { "name": "cols", "type": "u32", "value": "dim(shapes.outputT, 1)" },
+        { "name": "packedCols", "type": "u32", "value": "dim(shapes.dataT, 1)" },
+        { "name": "blocks", "type": "u32", "value": "dim(shapes.scalesT, 1)" },
+        { "name": "blockSize", "type": "u32", "value": "blockSize" },
+        { "name": "rows", "type": "u32", "value": "dim(shapes.dataT, 0)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "q8_no_zero_vec4",
+      "priority": 10,
+      "when": ["q8ShapeValid", "noZeroMode", "bits == 8", "blockSize % 4 == 0", "dim(shapes.outputT, 1) % 4 == 0"],
+      "derive": { "scalarTail": false, "dataElement": "\"vec4<u32>\"", "outputElement": "\"vec4<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q8-vec4.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * (dim(shapes.outputT, 1) / 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * (dim(shapes.outputT, 1) / 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "q8_zero_vec4",
+      "priority": 10,
+      "when": ["q8ShapeValid", "zeroMode", "bits == 8", "blockSize % 4 == 0", "dim(shapes.outputT, 1) % 4 == 0"],
+      "derive": { "scalarTail": false, "dataElement": "\"vec4<u32>\"", "outputElement": "\"vec4<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q8-vec4.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "zero_points", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * (dim(shapes.outputT, 1) / 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * (dim(shapes.outputT, 1) / 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "q4_no_zero_pair",
+      "priority": 10,
+      "when": ["q4ShapeValid", "noZeroMode", "bits == 4"],
+      "derive": { "dataElement": "\"u32\"", "outputElement": "\"vec2<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q4-pair.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "output", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * dim(shapes.dataT, 1)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * dim(shapes.dataT, 1)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "q4_zero_pair",
+      "priority": 10,
+      "when": ["q4ShapeValid", "zeroMode", "bits == 4"],
+      "derive": { "dataElement": "\"u32\"", "outputElement": "\"vec2<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q4-pair.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "zero_points", "output", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * dim(shapes.dataT, 1)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * dim(shapes.dataT, 1)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "q8_no_zero_tail4",
+      "priority": 5,
+      "when": ["q8ShapeValid", "noZeroMode", "bits == 8"],
+      "derive": { "scalarTail": true, "dataElement": "\"u32\"", "outputElement": "\"f32\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q8-vec4.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "output", "params_q8_zero_tail4"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * ceilDiv(dim(shapes.outputT, 1), 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * ceilDiv(dim(shapes.outputT, 1), 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "q8_zero_tail4",
+      "priority": 5,
+      "when": ["q8ShapeValid", "zeroMode", "bits == 8"],
+      "derive": { "scalarTail": true, "dataElement": "\"u32\"", "outputElement": "\"f32\"" },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "gather-block-quantized-q8-vec4.wgsl.jinja",
+          "bindings": ["data", "indices", "scales", "zero_points", "output", "params_q8_zero_tail4"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.indicesT, 0) * ceilDiv(dim(shapes.outputT, 1), 4)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.indicesT, 0) * ceilDiv(dim(shapes.outputT, 1), 4)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

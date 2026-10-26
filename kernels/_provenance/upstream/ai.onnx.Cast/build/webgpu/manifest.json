@@ -1,0 +1,99 @@
+{
+  "domain": "ai.onnx",
+  "name": "Cast",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "input", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "output", "dtype": "U", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "to": {} },
+  "attributeConstraints": { "to": { "required": true } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "uint8", "int8", "bool"],
+    "U": ["float32", "float16", "uint32", "int32", "uint8", "int8", "bool"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 128 }, "VEC4_TAIL_MIN_ELEMENTS": { "default": 4096 } },
+  "derive": {
+    "castDtypeContract": "attrs.to == onnxDtypeCode(logicalDtypes.U)",
+    "wrapNarrowInt": "(tensorDtypes.x == \"float32\" or tensorDtypes.x == \"float16\") and (tensorDtypes.y == \"int8\" or tensorDtypes.y == \"uint8\")",
+    "wrapSigned": "tensorDtypes.y == \"int8\"",
+    "scalar": "dtypes.T",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "outVec": "\"vec4<\" ~ dtypes.U ~ \">\"",
+    "outScalar": "dtypes.U"
+  },
+  "bindings": {
+    "x": { "elementType": "$vectorScalar" },
+    "y": { "elementType": "$outVec" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "floor(numel(shapes.x) / 4)" }] },
+    "params_tail": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.x)" }] }
+  },
+  "variants": [
+    {
+      "id": "same_layout_vec4",
+      "priority": 20,
+      "when": ["castDtypeContract", "numel(shapes.x) > 0", "numel(shapes.x) % 4 == 0", "numel(shapes.x) == numel(shapes.y)", "tensorDtypes.y != \"bool\"", "f16Ok(dtypes.T) and f16Ok(dtypes.U)"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Cast.Vec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y) / 4, 4 if numel(shapes.y) * dtypeBytes(tensorDtypes.y) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "vec4_tail",
+      "priority": 10,
+      "when": ["castDtypeContract", "numel(shapes.x) >= tunables.VEC4_TAIL_MIN_ELEMENTS", "numel(shapes.x) % 4 != 0", "numel(shapes.x) == numel(shapes.y)", "tensorDtypes.y != \"bool\"", "f16Ok(dtypes.T) and f16Ok(dtypes.U)"],
+      "passes": [
+        {
+          "id": "bulk",
+          "name": "Cast.Vec4Bulk",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": { "vec4PerThread": "4 if numel(shapes.x) * dtypeBytes(tensorDtypes.x) <= 16777216 else 1" },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(floor(numel(shapes.x) / 4), 4 if numel(shapes.x) * dtypeBytes(tensorDtypes.x) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(floor(numel(shapes.x) / 4), 4 if numel(shapes.x) * dtypeBytes(tensorDtypes.x) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "Cast.ScalarTail",
+          "shader": "cast-scalar-x4.wgsl.jinja",
+          "derive": { "tailOnly": true },
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "when": ["castDtypeContract and f16Ok(dtypes.T) and f16Ok(dtypes.U)"],
+      "derive": { "toBool": "tensorDtypes.y == \"bool\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Cast",
+          "shader": "unary-scalar.wgsl.jinja",
+          "bindings": [{ "arg": "x" }, { "arg": "y" }, "params_tail"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.x), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

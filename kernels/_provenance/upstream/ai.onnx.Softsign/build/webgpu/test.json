@@ -1,0 +1,191 @@
+{
+  "cases": [
+    {
+      "name": "f32_values",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-8.0, -1.0, 0.0, 1.0, 8.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [5] } }
+    },
+    {
+      "name": "f32_large_finite_values",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-1000000.0, -1000.0, 0.0, 0.0, 1000.0, 1000000.0, "NaN"] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [7], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "f16_values",
+      "inputs": {
+        "input": {
+          "dtype": "float16",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-64.0, -8.0, -1.0, 0.0, 1.0, 8.0, 64.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [7], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_noinf_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpNoInfTest.Softsign",
+        "notes": "ORT no-infinity activation vector with float max, min, and subnormal values."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 1.1754943508222875e-38, 1.1754943508222876e-39, -1.1754943508222876e-39, 3.4028234663852886e+38, -3.4028234663852886e+38]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpNoInfTest.Softsign",
+        "notes": "For tiny finite inputs, 1 + abs(x) rounds to 1 in float32, so Softsign preserves the input instead of flushing it to zero."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-39, -1e-39] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_subnormal_identity_tail_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpNoInfTest.Softsign",
+        "notes": "Scalar Softsign should preserve tiny finite inputs after float32 rounding."
+      },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_fp16_noinf_activation_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpNoInfTest.Softsign",
+        "notes": "Float16-range projection of ORT's no-infinity activation vector."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 0.00006103515625, 5.960464477539063e-8, -5.960464477539063e-8, 65504.0, -65504.0]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [8], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_opset22_moderate_extremes",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpNoInfTest.Softsign_Opset22",
+        "notes": "Exact upstream opset-22 float vector with large finite magnitudes."
+      },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-1.0, 0.0, 1.0, -5.0, 5.0, -100.0, 100.0] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [7], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_example",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softsign_example_expanded_ver18",
+        "test": "test_softsign_example_expanded_ver18"
+      },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_softsign",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softsign" },
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": {
+            "kind": "values",
+            "values": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_softsign_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_softsign_example" },
+      "inputs": {
+        "input": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1.0, 0.0, 1.0] } }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [3], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": { "input": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "output": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_infinity_inputs_nan_output",
+      "inputs": {
+        "input": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": ["Infinity", "-Infinity", 1.0, -1.0, "Infinity", "-Infinity", 0.0, 0.5]
+          }
+        }
+      },
+      "outputs": { "output": { "dtype": "float32", "shape": [8], "tolerance": 0.000001, "allowNaN": true } }
+    },
+    {
+      "name": "f16_scalar_fallback_infinity_nan",
+      "inputs": {
+        "input": {
+          "dtype": "float16",
+          "shape": [5],
+          "data": { "kind": "values", "values": ["Infinity", "-Infinity", 0.0, 1.0, "NaN"] }
+        }
+      },
+      "outputs": { "output": { "dtype": "float16", "shape": [5], "tolerance": 0.001, "allowNaN": true } }
+    }
+  ]
+}

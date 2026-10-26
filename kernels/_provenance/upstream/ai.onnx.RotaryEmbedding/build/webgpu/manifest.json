@@ -1,0 +1,346 @@
+{
+  "domain": "ai.onnx",
+  "name": "RotaryEmbedding",
+  "sinceVersion": 23,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "cos": { "onnx": "cos_cache", "dtype": "T" },
+    "sin": { "onnx": "sin_cache", "dtype": "T" },
+    "positionIds": {
+      "onnx": "position_ids",
+      "dtype": "M",
+      "rank": 2,
+      "optional": true,
+      "storage": "uint32",
+      "narrowing": "checked"
+    }
+  },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "interleaved": { "default": 0 }, "rotary_embedding_dim": { "default": 0 }, "num_heads": {} },
+  "attributeConstraints": { "interleaved": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32", "float16"], "M": ["int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "pairDispatchOk": "ceilDiv(numel(shapes.x) / 2, tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank3HeadSize": "dim(shapes.x, 2) / attrs.num_heads if attrs.num_heads is defined and attrs.num_heads > 0 else 0",
+    "rank3Contract": "f16Ok(dtypes.T) and ranks.x == 3 and ranks.cos == 3 and ranks.sin == 3 and ranks.y == 3 and sameShape(shapes.x, shapes.y) and attrs.num_heads is defined and attrs.num_heads >= 1 and dim(shapes.x, 2) % attrs.num_heads == 0 and rank3HeadSize % 2 == 0 and (attrs.rotary_embedding_dim == 0 or attrs.rotary_embedding_dim <= rank3HeadSize) and dim(shapes.cos, 2) * 2 == (attrs.rotary_embedding_dim if attrs.rotary_embedding_dim != 0 else rank3HeadSize) and sameShape(shapes.cos, shapes.sin) and dim(shapes.cos, 0) == dim(shapes.x, 0) and dim(shapes.cos, 1) == dim(shapes.x, 1) and not present.positionIds",
+    "rank4Contract": "f16Ok(dtypes.T) and ranks.x == 4 and ranks.cos == 3 and ranks.sin == 3 and ranks.y == 4 and dim(shapes.x, 3) % 2 == 0 and (attrs.rotary_embedding_dim == 0 or attrs.rotary_embedding_dim <= dim(shapes.x, 3)) and dim(shapes.cos, 2) * 2 == (attrs.rotary_embedding_dim if attrs.rotary_embedding_dim != 0 else dim(shapes.x, 3)) and dim(shapes.sin, 2) == dim(shapes.cos, 2) and sameShape(shapes.x, shapes.y) and dim(shapes.cos, 0) == dim(shapes.x, 0) and dim(shapes.sin, 0) == dim(shapes.x, 0) and dim(shapes.cos, 1) == dim(shapes.x, 2) and dim(shapes.sin, 1) == dim(shapes.x, 2) and not present.positionIds",
+    "rank3PosContract": "f16Ok(dtypes.T) and ranks.x == 3 and ranks.cos == 2 and ranks.sin == 2 and ranks.y == 3 and sameShape(shapes.x, shapes.y) and attrs.num_heads is defined and attrs.num_heads >= 1 and dim(shapes.x, 2) % attrs.num_heads == 0 and rank3HeadSize % 2 == 0 and (attrs.rotary_embedding_dim == 0 or attrs.rotary_embedding_dim <= rank3HeadSize) and dim(shapes.cos, 1) * 2 == (attrs.rotary_embedding_dim if attrs.rotary_embedding_dim != 0 else rank3HeadSize) and sameShape(shapes.cos, shapes.sin) and present.positionIds and ranks.positionIds == 2 and dim(shapes.positionIds, 0) == dim(shapes.x, 0) and dim(shapes.positionIds, 1) == dim(shapes.x, 1)",
+    "rank4PosContract": "f16Ok(dtypes.T) and ranks.x == 4 and ranks.cos == 2 and ranks.sin == 2 and ranks.y == 4 and dim(shapes.x, 3) % 2 == 0 and (attrs.rotary_embedding_dim == 0 or attrs.rotary_embedding_dim <= dim(shapes.x, 3)) and dim(shapes.cos, 1) * 2 == (attrs.rotary_embedding_dim if attrs.rotary_embedding_dim != 0 else dim(shapes.x, 3)) and sameShape(shapes.cos, shapes.sin) and sameShape(shapes.x, shapes.y) and present.positionIds and ranks.positionIds == 2 and dim(shapes.positionIds, 0) == dim(shapes.x, 0) and dim(shapes.positionIds, 1) == dim(shapes.x, 2)",
+    "quadCacheOk": "ranks.cos >= 1 and dim(shapes.cos, ranks.cos - 1) % 4 == 0",
+    "quad3Ok": "rank3HeadSize % 8 == 0 and quadCacheOk",
+    "quad4Ok": "ranks.x == 4 and dim(shapes.x, 3) % 8 == 0 and quadCacheOk",
+    "quadOk": "quad3Ok if ranks.x == 3 else quad4Ok",
+    "quadDispatchOk": "ceilDiv(numel(shapes.x) / 8, tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "headElements": "rank3HeadSize if ranks.x == 3 else dim(shapes.x, 3)",
+    "headCount": "attrs.num_heads if ranks.x == 3 else dim(shapes.x, 1)",
+    "tokenCount": "dim(shapes.x, 1) if ranks.x == 3 else dim(shapes.x, 2)",
+    "rotationPairs": "dim(shapes.cos, -1)",
+    "rotaryOutputWg": "max(1, min(tunables.WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX))"
+  },
+  "bindings": {
+    "x": { "elementType": "$vector" },
+    "cos_cache": { "arg": "cos", "elementType": "$vector" },
+    "sin_cache": { "arg": "sin", "elementType": "$vector" },
+    "position_ids": { "arg": "positionIds", "elementType": "$M" },
+    "y": { "elementType": "$vector" },
+    "params_quad": {
+      "name": "params",
+      "struct": [
+        { "name": "quadCount", "type": "u32", "value": "numel(shapes.x) / 8" },
+        { "name": "numHeads", "type": "u32", "value": "headCount" },
+        { "name": "sequenceLength", "type": "u32", "value": "tokenCount" },
+        { "name": "headVec4", "type": "u32", "value": "headElements / 4" },
+        { "name": "headQuads", "type": "u32", "value": "headElements / 8" },
+        { "name": "rotaryVec4", "type": "u32", "value": "rotationPairs / 2" },
+        { "name": "halfRotaryVec4", "type": "u32", "value": "rotationPairs / 4" }
+      ]
+    },
+    "params_pair": {
+      "name": "params",
+      "struct": [
+        { "name": "pairCount", "type": "u32", "value": "numel(shapes.x) / 2" },
+        { "name": "numHeads", "type": "u32", "value": "headCount" },
+        { "name": "sequenceLength", "type": "u32", "value": "tokenCount" },
+        { "name": "headSize", "type": "u32", "value": "headElements" },
+        { "name": "rotaryDim", "type": "u32", "value": "rotationPairs * 2" },
+        { "name": "halfRotaryDim", "type": "u32", "value": "rotationPairs" }
+      ]
+    },
+    "params_quad_cache3": {
+      "name": "params",
+      "struct": [
+        { "name": "quadCount", "type": "u32", "value": "numel(shapes.x) / 8" },
+        { "name": "numHeads", "type": "u32", "value": "headCount" },
+        { "name": "sequenceLength", "type": "u32", "value": "tokenCount" },
+        { "name": "headVec4", "type": "u32", "value": "headElements / 4" },
+        { "name": "headQuads", "type": "u32", "value": "headElements / 8" },
+        { "name": "rotaryVec4", "type": "u32", "value": "rotationPairs / 2" },
+        { "name": "halfRotaryVec4", "type": "u32", "value": "rotationPairs / 4" },
+        { "name": "cacheBatchStrideVec4", "type": "u32", "value": "dim(shapes.cos, 1) * dim(shapes.cos, 2) / 4" }
+      ]
+    },
+    "params_pair_cache3": {
+      "name": "params",
+      "struct": [
+        { "name": "pairCount", "type": "u32", "value": "numel(shapes.x) / 2" },
+        { "name": "numHeads", "type": "u32", "value": "headCount" },
+        { "name": "sequenceLength", "type": "u32", "value": "tokenCount" },
+        { "name": "headSize", "type": "u32", "value": "headElements" },
+        { "name": "rotaryDim", "type": "u32", "value": "rotationPairs * 2" },
+        { "name": "halfRotaryDim", "type": "u32", "value": "rotationPairs" },
+        { "name": "cacheBatchStride", "type": "u32", "value": "dim(shapes.cos, 1) * dim(shapes.cos, 2)" }
+      ]
+    },
+    "x_t": { "name": "x", "elementType": "$T" },
+    "cos_cache_t": { "arg": "cos", "name": "cos_cache", "elementType": "$T" },
+    "sin_cache_t": { "arg": "sin", "name": "sin_cache", "elementType": "$T" },
+    "y_t": { "name": "y", "elementType": "$T" },
+    "output_vec_params": {
+      "name": "params",
+      "struct": [{ "name": "quadCount", "type": "u32", "value": "numel(shapes.x) / 4" }]
+    }
+  },
+  "variants": [
+    {
+      "id": "rank3_cache2_pos_quad",
+      "priority": 10,
+      "when": ["rank3PosContract", "quadOk", "quadDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3PosQuad",
+          "shader": "rotary-embedding-quad.wgsl.jinja",
+          "derive": { "rank": 3, "hasPositionIds": "true" },
+          "bindings": ["x", "cos_cache", "sin_cache", "position_ids", "y", "params_quad"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_cache2_pos",
+      "priority": 0,
+      "when": ["rank3PosContract", "pairDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3Pos",
+          "shader": "rotary-embedding.wgsl.jinja",
+          "derive": { "rank": 3, "hasPositionIds": "true" },
+          "bindings": ["x_t", "cos_cache_t", "sin_cache_t", "position_ids", "y_t", "params_pair"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_cache2_pos_output_vec4",
+      "priority": 20,
+      "when": ["rank3PosContract", "headElements > 0", "headElements % 4 == 0", "rotationPairs % 4 != 0", "attrs.interleaved == 0", "ceilDiv(numel(shapes.x) / 4, rotaryOutputWg) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": { "scalar": "dtypes.T", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3PosOutputVec4",
+          "shader": "rotary-embedding-output-vec4.wgsl.jinja",
+          "derive": { "rank": 3, "hasPositionIds": "true" },
+          "bindings": ["x", "cos_cache_t", "sin_cache_t", "position_ids", "y", "output_vec_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache2_pos_quad",
+      "priority": 10,
+      "when": ["rank4PosContract", "quadOk", "quadDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4PosQuad",
+          "shader": "rotary-embedding-quad.wgsl.jinja",
+          "derive": { "rank": 4, "hasPositionIds": "true" },
+          "bindings": ["x", "cos_cache", "sin_cache", "position_ids", "y", "params_quad"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache2_pos",
+      "priority": 0,
+      "when": ["rank4PosContract", "pairDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4Pos",
+          "shader": "rotary-embedding.wgsl.jinja",
+          "derive": { "rank": 4, "hasPositionIds": "true" },
+          "bindings": ["x_t", "cos_cache_t", "sin_cache_t", "position_ids", "y_t", "params_pair"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache2_pos_output_vec4",
+      "priority": 20,
+      "when": ["rank4PosContract", "headElements > 0", "headElements % 4 == 0", "rotationPairs % 4 != 0", "attrs.interleaved == 0", "ceilDiv(numel(shapes.x) / 4, rotaryOutputWg) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": { "scalar": "dtypes.T", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4PosOutputVec4",
+          "shader": "rotary-embedding-output-vec4.wgsl.jinja",
+          "derive": { "rank": 4, "hasPositionIds": "true" },
+          "bindings": ["x", "cos_cache_t", "sin_cache_t", "position_ids", "y", "output_vec_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_cache3_quad",
+      "priority": 10,
+      "when": ["rank3Contract", "quadOk", "quadDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3Quad",
+          "shader": "rotary-embedding-quad.wgsl.jinja",
+          "derive": { "rank": 3 },
+          "bindings": ["x", "cos_cache", "sin_cache", "y", "params_quad_cache3"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_cache3",
+      "priority": 0,
+      "when": ["rank3Contract", "pairDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3",
+          "shader": "rotary-embedding.wgsl.jinja",
+          "derive": { "rank": 3 },
+          "bindings": ["x_t", "cos_cache_t", "sin_cache_t", "y_t", "params_pair_cache3"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_cache3_output_vec4",
+      "priority": 20,
+      "when": ["rank3Contract", "headElements > 0", "headElements % 4 == 0", "rotationPairs % 4 != 0", "attrs.interleaved == 0", "ceilDiv(numel(shapes.x) / 4, rotaryOutputWg) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": { "scalar": "dtypes.T", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank3OutputVec4",
+          "shader": "rotary-embedding-output-vec4.wgsl.jinja",
+          "derive": { "rank": 3 },
+          "bindings": ["x", "cos_cache_t", "sin_cache_t", "y", "output_vec_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache3_quad",
+      "priority": 10,
+      "when": ["rank4Contract", "quadOk", "quadDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4Quad",
+          "shader": "rotary-embedding-quad.wgsl.jinja",
+          "derive": { "rank": 4 },
+          "bindings": ["x", "cos_cache", "sin_cache", "y", "params_quad_cache3"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache3",
+      "priority": 0,
+      "when": ["rank4Contract", "pairDispatchOk"],
+      "derive": { "interleaved": "attrs.interleaved != 0", "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4",
+          "shader": "rotary-embedding.wgsl.jinja",
+          "derive": { "rank": 4 },
+          "bindings": ["x_t", "cos_cache_t", "sin_cache_t", "y_t", "params_pair_cache3"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank4_cache3_output_vec4",
+      "priority": 20,
+      "when": ["rank4Contract", "headElements > 0", "headElements % 4 == 0", "rotationPairs % 4 != 0", "attrs.interleaved == 0", "ceilDiv(numel(shapes.x) / 4, rotaryOutputWg) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": { "scalar": "dtypes.T", "vector": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RotaryEmbedding.Rank4OutputVec4",
+          "shader": "rotary-embedding-output-vec4.wgsl.jinja",
+          "derive": { "rank": 4 },
+          "bindings": ["x", "cos_cache_t", "sin_cache_t", "y", "output_vec_params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / 4), (rotaryOutputWg)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

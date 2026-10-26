@@ -1,0 +1,139 @@
+{
+  "domain": "ai.onnx",
+  "name": "SpaceToDepth",
+  "sinceVersion": 13,
+  "inputs": { "input": { "dtype": "T", "rank": 4 } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": 4,
+      "shape": ["dim(shapes.input, 0)", "dim(shapes.input, 1) * attrs.blocksize * attrs.blocksize", "dim(shapes.input, 2) / attrs.blocksize", "dim(shapes.input, 3) / attrs.blocksize"]
+    }
+  },
+  "attributes": { "blocksize": {} },
+  "attributeConstraints": { "blocksize": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8", "bool"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "variableSubgroup16To32": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 16 and device.adapterInfo.subgroupMaxSize == 32",
+    "shapeContract": "attrs.blocksize > 0 and ranks.input == 4 and ranks.output == 4 and dim(shapes.output, 0) == dim(shapes.input, 0) and dim(shapes.output, 1) == dim(shapes.input, 1) * attrs.blocksize * attrs.blocksize and dim(shapes.output, 2) * attrs.blocksize == dim(shapes.input, 2) and dim(shapes.output, 3) * attrs.blocksize == dim(shapes.input, 3) and f16Ok(dtypes.T)",
+    "reportedWideExecution": "has(device.adapterInfo, \"subgroupMinSize\") and device.adapterInfo.subgroupMinSize >= 32",
+    "f16VectorPermutationPreferred": "dtypes.T != \"f16\" or device.features.has(\"subgroups\") or reportedWideExecution",
+    "blocksize": "attrs.blocksize",
+    "inC": "dim(shapes.input, 1)",
+    "inH": "dim(shapes.input, 2)",
+    "inW": "dim(shapes.input, 3)"
+  },
+  "when": ["shapeContract"],
+  "bindings": { "output": { "elementType": "$outputElement" } },
+  "variants": [
+    {
+      "id": "flat_vector",
+      "priority": 25,
+      "when": ["numel(shapes.output) % 4 == 0", "dim(shapes.output, 3) % 4 != 0", "f16VectorPermutationPreferred"],
+      "derive": {
+        "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "count": "numel(shapes.output) / 4",
+        "outH": "dim(shapes.output, 2)",
+        "outC": "dim(shapes.output, 1)",
+        "vectorizedSpec": false,
+        "flatVectorSpec": true,
+        "outWUnits": "dim(shapes.output, 3)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "space-depth-permute.wgsl.jinja",
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((count), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((count), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          },
+          "name": "SpaceToDepth.FlatVector"
+        }
+      ]
+    },
+    {
+      "id": "collapsed_input_vector",
+      "priority": 30,
+      "when": ["dim(shapes.output, 2) == 1", "dim(shapes.output, 3) == 1", "attrs.blocksize % 2 == 0", "dtypes.T != \"f16\" or dim(shapes.input, 1) % 2 == 0"],
+      "derive": {
+        "channelPack": "2 if dtypes.T == \"f16\" else 1",
+        "outputElement": "\"vec2<f16>\" if dtypes.T == \"f16\" else dtypes.T",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "channelCount": "dim(shapes.input, 0) * dim(shapes.input, 1) / channelPack",
+        "blockArea": "attrs.blocksize * attrs.blocksize",
+        "inChannels": "dim(shapes.input, 1) / channelPack",
+        "wordTile": "min(blockArea / 4, max(1, ceilDiv(inChannels, tunables.WORKGROUP_SIZE)))",
+        "wordChunks": "ceilDiv(blockArea / 4, wordTile)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "shader": "space-depth-collapsed-input.wgsl.jinja",
+          "bindings": [{ "arg": "input", "elementType": "$vectorScalar" }, "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((channelCount * wordChunks), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((channelCount * wordChunks), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          },
+          "name": "SpaceToDepth.CollapsedInput"
+        }
+      ]
+    },
+    {
+      "id": "nchw_vec4",
+      "priority": 20,
+      "when": ["dim(shapes.output, 3) % 4 == 0", "f16VectorPermutationPreferred"],
+      "demoteWhen": ["variableSubgroup16To32 and dtypes.T == \"f16\""],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SpaceToDepth",
+          "shader": "space-depth-permute.wgsl.jinja",
+          "derive": {
+            "vectorizedSpec": true,
+            "count": "numel(shapes.output) / 4",
+            "outWUnits": "dim(shapes.output, 3) / 4",
+            "outH": "dim(shapes.output, 2)",
+            "outC": "dim(shapes.output, 1)"
+          },
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_const",
+      "priority": 10,
+      "derive": { "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "SpaceToDepth",
+          "shader": "space-depth-permute.wgsl.jinja",
+          "derive": {
+            "vectorizedSpec": false,
+            "count": "numel(shapes.output)",
+            "outWUnits": "dim(shapes.output, 3)",
+            "outH": "dim(shapes.output, 2)",
+            "outC": "dim(shapes.output, 1)"
+          },
+          "bindings": ["input", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

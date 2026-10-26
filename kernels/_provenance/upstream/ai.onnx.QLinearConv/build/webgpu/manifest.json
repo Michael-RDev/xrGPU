@@ -1,0 +1,1083 @@
+{
+  "domain": "ai.onnx",
+  "name": "QLinearConv",
+  "sinceVersion": 10,
+  "inputs": {
+    "x": { "dtype": "TX" },
+    "x_scale": { "dtype": "TF" },
+    "x_zero_point": { "dtype": "TX" },
+    "w": { "dtype": "TW" },
+    "w_scale": { "dtype": "TF" },
+    "w_zero_point": { "dtype": "TW" },
+    "y_scale": { "dtype": "TF" },
+    "y_zero_point": { "dtype": "TY" },
+    "B": { "dtype": "int32", "rank": 1, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "dtype": "TY",
+      "rank": "ranks.x",
+      "shape": "[dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputWidth] if ranks.x == 3 else ([dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputHeight, expectedOutputWidth] if ranks.x == 4 else [dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputDepth, expectedOutputHeight, expectedOutputWidth])"
+    }
+  },
+  "attributes": {
+    "auto_pad": { "default": "NOTSET" },
+    "group": { "default": 1 },
+    "dilations": {},
+    "kernel_shape": {},
+    "pads": {},
+    "strides": {}
+  },
+  "attributeConstraints": { "auto_pad": { "values": ["NOTSET", "SAME_UPPER", "SAME_LOWER", "VALID"] } },
+  "typeConstraints": { "TX": ["uint8", "int8"], "TW": ["uint8", "int8"], "TY": ["uint8", "int8"], "TF": ["float32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "DP4A_DIRECT_SPATIAL_TILE": { "default": 8 },
+    "DP4A_DIRECT_OC_TILE": { "default": 8 },
+    "DP4A_DIRECT_IC_TILE": { "default": 16 }
+  },
+  "derive": {
+    "inputDepth": "dim(shapes.x, 2) if ranks.x == 5 else 1",
+    "inputHeight": "dim(shapes.x, 3) if ranks.x == 5 else (dim(shapes.x, 2) if ranks.x == 4 else 1)",
+    "inputWidth": "dim(shapes.x, ranks.x - 1) if ranks.x >= 3 else 1",
+    "outputDepth": "dim(shapes.y, 2) if ranks.y == 5 else 1",
+    "outputHeight": "dim(shapes.y, 3) if ranks.y == 5 else (dim(shapes.y, 2) if ranks.y == 4 else 1)",
+    "outputWidth": "dim(shapes.y, ranks.y - 1) if ranks.y >= 3 else 1",
+    "kernelDepth": "dim(shapes.w, 2) if ranks.w == 5 else 1",
+    "kernelHeight": "dim(shapes.w, 3) if ranks.w == 5 else (dim(shapes.w, 2) if ranks.w == 4 else 1)",
+    "kernelWidth": "dim(shapes.w, ranks.w - 1) if ranks.w >= 3 else 1",
+    "spatialRank": "ranks.w - 2",
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelD": "attrs.kernel_shape[0] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank == 3 else 1",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "narrowSubgroupRange": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "autoPadSame": "attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\"",
+    "autoPadValid": "attrs.auto_pad == \"VALID\"",
+    "samePadDepth": "max(0, (outputDepth - 1) * strideD + (kernelDepth - 1) * dilationD + 1 - inputDepth)",
+    "samePadHeight": "max(0, (outputHeight - 1) * strideH + (kernelHeight - 1) * dilationH + 1 - inputHeight)",
+    "samePadWidth": "max(0, (outputWidth - 1) * strideW + (kernelWidth - 1) * dilationW + 1 - inputWidth)",
+    "samePadFront": "floor(samePadDepth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadDepth - floor(samePadDepth / 2)",
+    "samePadTop": "floor(samePadHeight / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadHeight - floor(samePadHeight / 2)",
+    "samePadLeft": "floor(samePadWidth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadWidth - floor(samePadWidth / 2)",
+    "effectivePadFront": "samePadFront if autoPadSame else (0 if autoPadValid else padFront)",
+    "effectivePadTop": "samePadTop if autoPadSame else (0 if autoPadValid else padTop)",
+    "effectivePadLeft": "samePadLeft if autoPadSame else (0 if autoPadValid else padLeft)",
+    "expectedOutputDepth": "ceil(inputDepth / strideD) if autoPadSame else floor((inputDepth + (0 if autoPadValid else padFront + padBack) - ((kernelDepth - 1) * dilationD + 1)) / strideD) + 1",
+    "expectedOutputHeight": "ceil(inputHeight / strideH) if autoPadSame else floor((inputHeight + (0 if autoPadValid else padTop + padBottom) - ((kernelHeight - 1) * dilationH + 1)) / strideH) + 1",
+    "expectedOutputWidth": "ceil(inputWidth / strideW) if autoPadSame else floor((inputWidth + (0 if autoPadValid else padLeft + padRight) - ((kernelWidth - 1) * dilationW + 1)) / strideW) + 1",
+    "spatialAttributeLengthsOk": "kernelShapeLengthOk and stridesLengthOk and dilationsLengthOk and padsLengthOk",
+    "kernelShapeMatchesWeights": "not has(attrs, \"kernel_shape\") or (kernelW == kernelWidth and (spatialRank < 2 or kernelH == kernelHeight) and (spatialRank < 3 or kernelD == kernelDepth))",
+    "kernelExtentsOk": "kernelWidth >= 1 and (spatialRank < 2 or kernelHeight >= 1) and (spatialRank < 3 or kernelDepth >= 1)",
+    "stridesValuesOk": "not has(attrs, \"strides\") or (strideD >= 1 and floor(strideD) == strideD and strideH >= 1 and floor(strideH) == strideH and strideW >= 1 and floor(strideW) == strideW)",
+    "dilationsValuesOk": "not has(attrs, \"dilations\") or (dilationD >= 1 and floor(dilationD) == dilationD and dilationH >= 1 and floor(dilationH) == dilationH and dilationW >= 1 and floor(dilationW) == dilationW)",
+    "padsValuesOk": "padFront >= 0 and floor(padFront) == padFront and padTop >= 0 and floor(padTop) == padTop and padLeft >= 0 and floor(padLeft) == padLeft and padBack >= 0 and floor(padBack) == padBack and padBottom >= 0 and floor(padBottom) == padBottom and padRight >= 0 and floor(padRight) == padRight",
+    "explicitPadsOk": "attrs.auto_pad == \"NOTSET\" or not has(attrs, \"pads\")",
+    "spatialAttributesOk": "spatialRank >= 1 and spatialRank <= 3 and spatialAttributeLengthsOk and kernelShapeMatchesWeights and kernelExtentsOk and stridesValuesOk and dilationsValuesOk and padsValuesOk and explicitPadsOk",
+    "packedFeature": "device.wgslLanguageFeatures.has(\"packed_4x8_integer_dot_product\")",
+    "rank4TensorOk": "spatialAttributesOk and (ranks.x == 4 and ranks.w == 4 and ranks.y == 4)",
+    "outputBatchChannelsOk": "dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.w, 0)",
+    "groupChannelsOk": "attrs.group >= 1 and dim(shapes.w, 1) * attrs.group == dim(shapes.x, 1) and dim(shapes.w, 0) % attrs.group == 0",
+    "output2dShapeOk": "dim(shapes.y, 2) == expectedOutputHeight and dim(shapes.y, 3) == expectedOutputWidth",
+    "aScalar": "\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\"",
+    "bScalar": "\"u32\" if tensorDtypes.x == \"uint8\" else \"i32\"",
+    "wScalar": "\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\"",
+    "xScalar": "\"u32\" if tensorDtypes.x == \"uint8\" else \"i32\"",
+    "aUnsigned": "tensorDtypes.w == \"uint8\"",
+    "bUnsigned": "tensorDtypes.x == \"uint8\"",
+    "wUnsigned": "tensorDtypes.w == \"uint8\"",
+    "xUnsigned": "tensorDtypes.x == \"uint8\"",
+    "bZeroPerColumn": false,
+    "xyQuantContract": "(ranks.x_scale == 0 or (ranks.x_scale == 1 and dim(shapes.x_scale, 0) == 1)) and (ranks.y_scale == 0 or (ranks.y_scale == 1 and dim(shapes.y_scale, 0) == 1)) and (ranks.x_zero_point == 0 or (ranks.x_zero_point == 1 and dim(shapes.x_zero_point, 0) == 1)) and (ranks.y_zero_point == 0 or (ranks.y_zero_point == 1 and dim(shapes.y_zero_point, 0) == 1))",
+    "rank3TensorOk": "spatialAttributesOk and ranks.x == 3 and ranks.w == 3 and ranks.y == 3",
+    "rank5TensorOk": "spatialAttributesOk and ranks.x == 5 and ranks.w == 5 and ranks.y == 5",
+    "scalarWeightQuantOk": "(ranks.w_scale == 0 or (ranks.w_scale == 1 and dim(shapes.w_scale, 0) == 1)) and (ranks.w_zero_point == 0 or (ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == 1))",
+    "yScalar": "\"u32\" if tensorDtypes.y == \"uint8\" else \"i32\"",
+    "yUnsigned": "tensorDtypes.y == \"uint8\"",
+    "qMin": "0 if tensorDtypes.y == \"uint8\" else 0 - 128",
+    "qMax": "255 if tensorDtypes.y == \"uint8\" else 127",
+    "flexibleWeightQuantOk": "(((ranks.w_scale == 0 or (ranks.w_scale == 1 and dim(shapes.w_scale, 0) == 1)) and (ranks.w_zero_point == 0 or (ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == 1))) or (ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0) and ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)))",
+    "dp4a2dDispatchOk": "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.w, 0), 8) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.y, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "convM": "dim(shapes.w, 0)",
+    "convN": "inner(shapes.y, 1)",
+    "convK": "dim(shapes.w, 1) * inner(shapes.w, 1)",
+    "convBStride": "dim(shapes.w, 1) * inner(shapes.w, 1) * inner(shapes.y, 1)",
+    "convYStride": "dim(shapes.w, 0) * inner(shapes.y, 1)",
+    "paddedK": "ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4",
+    "paddedBStride": "ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4 * inner(shapes.y, 1)",
+    "paddedMatricesStorageOk": "dim(shapes.x, 0) * ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4 * inner(shapes.y, 1) * 4 <= device.limits.maxStorageBufferBindingSize and dim(shapes.w, 0) * ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4 * 4 <= device.limits.maxStorageBufferBindingSize",
+    "im2colStorageOk": "dim(shapes.x, 0) * dim(shapes.w, 1) * inner(shapes.w, 1) * inner(shapes.y, 1) * 4 <= device.limits.maxStorageBufferBindingSize",
+    "paddedPreparationDispatchOk": "ceilDiv(inner(shapes.y, 1), tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.w, 0) * ceilDiv(dim(shapes.w, 1) * inner(shapes.w, 1), 4) * 4, tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "direct3x3SharedBytes": "4 * ((tunables.DP4A_DIRECT_IC_TILE / 4) * (tunables.DP4A_DIRECT_SPATIAL_TILE + 2) * (tunables.DP4A_DIRECT_SPATIAL_TILE + 2) + tunables.DP4A_DIRECT_OC_TILE * (tunables.DP4A_DIRECT_IC_TILE / 4) * 9 + tunables.DP4A_DIRECT_OC_TILE)",
+    "direct3x3DispatchOk": "ceilDiv(dim(shapes.y, 3), tunables.DP4A_DIRECT_SPATIAL_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.y, 2), tunables.DP4A_DIRECT_SPATIAL_TILE) * ceilDiv(dim(shapes.w, 0), tunables.DP4A_DIRECT_OC_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.y, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "direct3x3DeviceOk": "tunables.DP4A_DIRECT_IC_TILE % 4 == 0 and tunables.DP4A_DIRECT_SPATIAL_TILE * tunables.DP4A_DIRECT_SPATIAL_TILE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.DP4A_DIRECT_SPATIAL_TILE <= device.limits.maxComputeWorkgroupSizeX and tunables.DP4A_DIRECT_SPATIAL_TILE <= device.limits.maxComputeWorkgroupSizeY and direct3x3SharedBytes <= device.limits.maxComputeWorkgroupStorageSize and direct3x3DispatchOk",
+    "aZeroPerRow": "ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)",
+    "requant": "\"per_row\" if ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0) else \"per_tensor\"",
+    "tileM": 8,
+    "tileN": 64,
+    "ktWords": 32
+  },
+  "when": ["outputBatchChannelsOk", "xyQuantContract"],
+  "bindings": {
+    "a": { "arg": "w", "elementType": "i32" },
+    "a_zero_point": { "arg": "w_zero_point", "elementType": "i32" },
+    "b_zero_point": { "arg": "x_zero_point", "elementType": "u32", "length": 1 },
+    "a_padded": { "scratch": "w_padded", "elementType": "i32" },
+    "a_main": { "scratch": "w_padded", "name": "a", "buffer": "read-only-storage", "elementType": "vec4<i32>" },
+    "a_scale": { "arg": "x_scale", "elementType": "f32", "length": 1 },
+    "b_scale": { "arg": "w_scale", "elementType": "f32" },
+    "y_scale": { "elementType": "f32", "length": 1 },
+    "y_zero_point": { "elementType": "u32", "length": 1 },
+    "y": { "elementType": "u32" },
+    "params": {
+      "struct": [
+        { "name": "M", "type": "u32", "value": "convM" },
+        { "name": "N", "type": "u32", "value": "convN" },
+        { "name": "K", "type": "u32", "value": "paddedK" },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        { "name": "bBatchStride", "type": "u32", "value": "paddedBStride" },
+        { "name": "yBatchStride", "type": "u32", "value": "convYStride" }
+      ]
+    },
+    "x": { "elementType": "u32" },
+    "x_zero_point": { "elementType": "u32", "length": 1 },
+    "cols": { "scratch": "cols_padded", "elementType": "u32" },
+    "x_scale": { "elementType": "f32", "length": 1 },
+    "w": { "elementType": "i32" },
+    "w_scale": { "elementType": "f32" },
+    "w_zero_point": { "elementType": "i32" },
+    "a_w": { "arg": "w", "name": "a", "elementType": "$aVec4" },
+    "a_zero_point_main": { "arg": "w_zero_point", "name": "a_zero_point", "elementType": "$aScalar" },
+    "b_zero_point_main": { "arg": "x_zero_point", "name": "b_zero_point", "elementType": "$bScalar", "length": 1 },
+    "y_zero_point_main": { "name": "y_zero_point", "elementType": "$yScalar", "length": 1 },
+    "y_main": { "name": "y", "elementType": "$yScalar" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "convM" },
+        { "name": "N", "type": "u32", "value": "convN" },
+        { "name": "K", "type": "u32", "value": "convK" },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        { "name": "bBatchStride", "type": "u32", "value": "convBStride" },
+        { "name": "yBatchStride", "type": "u32", "value": "convYStride" }
+      ]
+    },
+    "x_main": { "name": "x", "elementType": "$xScalar" },
+    "x_zero_point_main": { "name": "x_zero_point", "elementType": "$xScalar", "length": 1 },
+    "w_main": { "name": "w", "elementType": "$wScalar" },
+    "w_zero_point_main": { "name": "w_zero_point", "elementType": "$wScalar" },
+    "y_i32": { "scratch": "accum", "name": "y", "elementType": "i32" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "kernelD", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 4)" },
+        { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadFront" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_accumulate": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": 1 },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "kernelH", "type": "u32", "value": 1 },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "outH", "type": "u32", "value": 1 },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "strideH", "type": "u32", "value": 1 },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": 1 },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": 0 },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_nchw2d_scalar_quantization": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "accum": { "buffer": "read-only-storage", "elementType": "i32" },
+    "params_requantize": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "outImageSize", "type": "u32", "value": "numel(shapes.y) / (dim(shapes.y, 0) * dim(shapes.y, 1))" }
+      ]
+    },
+    "params_count": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] },
+    "B": { "elementType": "i32" },
+    "x_im2col": { "name": "x", "elementType": "$bScalar" },
+    "x_zero_point_im2col": { "name": "x_zero_point", "elementType": "$bScalar", "length": 1 },
+    "cols_im2col": { "scratch": "cols3d", "name": "cols", "elementType": "$bScalar" },
+    "params_im2col": {
+      "name": "params",
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        {
+          "name": "kRows",
+          "type": "u32",
+          "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)"
+        },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" }
+      ]
+    },
+    "cols_b_scalar": { "name": "cols", "buffer": "storage", "elementType": "$bScalar" },
+    "params_conv_int_im2col_spatial": {
+      "name": "params",
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "kRows", "type": "u32", "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" }
+      ]
+    },
+    "b_main": { "scratch": "cols3d", "name": "b", "buffer": "read-only-storage", "elementType": "$bScalar" },
+    "b_b_scalar": { "scratch": "cols", "name": "b", "buffer": "read-only-storage", "elementType": "$bScalar" },
+    "bias": { "arg": "B", "elementType": "i32" }
+  },
+  "variants": [
+    {
+      "id": "dp4a_pointwise_1x1_padded_k_baseline",
+      "priority": 21,
+      "when": ["packedFeature", "not present.B", "not device.features.has(\"shader-f16\")", "rank4TensorOk", "tensorDtypes.x == \"uint8\"", "tensorDtypes.w == \"int8\"", "tensorDtypes.y == \"uint8\"", "flexibleWeightQuantOk", "attrs.group == 1", "dim(shapes.x, 1) % 4 != 0", "dim(shapes.x, 1) >= 4", "dim(shapes.w, 0) >= 8", "dim(shapes.y, 2) * dim(shapes.y, 3) >= 256", "dim(shapes.w, 2) == 1", "dim(shapes.w, 3) == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.y, 2) == dim(shapes.x, 2)", "dim(shapes.y, 3) == dim(shapes.x, 3)", "paddedMatricesStorageOk", "dp4a2dDispatchOk"],
+      "derive": { "aPacked": true, "padB": true },
+      "intermediates": [
+        { "id": "w_padded", "dtype": "int32", "shape": "[dim(shapes.w, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4]" },
+        {
+          "id": "x_padded",
+          "dtype": "uint32",
+          "shape": "[dim(shapes.x, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4 * dim(shapes.y, 2) * dim(shapes.y, 3)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "pad_k",
+          "name": "QLinearConv.PadPointwiseK",
+          "shader": "quant-pad-k-matrices.wgsl.jinja",
+          "bindings": [
+            "a",
+            { "arg": "x", "name": "b", "elementType": "u32" },
+            "a_zero_point",
+            "b_zero_point",
+            "a_padded",
+            { "scratch": "x_padded", "name": "b_padded", "elementType": "u32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "batch", "type": "u32", "value": "dim(shapes.x, 0)" },
+                { "name": "M", "type": "u32", "value": "dim(shapes.w, 0)" },
+                { "name": "N", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3)" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "KPadded", "type": "u32", "value": "ceilDiv(dim(shapes.x, 1), 4) * 4" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((max(dim(shapes.w, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4, dim(shapes.x, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4 * dim(shapes.y, 2) * dim(shapes.y, 3))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((max(dim(shapes.w, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4, dim(shapes.x, 0) * ceilDiv(dim(shapes.x, 1), 4) * 4 * dim(shapes.y, 2) * dim(shapes.y, 3))), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "QLinearConv.Dp4aPointwisePaddedK",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": [
+            "a_main",
+            { "scratch": "x_padded", "name": "b", "buffer": "read-only-storage", "elementType": "u32" },
+            "a_zero_point",
+            "b_zero_point",
+            "a_scale",
+            "b_scale",
+            "y_scale",
+            "y_zero_point",
+            "y",
+            "params"
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_im2col_nchw_padded_k_baseline",
+      "priority": 21,
+      "when": ["packedFeature", "not present.B", "not device.features.has(\"shader-f16\")", "rank4TensorOk", "tensorDtypes.x == \"uint8\"", "tensorDtypes.w == \"int8\"", "tensorDtypes.y == \"uint8\"", "flexibleWeightQuantOk", "attrs.group == 1", "strideH >= 1", "strideW >= 1", "dilationH >= 1", "dilationW >= 1", "(dim(shapes.w, 2) > 1 or dim(shapes.w, 3) > 1)", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 != 0", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) >= 64", "dim(shapes.w, 0) >= 8", "dim(shapes.y, 2) * dim(shapes.y, 3) >= 256", "numel(shapes.y) >= 8192", "output2dShapeOk", "paddedMatricesStorageOk", "paddedPreparationDispatchOk", "dp4a2dDispatchOk"],
+      "derive": { "aPacked": true, "padB": false },
+      "intermediates": [
+        {
+          "id": "w_padded",
+          "dtype": "int32",
+          "shape": "[dim(shapes.w, 0) * ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4]"
+        },
+        {
+          "id": "cols_padded",
+          "dtype": "uint32",
+          "shape": "[dim(shapes.x, 0) * ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4 * dim(shapes.y, 2) * dim(shapes.y, 3)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "QLinearConv.Im2ColPaddedK",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 2,
+            "padK": true,
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": [
+            "x",
+            "x_zero_point",
+            "cols",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "outCount", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3)" },
+                { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+                {
+                  "name": "sourceKRows",
+                  "type": "u32",
+                  "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)"
+                },
+                {
+                  "name": "kRows",
+                  "type": "u32",
+                  "value": "ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4"
+                },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / tunables.WORKGROUP_SIZE)",
+            "y": "ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "pad_w",
+          "name": "QLinearConv.PadIm2ColWeightsK",
+          "shader": "quant-pad-k-matrices.wgsl.jinja",
+          "bindings": [
+            "a",
+            "a_zero_point",
+            "a_padded",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "dim(shapes.w, 0)" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)" },
+                {
+                  "name": "KPadded",
+                  "type": "u32",
+                  "value": "ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.w, 0) * ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.w, 0) * ceilDiv(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3), 4) * 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "QLinearConv.Im2ColPaddedKDp4a",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": [
+            "a_main",
+            { "scratch": "cols_padded", "name": "b", "buffer": "read-only-storage", "elementType": "u32" },
+            "a_zero_point",
+            "b_zero_point",
+            "a_scale",
+            "b_scale",
+            "y_scale",
+            "y_zero_point",
+            "y",
+            "params"
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_direct_3x3_nchw_u8s8",
+      "priority": 30,
+      "when": ["packedFeature", "not present.B", "rank4TensorOk", "tensorDtypes.x == \"uint8\"", "tensorDtypes.w == \"int8\"", "tensorDtypes.y == \"uint8\"", "flexibleWeightQuantOk", "attrs.group == 1", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.w, 2) == 3", "dim(shapes.w, 3) == 3", "strideH == 1", "strideW == 1", "dilationH == 1", "dilationW == 1", "padTop == 1", "padLeft == 1", "dim(shapes.y, 2) == dim(shapes.x, 2)", "dim(shapes.y, 3) == dim(shapes.x, 3)", "output2dShapeOk", "dim(shapes.x, 1) % tunables.DP4A_DIRECT_IC_TILE == 0", "dim(shapes.w, 0) >= tunables.DP4A_DIRECT_OC_TILE", "direct3x3DeviceOk"],
+      "demoteWhen": ["narrowSubgroupRange"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "QLinearConv.Direct3x3Dp4a",
+          "shader": "qlinear-conv-dp4a-direct-3x3.wgsl.jinja",
+          "derive": {
+            "batch": "dim(shapes.x, 0)",
+            "inChannels": "dim(shapes.x, 1)",
+            "inHeight": "dim(shapes.x, 2)",
+            "inWidth": "dim(shapes.x, 3)",
+            "outChannels": "dim(shapes.w, 0)",
+            "outHeight": "dim(shapes.y, 2)",
+            "outWidth": "dim(shapes.y, 3)",
+            "spatialTile": "tunables.DP4A_DIRECT_SPATIAL_TILE",
+            "ocTile": "tunables.DP4A_DIRECT_OC_TILE",
+            "icTile": "tunables.DP4A_DIRECT_IC_TILE",
+            "wScalePerChannel": "ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0)",
+            "wZeroPerChannel": "ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)"
+          },
+          "bindings": ["x", "x_scale", "x_zero_point", "w", "w_scale", "w_zero_point", "y_scale", "y_zero_point", "y"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 3), tunables.DP4A_DIRECT_SPATIAL_TILE)",
+            "y": "ceilDiv(dim(shapes.y, 2), tunables.DP4A_DIRECT_SPATIAL_TILE) * ceilDiv(dim(shapes.w, 0), tunables.DP4A_DIRECT_OC_TILE)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1",
+      "priority": 20,
+      "when": ["packedFeature", "not present.B", "rank4TensorOk", "flexibleWeightQuantOk", "attrs.group == 1", "(device.features.has(\"shader-f16\") or dim(shapes.x, 1) % 4 == 0)", "dim(shapes.w, 2) == 1", "dim(shapes.w, 3) == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.y, 2) == dim(shapes.x, 2)", "dim(shapes.y, 3) == dim(shapes.x, 3)", "dp4a2dDispatchOk"],
+      "derive": {
+        "aVec4": "(\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\") if dim(shapes.x, 1) % 4 == 0 else (\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\")",
+        "aPacked": "dim(shapes.x, 1) % 4 == 0"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "QLinearConv.Dp4aPointwiseFused",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": [
+            "a_w",
+            { "arg": "x", "name": "b", "elementType": "$bScalar" },
+            "a_zero_point_main",
+            "b_zero_point_main",
+            "a_scale",
+            "b_scale",
+            "y_scale",
+            "y_zero_point_main",
+            "y_main",
+            "params_main"
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_feature_independent_x4",
+      "priority": 10,
+      "when": ["not present.B", "rank4TensorOk", "flexibleWeightQuantOk", "groupChannelsOk", "output2dShapeOk", "dim(shapes.y, 3) >= 4", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) >= 4", "numel(shapes.y) >= 32"],
+      "derive": {
+        "wScalePerChannel": "ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0)",
+        "wZeroPerChannel": "ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)",
+        "ocTile": "4 if dim(shapes.w, 0) >= attrs.group * 4 and dim(shapes.w, 0) % (attrs.group * 4) == 0 else 1"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "QLinearConv.FeatureIndependentX4",
+          "shader": "qlinear-conv-nchw-x4.wgsl.jinja",
+          "bindings": [
+            "x_main",
+            "x_scale",
+            "x_zero_point_main",
+            "w_main",
+            "w_scale",
+            "w_zero_point_main",
+            "y_scale",
+            "y_zero_point_main",
+            "y_main",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "batch", "type": "u32", "value": "dim(shapes.x, 0)" },
+                { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+                { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+                { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+                { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+                { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+                { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+                { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+                { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "strideH", "type": "u32", "value": "strideH" },
+                { "name": "strideW", "type": "u32", "value": "strideW" },
+                { "name": "dilationH", "type": "u32", "value": "dilationH" },
+                { "name": "dilationW", "type": "u32", "value": "dilationW" },
+                { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+                { "name": "padW", "type": "i32", "value": "effectivePadLeft" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.y, 0) * ceil(dim(shapes.y, 1) / (4 if dim(shapes.w, 0) >= attrs.group * 4 and dim(shapes.w, 0) % (attrs.group * 4) == 0 else 1)) * dim(shapes.y, 2) * ceil(dim(shapes.y, 3) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.y, 0) * ceil(dim(shapes.y, 1) / (4 if dim(shapes.w, 0) >= attrs.group * 4 and dim(shapes.w, 0) % (attrs.group * 4) == 0 else 1)) * dim(shapes.y, 2) * ceil(dim(shapes.y, 3) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_per_channel_quantization",
+      "when": ["not present.B", "rank5TensorOk and dim(shapes.y, 2) == expectedOutputDepth and dim(shapes.y, 3) == expectedOutputHeight and dim(shapes.y, 4) == expectedOutputWidth", "not scalarWeightQuantOk and ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0) and ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk"],
+      "derive": { "hasBias": false, "wScalePerChannel": true, "wZeroPerChannel": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.AccumulatePerChannel3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncw1d_scalar_quantization",
+      "when": ["not present.B", "rank3TensorOk and dim(shapes.y, 2) == expectedOutputWidth", "scalarWeightQuantOk", "groupChannelsOk"],
+      "derive": { "hasBias": false },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate1d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_accumulate"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_scalar_quantization",
+      "when": ["not present.B", "rank5TensorOk and dim(shapes.y, 2) == expectedOutputDepth and dim(shapes.y, 3) == expectedOutputHeight and dim(shapes.y, 4) == expectedOutputWidth", "scalarWeightQuantOk", "groupChannelsOk"],
+      "derive": { "hasBias": false },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_scalar_quantization",
+      "when": ["not present.B", "rank4TensorOk and output2dShapeOk", "scalarWeightQuantOk", "groupChannelsOk"],
+      "derive": { "hasBias": false },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_nchw2d_scalar_quantization"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_count"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncw1d_scalar_quantization_bias",
+      "when": ["present.B and ranks.B == 1 and dim(shapes.B, 0) == dim(shapes.w, 0)", "rank3TensorOk and dim(shapes.y, 2) == expectedOutputWidth", "scalarWeightQuantOk", "groupChannelsOk"],
+      "derive": { "hasBias": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate1d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_accumulate"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "B", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_scalar_quantization_bias",
+      "when": ["present.B and ranks.B == 1 and dim(shapes.B, 0) == dim(shapes.w, 0)", "rank5TensorOk and dim(shapes.y, 2) == expectedOutputDepth and dim(shapes.y, 3) == expectedOutputHeight and dim(shapes.y, 4) == expectedOutputWidth", "scalarWeightQuantOk", "groupChannelsOk"],
+      "derive": { "hasBias": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "B", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncw1d_per_channel_quantization",
+      "when": ["not present.B", "rank3TensorOk and dim(shapes.y, 2) == expectedOutputWidth", "not scalarWeightQuantOk and ranks.w_scale == 1 and dim(shapes.w_scale, 0) == dim(shapes.w, 0) and ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk"],
+      "derive": { "hasBias": false, "wScalePerChannel": true, "wZeroPerChannel": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.AccumulatePerChannel1d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_accumulate"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.Requantize",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_im2col_ncdhw3d_scalar_quantization",
+      "priority": 20,
+      "when": ["packedFeature", "not present.B", "rank5TensorOk", "attrs.group == 1", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) % 4 == 0", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) >= 32", "dim(shapes.w, 0) >= 8", "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) >= 256", "flexibleWeightQuantOk", "dim(shapes.y, 2) == expectedOutputDepth", "dim(shapes.y, 3) == expectedOutputHeight", "dim(shapes.y, 4) == expectedOutputWidth", "im2colStorageOk", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4), tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.w, 0), 8) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "aPacked": true,
+        "hasBias": false
+      },
+      "intermediates": [
+        {
+          "id": "cols3d",
+          "dtype": "int32",
+          "shape": "[dim(shapes.x, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) * dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "QLinearConv.Im2Col3d",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 3,
+            "kernelDSpec": "dim(shapes.w, 2)",
+            "kernelHSpec": "dim(shapes.w, 3)",
+            "kernelWSpec": "dim(shapes.w, 4)",
+            "strideDSpec": "strideD",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationDSpec": "dilationD",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padFrontSpec": "effectivePadFront",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x_im2col", "x_zero_point_im2col", "cols_im2col", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) / tunables.WORKGROUP_SIZE)",
+            "y": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "main",
+          "name": "QLinearConv.Im2Col3dDp4a",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_main", "a_zero_point_main", "b_zero_point_main", "a_scale", "b_scale", "y_scale", "y_zero_point_main", "y_main", "params_main"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_im2col_nchw_bias_quantization",
+      "priority": 25,
+      "when": ["packedFeature", "present.B", "ranks.B == 1", "dim(shapes.B, 0) == dim(shapes.w, 0)", "rank4TensorOk", "attrs.group == 1", "dim(shapes.w, 1) == dim(shapes.x, 1)", "flexibleWeightQuantOk"],
+      "derive": {
+        "aVec4": "(\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\") if dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0 else (\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\")",
+        "aPacked": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0",
+        "hasBias": true
+      },
+      "intermediates": [
+        {
+          "id": "cols",
+          "dtype": "int32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.y, 2) * dim(shapes.y, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "QLinearConv.Im2Col",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 2,
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x_im2col", "x_zero_point_im2col", "cols_b_scalar", "params_conv_int_im2col_spatial"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / tunables.WORKGROUP_SIZE)",
+            "y": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "main",
+          "name": "QLinearConv.Im2ColDp4aBias",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_b_scalar", "a_zero_point_main", "b_zero_point_main", "a_scale", "b_scale", "y_scale", "y_zero_point_main", "bias", "y_main", "params_main"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_im2col_nchw_scalar_quantization",
+      "priority": 20,
+      "when": ["packedFeature", "not present.B", "flexibleWeightQuantOk", "rank4TensorOk", "attrs.group == 1", "(device.features.has(\"shader-f16\") or dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0)", "(dim(shapes.w, 2) > 1 or dim(shapes.w, 3) > 1)", "dim(shapes.w, 1) == dim(shapes.x, 1)", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) >= 64", "numel(shapes.y) >= 8192", "dp4a2dDispatchOk"],
+      "derive": {
+        "aVec4": "(\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\") if dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0 else (\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\")",
+        "aPacked": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0"
+      },
+      "intermediates": [
+        {
+          "id": "cols",
+          "dtype": "int32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.y, 2) * dim(shapes.y, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "QLinearConv.Im2Col",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 2,
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x_im2col", "x_zero_point_im2col", "cols_b_scalar", "params_conv_int_im2col_spatial"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / tunables.WORKGROUP_SIZE)",
+            "y": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "main",
+          "name": "QLinearConv.Im2ColDp4a",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_b_scalar", "a_zero_point_main", "b_zero_point_main", "a_scale", "b_scale", "y_scale", "y_zero_point_main", "y_main", "params_main"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_per_channel_quantization",
+      "priority": 5,
+      "when": ["not present.B", "rank4TensorOk", "ranks.w_scale == 1", "dim(shapes.w_scale, 0) == dim(shapes.w, 0)", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk", "output2dShapeOk"],
+      "derive": { "hasBias": false, "wScalePerChannel": true, "wZeroPerChannel": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.AccumulatePerChannel",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_nchw2d_scalar_quantization"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.RequantizePerChannel",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_per_channel_quantization_bias",
+      "when": ["present.B", "ranks.B == 1", "dim(shapes.B, 0) == dim(shapes.w, 0)", "rank4TensorOk", "ranks.w_scale == 1", "dim(shapes.w_scale, 0) == dim(shapes.w, 0)", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk", "output2dShapeOk"],
+      "derive": { "hasBias": true, "wScalePerChannel": true, "wZeroPerChannel": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.AccumulatePerChannel",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_nchw2d_scalar_quantization"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.RequantizePerChannelBias",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "B", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_scalar_quantization_bias",
+      "when": ["present.B", "ranks.B == 1", "dim(shapes.B, 0) == dim(shapes.w, 0)", "rank4TensorOk", "scalarWeightQuantOk", "groupChannelsOk", "output2dShapeOk"],
+      "derive": { "hasBias": true },
+      "intermediates": [{ "id": "accum", "dtype": "int32", "shape": "shapes.y" }],
+      "passes": [
+        {
+          "id": "accumulate",
+          "name": "QLinearConv.Accumulate",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2 },
+          "bindings": ["x_main", "x_zero_point_main", "w_main", "w_zero_point_main", "y_i32", "params_nchw2d_scalar_quantization"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "requantize",
+          "name": "QLinearConv.RequantizeBias",
+          "shader": "qlinear-conv-requantize.wgsl.jinja",
+          "bindings": ["accum", "x_scale", "w_scale", "y_scale", "y_zero_point_main", "B", "y_main", "params_requantize"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "domain": "ai.onnx",
+  "name": "ConstantOfShape",
+  "sinceVersion": 9,
+  "inputs": { "input": { "dtype": "S", "rank": 1, "storage": "uint32", "narrowing": "checked" } },
+  "outputs": { "output": { "dtype": "T", "rank": "dim(shapes.input, 0)" } },
+  "attributes": { "value": {} },
+  "typeConstraints": {
+    "S": ["int64"],
+    "T": ["float32", "float16", "int32", "int16", "uint32", "int8", "uint8", "bool"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "baseContract": "dtypes.S == \"u32\" and ranks.input == 1 and ranks.output >= 0 and ranks.output <= 8 and f16Ok(dtypes.T) and (has(attrs, \"value\") or tensorDtypes.output == \"float32\")",
+    "fillValue": "attrs.value if has(attrs, \"value\") else 0",
+    "scalar": "dtypes.T",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "fillTail": "numel(shapes.output) % 4 != 0 and numel(shapes.output) >= 4",
+    "vectorFill": "numel(shapes.output) % 4 == 0 or fillTail",
+    "fillCount": "floor(numel(shapes.output) / 4) if vectorFill else numel(shapes.output)",
+    "outputScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if vectorFill else dtypes.T"
+  },
+  "when": ["baseContract"],
+  "bindings": {
+    "output": { "elementType": "$outputScalar" },
+    "params": { "struct": [{ "name": "value", "type": "f32", "value": "fillValue" }] }
+  },
+  "variants": [
+    {
+      "id": "fill_float",
+      "when": ["(dtypes.T == \"f32\" or dtypes.T == \"f16\")"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConstantOfShape.Float",
+          "shader": "constant-of-shape.wgsl.jinja",
+          "derive": { "count": "fillCount", "valueFromUniform": true, "vectorizedSpec": "vectorFill" },
+          "bindings": ["output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((fillCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((fillCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "repeat": { "index": "tailPass", "count": "1 if fillTail else 0" },
+          "passes": [
+            {
+              "id": "tail",
+              "name": "ConstantOfShape.Float.Tail",
+              "shader": "constant-of-shape.wgsl.jinja",
+              "derive": {
+                "count": "numel(shapes.output)",
+                "valueFromUniform": true,
+                "vectorizedSpec": false,
+                "tailOnly": true
+              },
+              "bindings": [{ "arg": "output" }, "params"],
+              "dispatch": { "x": 1 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fill_integer",
+      "when": ["dtypes.T != \"f32\" and dtypes.T != \"f16\""],
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConstantOfShape.Integer",
+          "shader": "constant-of-shape.wgsl.jinja",
+          "derive": {
+            "count": "fillCount",
+            "value": "fillValue",
+            "valueFromUniform": false,
+            "vectorizedSpec": "vectorFill"
+          },
+          "bindings": ["output"],
+          "dispatch": {
+            "x": "min(ceilDiv((fillCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((fillCount), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "repeat": { "index": "tailPass", "count": "1 if fillTail else 0" },
+          "passes": [
+            {
+              "id": "tail",
+              "name": "ConstantOfShape.Integer.Tail",
+              "shader": "constant-of-shape.wgsl.jinja",
+              "derive": {
+                "count": "numel(shapes.output)",
+                "valueFromUniform": false,
+                "vectorizedSpec": false,
+                "tailOnly": true,
+                "value": "fillValue"
+              },
+              "bindings": [{ "arg": "output" }],
+              "dispatch": { "x": 1 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

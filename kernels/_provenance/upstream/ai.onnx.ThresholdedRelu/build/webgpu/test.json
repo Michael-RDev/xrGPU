@@ -1,0 +1,225 @@
+{
+  "fixtureArrays": {
+    "onnx_backend_thresholdedrelu_input_x": [1.764052391052246, 0.40015721321105957, 0.978738009929657, 2.2408931255340576, 1.8675580024719238, -0.9772778749465942, 0.9500884413719177, -0.15135720372200012, -0.10321885347366333, 0.4105985164642334, 0.14404356479644775, 1.4542734622955322, 0.7610377073287964, 0.12167501449584961, 0.44386324286460876, 0.3336743414402008, 1.4940791130065918, -0.2051582634449005, 0.3130677044391632, -0.8540957570075989, -2.5529897212982178, 0.653618574142456, 0.8644362092018127, -0.7421650290489197, 2.269754648208618, -1.4543657302856445, 0.04575851559638977, -0.18718385696411133, 1.5327792167663574, 1.4693588018417358, 0.154947429895401, 0.37816253304481506, -0.8877857327461243, -1.980796456336975, -0.34791216254234314, 0.15634897351264954, 1.2302906513214111, 1.202379822731018, -0.38732680678367615, -0.302302747964859, -1.0485529899597168, -1.420017957687378, -1.7062702178955078, 1.950775384902954, -0.5096521973609924, -0.4380742907524109, -1.2527953386306763, 0.7774903774261475, -1.6138978004455566, -0.21274028718471527, -0.8954665660858154, 0.38690251111984253, -0.5108051300048828, -1.18063223361969, -0.02818222902715206, 0.4283318817615509, 0.06651721894741058, 0.30247190594673157, -0.6343221068382263, -0.3627411723136902]
+  },
+  "cases": [
+    {
+      "name": "f32_values",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 0.5, 1.0, 1.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_alpha_zero_positive_subnormal_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.ThresholdedRelu",
+        "notes": "With alpha=0, positive subnormal values are greater than the threshold and should pass through; zero and negative subnormals should map to zero."
+      },
+      "attrs": { "alpha": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40, 1e-39] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "f32_alpha_zero_positive_subnormal_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.ThresholdedRelu",
+        "notes": "On the scalar path with alpha=0, positive subnormals are greater than the threshold and should pass through."
+      },
+      "attrs": { "alpha": 0 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [-1e-40, 0.0, 1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_values",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [-2.0, -1.0, 0.0, 0.5, 1.0, 1.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.001
+    },
+    {
+      "name": "onnx_example_alpha_2_equality_is_zero",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_thresholdedrelu_example" },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-1.5, 0.0, 1.2, 2.0, 2.2] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "default_alpha_boundary_nonfinite",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [6],
+          "data": { "kind": "values", "values": ["-Infinity", 0.99999994, 1.0, 1.0000001, "Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_alpha_point_one_extreme_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.ThresholdedRelu"
+      },
+      "attrs": { "alpha": 0.1 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [14],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.17549435e-38, 1.17549435e-39, -1.17549435e-39, 3.4028234663852886e+38, -3.4028234663852886e+38, "Infinity", "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [14], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_fp16_alpha_point_one_extreme_values",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/activation/activation_op_test.cc",
+        "test": "ActivationOpTest.ThresholdedRelu",
+        "notes": "Float16 projection of ORT's shared activation vector."
+      },
+      "attrs": { "alpha": 0.1 },
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [14],
+          "data": {
+            "kind": "values",
+            "values": [-1.0, 0.0, 1.0, 100.0, -100.0, 1000.0, -1000.0, 1.17549435e-38, 1.17549435e-39, -1.17549435e-39, 65504.0, -65504.0, "Infinity", "-Infinity"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [14], "tolerance": 0.001 } }
+    },
+    {
+      "name": "onnx_backend_thresholdedrelu",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_thresholdedrelu" },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_thresholdedrelu_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_thresholdedrelu_default",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_thresholdedrelu_default" },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_thresholdedrelu_input_x" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_thresholdedrelu_example",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_thresholdedrelu_example" },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [-1.5, 0.0, 1.2000000476837158, 2.0, 2.200000047683716] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "vec4_f16_lanes",
+      "inputs": {
+        "x": {
+          "dtype": "float16",
+          "shape": [16],
+          "data": {
+            "kind": "values",
+            "values": [-6.0, -4.0, -3.0, -2.0, -1.5, -1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 6.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [16], "tolerance": 0.001, "relTolerance": 0.002 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "alpha": 0.75 },
+      "inputs": { "x": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "vec4_path_nan_yields_zero_not_nan",
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": ["NaN", 0.99999994, 1.0, 1.0000001, "Infinity", "-Infinity", 2.0, "NaN"]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "nondefault_alpha_exact_boundary_vec4",
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": {
+            "kind": "values",
+            "values": [0.75, 0.7500001192092896, 0.7499998807907104, -0.75, 0.0, 1.0, 2.0, -1.0]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_scalar_tail_4097_alpha075",
+      "provenance": { "notes": "An odd element count exercises scalar ThresholdedRelu with a nondefault threshold." },
+      "attrs": { "alpha": 0.75 },
+      "inputs": {
+        "x": {
+          "dtype": "float32",
+          "shape": [4097],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.011, "scale": 2.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4097], "tolerance": 0 } }
+    }
+  ]
+}

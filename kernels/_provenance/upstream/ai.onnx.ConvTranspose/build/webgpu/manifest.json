@@ -1,0 +1,1864 @@
+{
+  "domain": "ai.onnx",
+  "name": "ConvTranspose",
+  "sinceVersion": 11,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T" },
+    "w": { "onnx": "W", "dtype": "T" },
+    "bias": { "onnx": "B", "dtype": "T", "rank": 1, "optional": true }
+  },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "convTransposeOutputShape" } },
+  "attributes": {
+    "auto_pad": { "default": "NOTSET" },
+    "group": { "default": 1 },
+    "dilations": {},
+    "kernel_shape": {},
+    "output_padding": {},
+    "output_shape": {},
+    "pads": {},
+    "strides": {}
+  },
+  "attributeConstraints": { "auto_pad": { "values": ["NOTSET", "SAME_UPPER", "SAME_LOWER", "VALID"] } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "GEMM_REG_MIN_TILE_PRODUCT": { "default": 128 },
+    "PHASE1D_POSITION_TILE": { "default": 32 },
+    "PHASE1D_OUTPUT_TILE": { "default": 8 },
+    "PHASE1D_REGISTER_OUTPUT_TILE": { "default": 16 },
+    "PHASE1D_REGISTER_OUTPUTS_PER_THREAD": { "default": 2 },
+    "PHASE1D_MIN_REGISTER_WORKGROUPS": { "default": 128 },
+    "PHASE1D_K_TILE": { "default": 32 },
+    "PHASE2D_GEMM_TILE": { "default": 64 },
+    "PHASE2D_GEMM_K_TILE": { "default": 64 },
+    "PHASE2D_GEMM_THREAD_TILE": { "default": 4 },
+    "PHASE2D_GEMM_WORKGROUP_EDGE": { "default": 16 },
+    "SGMAT_TILE_ROWS": { "default": 32 },
+    "SGMAT_TILE_COLS": { "default": 64 },
+    "SGMAT_WORKGROUP_THREADS": { "default": 128 },
+    "SGMAT_SUBGROUP_ROWS": { "default": 2 },
+    "SGMAT_SUBGROUP_COLS": { "default": 2 },
+    "SGMAT_K_ALIGNMENT": { "default": 32 },
+    "SGMAT_N_ALIGNMENT": { "default": 64 },
+    "SGMAT_MIN_M": { "default": 32 },
+    "IMPLICIT3D_MAX_M_TILES": { "default": 8 },
+    "IMPLICIT3D_MIN_OUTPUT_SPATIAL": { "default": 1024 }
+  },
+  "derive": {
+    "spatialRank": "ranks.x - 2",
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelD": "attrs.kernel_shape[0] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank == 3 else 1",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "outputPaddingLengthOk": "not has(attrs, \"output_padding\") or (attrs.output_padding | length) == spatialRank",
+    "outputPaddingD": "attrs.output_padding[0] if outputPaddingLengthOk and has(attrs, \"output_padding\") and spatialRank == 3 else 0",
+    "outputPaddingH": "attrs.output_padding[spatialRank - 2] if outputPaddingLengthOk and has(attrs, \"output_padding\") and spatialRank >= 2 else 0",
+    "outputPaddingW": "attrs.output_padding[spatialRank - 1] if outputPaddingLengthOk and has(attrs, \"output_padding\") and spatialRank >= 1 else 0",
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "narrowSubgroupRange": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize < device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= 16",
+    "canPinSubgroupSize32": "device.features.has(\"subgroups\") and device.features.has(\"subgroup-size-control\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize <= 32 and device.adapterInfo.subgroupMaxSize >= 32",
+    "pinSubgroupSize32": "canPinSubgroupSize32 and not wave32Adapter",
+    "wave32Effective": "wave32Adapter or pinSubgroupSize32",
+    "inferredOutputW": "attrs.output_shape[spatialRank - 1] if has(attrs, \"output_shape\") else (dim(shapes.x, ranks.x - 1) * strideW if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else (dim(shapes.x, ranks.x - 1) - 1) * strideW - (padLeft + padRight) + ((dim(shapes.w, ranks.w - 1) - 1) * dilationW + 1) + outputPaddingW)",
+    "inferredOutputH": "attrs.output_shape[spatialRank - 2] if has(attrs, \"output_shape\") else (dim(shapes.x, ranks.x - 2) * strideH if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else (dim(shapes.x, ranks.x - 2) - 1) * strideH - (padTop + padBottom) + ((dim(shapes.w, ranks.w - 2) - 1) * dilationH + 1) + outputPaddingH)",
+    "inferredOutputD": "attrs.output_shape[0] if has(attrs, \"output_shape\") else (dim(shapes.x, 2) * strideD if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else (dim(shapes.x, 2) - 1) * strideD - (padFront + padBack) + ((dim(shapes.w, 2) - 1) * dilationD + 1) + outputPaddingD)",
+    "convTransposeOutputShape": "[dim(shapes.x, 0), dim(shapes.w, 1) * attrs.group, inferredOutputW] if ranks.x == 3 else ([dim(shapes.x, 0), dim(shapes.w, 1) * attrs.group, inferredOutputH, inferredOutputW] if ranks.x == 4 else [dim(shapes.x, 0), dim(shapes.w, 1) * attrs.group, inferredOutputD, inferredOutputH, inferredOutputW])",
+    "outputShapeLengthOk": "not has(attrs, \"output_shape\") or (attrs.output_shape | length) == spatialRank",
+    "outputShapeValuesOk": "outputShapeLengthOk and (not has(attrs, \"output_shape\") or ((spatialRank < 3 or (attrs.output_shape[0] >= 1 and attrs.output_shape[0] == dim(shapes.y, 2))) and (spatialRank < 2 or (attrs.output_shape[spatialRank - 2] >= 1 and attrs.output_shape[spatialRank - 2] == dim(shapes.y, ranks.y - 2))) and attrs.output_shape[spatialRank - 1] >= 1 and attrs.output_shape[spatialRank - 1] == dim(shapes.y, ranks.y - 1)))",
+    "kernelShapeValuesOk": "kernelShapeLengthOk and (not has(attrs, \"kernel_shape\") or ((spatialRank < 3 or kernelD == dim(shapes.w, 2)) and (spatialRank < 2 or kernelH == dim(shapes.w, ranks.w - 2)) and kernelW == dim(shapes.w, ranks.w - 1)))",
+    "spatialAttributesOk": "kernelShapeValuesOk and stridesLengthOk and dilationsLengthOk and padsLengthOk and outputPaddingLengthOk and outputShapeValuesOk and dim(shapes.w, ranks.w - 1) >= 1 and strideW >= 1 and dilationW >= 1 and outputPaddingW >= 0 and outputPaddingW < max(strideW, dilationW) and padLeft >= 0 and padRight >= 0 and (spatialRank < 2 or (dim(shapes.w, ranks.w - 2) >= 1 and strideH >= 1 and dilationH >= 1 and outputPaddingH >= 0 and outputPaddingH < max(strideH, dilationH) and padTop >= 0 and padBottom >= 0)) and (spatialRank < 3 or (dim(shapes.w, 2) >= 1 and strideD >= 1 and dilationD >= 1 and outputPaddingD >= 0 and outputPaddingD < max(strideD, dilationD) and padFront >= 0 and padBack >= 0)) and (attrs.auto_pad == \"NOTSET\" or not has(attrs, \"pads\"))",
+    "autoPadTotalD": "max(0, (dim(shapes.x, 2) - 1) * strideD + ((dim(shapes.w, 2) - 1) * dilationD + 1) + outputPaddingD - dim(shapes.y, 2)) if spatialRank == 3 else 0",
+    "autoPadTotalH": "max(0, (dim(shapes.x, ranks.x - 2) - 1) * strideH + ((dim(shapes.w, ranks.w - 2) - 1) * dilationH + 1) + outputPaddingH - dim(shapes.y, ranks.y - 2)) if spatialRank >= 2 else 0",
+    "autoPadTotalW": "max(0, (dim(shapes.x, ranks.x - 1) - 1) * strideW + ((dim(shapes.w, ranks.w - 1) - 1) * dilationW + 1) + outputPaddingW - dim(shapes.y, ranks.y - 1))",
+    "effectivePadFront": "floor(autoPadTotalD / 2) if attrs.auto_pad == \"SAME_UPPER\" else ((autoPadTotalD - floor(autoPadTotalD / 2)) if (attrs.auto_pad == \"SAME_LOWER\" or has(attrs, \"output_shape\")) else (0 if attrs.auto_pad == \"VALID\" else padFront))",
+    "effectivePadTop": "floor(autoPadTotalH / 2) if attrs.auto_pad == \"SAME_UPPER\" else ((autoPadTotalH - floor(autoPadTotalH / 2)) if (attrs.auto_pad == \"SAME_LOWER\" or has(attrs, \"output_shape\")) else (0 if attrs.auto_pad == \"VALID\" else padTop))",
+    "effectivePadLeft": "floor(autoPadTotalW / 2) if attrs.auto_pad == \"SAME_UPPER\" else ((autoPadTotalW - floor(autoPadTotalW / 2)) if (attrs.auto_pad == \"SAME_LOWER\" or has(attrs, \"output_shape\")) else (0 if attrs.auto_pad == \"VALID\" else padLeft))",
+    "rank3OutputShapeOk": "spatialAttributesOk and (has(attrs, \"output_shape\") or attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" or dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideW - (padLeft + padRight) + ((dim(shapes.w, 2) - 1) * dilationW + 1) + outputPaddingW)",
+    "rank4OutputShapeOk": "spatialAttributesOk and (has(attrs, \"output_shape\") or attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" or (dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideH - (padTop + padBottom) + ((dim(shapes.w, 2) - 1) * dilationH + 1) + outputPaddingH and dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideW - (padLeft + padRight) + ((dim(shapes.w, 3) - 1) * dilationW + 1) + outputPaddingW))",
+    "exactTiling2d": "strideH == dim(shapes.w, 2) and strideW == dim(shapes.w, 3) and padTop == 0 and padLeft == 0 and padBottom == 0 and padRight == 0 and dilationH == 1 and dilationW == 1 and outputPaddingH == 0 and outputPaddingW == 0",
+    "rank5OutputShapeOk": "spatialAttributesOk and (has(attrs, \"output_shape\") or attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" or (dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideD - (padFront + padBack) + ((dim(shapes.w, 2) - 1) * dilationD + 1) + outputPaddingD and dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideH - (padTop + padBottom) + ((dim(shapes.w, 3) - 1) * dilationH + 1) + outputPaddingH and dim(shapes.y, 4) == (dim(shapes.x, 4) - 1) * strideW - (padLeft + padRight) + ((dim(shapes.w, 4) - 1) * dilationW + 1) + outputPaddingW))",
+    "batchChannelContract": "dim(shapes.w, 0) == dim(shapes.x, 1) and dim(shapes.y, 0) == dim(shapes.x, 0)",
+    "outputDispatchFits": "ceilDiv(ceilDiv(numel(shapes.y), tunables.WORKGROUP_SIZE), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank3DenseContract": "spatialAttributesOk and ranks.x == 3 and ranks.w == 3 and ranks.y == 3 and attrs.group == 1 and batchChannelContract and outputDispatchFits and dim(shapes.y, 1) == dim(shapes.w, 1)",
+    "rank3GroupedContract": "spatialAttributesOk and ranks.x == 3 and ranks.w == 3 and ranks.y == 3 and attrs.group > 1 and batchChannelContract and outputDispatchFits and dim(shapes.x, 1) % attrs.group == 0 and dim(shapes.y, 1) == dim(shapes.w, 1) * attrs.group",
+    "rank4DenseContract": "spatialAttributesOk and ranks.x == 4 and ranks.w == 4 and ranks.y == 4 and attrs.group == 1 and batchChannelContract and outputDispatchFits and dim(shapes.y, 1) == dim(shapes.w, 1)",
+    "rank4GroupedContract": "spatialAttributesOk and ranks.x == 4 and ranks.w == 4 and ranks.y == 4 and attrs.group > 1 and batchChannelContract and outputDispatchFits and dim(shapes.x, 1) % attrs.group == 0 and dim(shapes.y, 1) == dim(shapes.w, 1) * attrs.group",
+    "rank4DepthwisePointwiseVec4Contract": "rank4GroupedContract and rank4OutputShapeOk and attrs.group == dim(shapes.x, 1) and dim(shapes.y, 1) == dim(shapes.x, 1) and dim(shapes.w, 1) == 1 and dim(shapes.w, 2) == 1 and dim(shapes.w, 3) == 1 and strideH == 1 and strideW == 1 and effectivePadTop == 0 and effectivePadLeft == 0 and padBottom == 0 and padRight == 0 and outputPaddingH == 0 and outputPaddingW == 0 and (dim(shapes.y, 2) * dim(shapes.y, 3)) % 4 == 0",
+    "rank5DenseContract": "spatialAttributesOk and ranks.x == 5 and ranks.w == 5 and ranks.y == 5 and attrs.group == 1 and batchChannelContract and outputDispatchFits and dim(shapes.y, 1) == dim(shapes.w, 1)",
+    "noBiasContract": "not present.bias",
+    "biasContract": "present.bias and ranks.bias == 1 and dim(shapes.bias, 0) == dim(shapes.y, 1)",
+    "hasBias": "present.bias",
+    "f32Type": "dtypes.T == \"f32\"",
+    "f16Type": "device.features.has(\"shader-f16\") and dtypes.T == \"f16\"",
+    "gemmM": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+    "gemmN": "dim(shapes.x, 2) * dim(shapes.x, 3)",
+    "gemmWeightElements": "numel(shapes.w)",
+    "gemmColumnElements": "dim(shapes.x, 0) * gemmM * gemmN",
+    "ctImplicitOutVolume": "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)",
+    "ctImplicitK": "dim(shapes.x, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)",
+    "ctImplicitKPadded": "ceilDiv(ctImplicitK, 32) * 32",
+    "ctImplicitYWorkgroups": "ceilDiv(dim(shapes.w, 1), tunables.SGMAT_TILE_ROWS)",
+    "ctImplicitDirectStore": "dim(shapes.w, 1) % tunables.SGMAT_TILE_ROWS == 0",
+    "ctImplicitPadFront": "dim(shapes.w, 2) - 1 - effectivePadFront",
+    "ctImplicitPadTop": "dim(shapes.w, 3) - 1 - effectivePadTop",
+    "ctImplicitPadLeft": "dim(shapes.w, 4) - 1 - effectivePadLeft",
+    "ctImplicitPlainGeometry": "strideD == 1 and strideH == 1 and strideW == 1 and dilationD == 1 and dilationH == 1 and dilationW == 1 and outputPaddingD == 0 and outputPaddingH == 0 and outputPaddingW == 0 and ctImplicitPadFront >= 0 and ctImplicitPadTop >= 0 and ctImplicitPadLeft >= 0",
+    "gemm3dM": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)",
+    "gemm3dN": "dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4)",
+    "gemm3dColumnElements": "dim(shapes.x, 0) * gemm3dM * gemm3dN",
+    "gemmDispatchFits": "ceilDiv(gemmN, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(gemmM, 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(gemmWeightElements, tunables.WORKGROUP_SIZE), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "gemm3dDispatchFits": "ceilDiv(gemm3dN, tunables.SGMAT_TILE_COLS) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(gemm3dM, tunables.SGMAT_TILE_ROWS) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(ceilDiv(gemmWeightElements, tunables.WORKGROUP_SIZE), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "sgmat3dSharedBytes": "(tunables.SGMAT_TILE_ROWS * tunables.SGMAT_K_ALIGNMENT + tunables.SGMAT_TILE_COLS * tunables.SGMAT_K_ALIGNMENT + (tunables.SGMAT_WORKGROUP_THREADS / 32) * 4 * tunables.SGMAT_TILE_COLS) * dtypeBytes(\"float32\")",
+    "sgmat3dDeviceCovered": "tunables.SGMAT_WORKGROUP_THREADS <= deviceWorkgroupCap and sgmat3dSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and tunables.SGMAT_TILE_ROWS % (tunables.SGMAT_SUBGROUP_ROWS * 8) == 0 and tunables.SGMAT_TILE_COLS % (tunables.SGMAT_SUBGROUP_COLS * 8) == 0",
+    "ctImplicitOk": "rank5DenseContract and rank5OutputShapeOk and ctImplicitPlainGeometry and dim(shapes.w, 1) >= tunables.SGMAT_MIN_M and ctImplicitYWorkgroups <= tunables.IMPLICIT3D_MAX_M_TILES and ctImplicitOutVolume >= tunables.IMPLICIT3D_MIN_OUTPUT_SPATIAL and sgmat3dDeviceCovered and ceilDiv(ctImplicitOutVolume, tunables.SGMAT_TILE_COLS) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ctImplicitYWorkgroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and 4 * gemmWeightElements <= storageBufferLimit",
+    "f16GemmScratchFits": "2 * gemmWeightElements <= storageBufferLimit and 2 * gemmColumnElements <= storageBufferLimit",
+    "f32GemmScratchFits": "4 * gemmWeightElements <= storageBufferLimit and 4 * gemmColumnElements <= storageBufferLimit",
+    "f32Gemm3dScratchFits": "4 * gemmWeightElements <= storageBufferLimit and 4 * gemm3dColumnElements <= storageBufferLimit",
+    "phase1dRegisterWorkgroups": "dim(shapes.x, 0) * ceilDiv(dim(shapes.x, 2), tunables.PHASE1D_POSITION_TILE) * ceilDiv(dim(shapes.y, 1), tunables.PHASE1D_REGISTER_OUTPUT_TILE)",
+    "phase1dUseRegisterTile": "phase1dRegisterWorkgroups >= tunables.PHASE1D_MIN_REGISTER_WORKGROUPS",
+    "phase1dOutputTile": "tunables.PHASE1D_REGISTER_OUTPUT_TILE if phase1dUseRegisterTile else tunables.PHASE1D_OUTPUT_TILE",
+    "phase1dOutputsPerThread": "tunables.PHASE1D_REGISTER_OUTPUTS_PER_THREAD if phase1dUseRegisterTile else 1",
+    "phase1dWorkgroupSize": "tunables.PHASE1D_POSITION_TILE * phase1dOutputTile / phase1dOutputsPerThread",
+    "phase1dSharedBytes": "4 * tunables.PHASE1D_K_TILE * (tunables.PHASE1D_POSITION_TILE + 2 + phase1dOutputTile * 4)",
+    "phase1dDispatchFits": "ceilDiv(dim(shapes.x, 2), tunables.PHASE1D_POSITION_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.y, 1), phase1dOutputTile) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "phase1dDeviceCovered": "phase1dOutputTile % phase1dOutputsPerThread == 0 and phase1dWorkgroupSize <= deviceWorkgroupCap and phase1dSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and phase1dDispatchFits",
+    "phase1dGeometryCovered": "rank3DenseContract and rank3OutputShapeOk and attrs.auto_pad == \"NOTSET\" and strideW == 2 and dilationW == 1 and dim(shapes.w, 2) == 4 and padLeft == 1 and outputPaddingW == 0 and dim(shapes.y, 2) == dim(shapes.x, 2) * 2",
+    "phase1dCovered": "f32Type and phase1dGeometryCovered and phase1dDeviceCovered",
+    "phase2dSharedBytes": "4 * tunables.PHASE2D_GEMM_TILE * tunables.PHASE2D_GEMM_K_TILE",
+    "phase2dDispatchFits": "ceilDiv(dim(shapes.x, 2) * dim(shapes.x, 3), tunables.PHASE2D_GEMM_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.y, 1), tunables.PHASE2D_GEMM_TILE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.x, 0) * 4 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "phase2dDeviceCovered": "tunables.PHASE2D_GEMM_THREAD_TILE == 4 and tunables.PHASE2D_GEMM_TILE == tunables.PHASE2D_GEMM_WORKGROUP_EDGE * tunables.PHASE2D_GEMM_THREAD_TILE and tunables.PHASE2D_GEMM_WORKGROUP_EDGE * tunables.PHASE2D_GEMM_WORKGROUP_EDGE <= device.limits.maxComputeInvocationsPerWorkgroup and tunables.PHASE2D_GEMM_WORKGROUP_EDGE <= device.limits.maxComputeWorkgroupSizeX and tunables.PHASE2D_GEMM_WORKGROUP_EDGE <= device.limits.maxComputeWorkgroupSizeY and phase2dSharedBytes <= device.limits.maxComputeWorkgroupStorageSize and phase2dDispatchFits",
+    "phase2dGeometryCovered": "rank4DenseContract and rank4OutputShapeOk and attrs.auto_pad == \"NOTSET\" and strideH == 2 and strideW == 2 and dilationH == 1 and dilationW == 1 and dim(shapes.w, 2) == 4 and dim(shapes.w, 3) == 4 and padTop == 1 and padLeft == 1 and dim(shapes.y, 2) == dim(shapes.x, 2) * 2 and dim(shapes.y, 3) == dim(shapes.x, 3) * 2",
+    "phase2dCovered": "f16Type and phase2dGeometryCovered and phase2dDeviceCovered and not narrowSubgroupRange",
+    "emptyInputReductionContract": "numel(shapes.x) == 0 and numel(shapes.y) > 0 and ((f32Type and (((rank3DenseContract or rank3GroupedContract) and rank3OutputShapeOk) or ((rank4DenseContract or rank4GroupedContract) and rank4OutputShapeOk) or (rank5DenseContract and rank5OutputShapeOk))) or (f16Type and ((rank3DenseContract and rank3OutputShapeOk) or ((rank4DenseContract or rank4GroupedContract) and rank4OutputShapeOk))))",
+    "groupedOutCPerGroup": "dim(shapes.y, 1) / attrs.group",
+    "groupedBlockOc": "16 if groupedOutCPerGroup % 16 == 0 else (8 if groupedOutCPerGroup % 8 == 0 else (4 if groupedOutCPerGroup % 4 == 0 else (2 if groupedOutCPerGroup % 2 == 0 else 1)))",
+    "groupedWeightBytes": "(dim(shapes.x, 1) / attrs.group) * groupedOutCPerGroup * dim(shapes.w, 2) * dim(shapes.w, 3) * 4",
+    "groupedPlanes": "dim(shapes.x, 0) * attrs.group * (groupedOutCPerGroup / groupedBlockOc)",
+    "groupedStridePhaseBlockedFits": "groupedWeightBytes <= device.limits.maxComputeWorkgroupStorageSize and groupedPlanes <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3), tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "count": "numel(shapes.y)",
+    "exactTiling": "exactTiling2d",
+    "inC": "dim(shapes.x, 1)",
+    "inCPerGroup": "dim(shapes.x, 1) / attrs.group",
+    "inChannels": "dim(shapes.x, 1)",
+    "inH": "dim(shapes.x, 2)",
+    "inW": "dim(shapes.x, 3)",
+    "outC": "dim(shapes.y, 1)",
+    "outChannels": "dim(shapes.y, 1)",
+    "outH": "dim(shapes.y, 2)",
+    "outW": "dim(shapes.y, 3)",
+    "padH": "effectivePadTop",
+    "padW": "effectivePadLeft",
+    "scalar": "dtypes.T"
+  },
+  "bindings": {
+    "y": { "elementType": "$T" },
+    "bias": { "elementType": "$T" },
+    "x": { "elementType": "$T" },
+    "w": { "elementType": "$phaseWeightElement" },
+    "y_main": { "name": "y", "elementType": "$phaseOutputElement" },
+    "wsrc": { "arg": "w", "elementType": "$T" },
+    "wt": { "buffer": "storage", "elementType": "$T" },
+    "params": {
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.w)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelD", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 4)" }
+      ]
+    },
+    "w_t": { "scratch": "wt", "name": "w", "buffer": "read-only-storage", "elementType": "$T" },
+    "xm": { "arg": "x", "elementType": "$T" },
+    "y_t": { "scratch": "cols", "name": "y", "elementType": "$T" },
+    "cols": { "buffer": "read-only-storage", "elementType": "$T" },
+    "params_col2im": {
+      "name": "params",
+      "struct": [
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelD", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 4)" },
+        { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadFront" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_reorder": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.w)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" }
+      ]
+    },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_gemm": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)" },
+        { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.x, 2) * dim(shapes.x, 3)" }
+      ]
+    },
+    "w_main": { "name": "w", "elementType": "$T" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_ncl1d_grouped": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_nchw2d": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_ncdhw3d": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelD", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 4)" },
+        { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadFront" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_nchw2d_grouped": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_conv_transpose2d_nchw": {
+      "name": "params",
+      "struct": [
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.y, 1)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "empty_input_reduction",
+      "priority": 100,
+      "when": ["noBiasContract", "emptyInputReductionContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.EmptyInput",
+          "shader": "conv-transpose-empty-input.wgsl.jinja",
+          "derive": {
+            "outputSpatial": "dim(shapes.y, 2) if ranks.y == 3 else (dim(shapes.y, 2) * dim(shapes.y, 3) if ranks.y == 4 else dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4))"
+          },
+          "bindings": ["y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "empty_input_reduction_bias",
+      "priority": 100,
+      "when": ["biasContract", "emptyInputReductionContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.EmptyInputBias",
+          "shader": "conv-transpose-empty-input.wgsl.jinja",
+          "derive": {
+            "outputSpatial": "dim(shapes.y, 2) if ranks.y == 3 else (dim(shapes.y, 2) * dim(shapes.y, 3) if ranks.y == 4 else dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4))"
+          },
+          "bindings": ["bias", "y"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_phase_tiled",
+      "priority": 40,
+      "when": ["noBiasContract", "phase1dCovered"],
+      "derive": {
+        "phaseWeightElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "phaseOutputElement": "\"vec2<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1d.PhaseTiled",
+          "shader": "conv-transpose1d-phase-tiled.wgsl.jinja",
+          "derive": {
+            "inWidth": "dim(shapes.x, 2)",
+            "positionTile": "tunables.PHASE1D_POSITION_TILE",
+            "outputTile": "phase1dOutputTile",
+            "outputsPerThread": "phase1dOutputsPerThread",
+            "kTile": "tunables.PHASE1D_K_TILE",
+            "workgroupSizeSpec": "phase1dWorkgroupSize",
+            "xTileElements": "tunables.PHASE1D_K_TILE * (tunables.PHASE1D_POSITION_TILE + 2)",
+            "weightTileElements": "tunables.PHASE1D_K_TILE * phase1dOutputTile"
+          },
+          "bindings": ["x", "w", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.x, 2), tunables.PHASE1D_POSITION_TILE)",
+            "y": "ceilDiv(dim(shapes.y, 1), phase1dOutputTile)",
+            "z": "dim(shapes.x, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_phase_tiled_bias",
+      "priority": 45,
+      "when": ["biasContract", "phase1dCovered"],
+      "derive": {
+        "phaseWeightElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "phaseOutputElement": "\"vec2<\" ~ dtypes.T ~ \">\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1d.PhaseTiledBias",
+          "shader": "conv-transpose1d-phase-tiled.wgsl.jinja",
+          "derive": {
+            "inWidth": "dim(shapes.x, 2)",
+            "positionTile": "tunables.PHASE1D_POSITION_TILE",
+            "outputTile": "phase1dOutputTile",
+            "outputsPerThread": "phase1dOutputsPerThread",
+            "kTile": "tunables.PHASE1D_K_TILE",
+            "workgroupSizeSpec": "phase1dWorkgroupSize",
+            "xTileElements": "tunables.PHASE1D_K_TILE * (tunables.PHASE1D_POSITION_TILE + 2)",
+            "weightTileElements": "tunables.PHASE1D_K_TILE * phase1dOutputTile"
+          },
+          "bindings": ["x", "w", "bias", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.x, 2), tunables.PHASE1D_POSITION_TILE)",
+            "y": "ceilDiv(dim(shapes.y, 1), phase1dOutputTile)",
+            "z": "dim(shapes.x, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_implicit_sgmat",
+      "priority": 60,
+      "when": ["noBiasContract", "f32Type", "wave32Effective", "ctImplicitOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f32\"",
+        "directMatrixStore": "ctImplicitDirectStore",
+        "tileRows": "tunables.SGMAT_TILE_ROWS",
+        "subgroupRows": "tunables.SGMAT_SUBGROUP_ROWS",
+        "subgroupCols": "tunables.SGMAT_SUBGROUP_COLS",
+        "workgroupThreads": "tunables.SGMAT_WORKGROUP_THREADS",
+        "M": "dim(shapes.w, 1)",
+        "K": "ctImplicitK",
+        "N": "ctImplicitOutVolume",
+        "padded": true,
+        "kPadded": "ctImplicitKPadded",
+        "implicitIm2col": true,
+        "convSpatialDims": 3,
+        "convKernelD": "dim(shapes.w, 2)",
+        "convKernelH": "dim(shapes.w, 3)",
+        "convKernelW": "dim(shapes.w, 4)",
+        "convStrideD": 1,
+        "convStrideH": 1,
+        "convStrideW": 1,
+        "convDilationD": 1,
+        "convDilationH": 1,
+        "convDilationW": 1,
+        "convPadFront": "ctImplicitPadFront",
+        "convPadTop": "ctImplicitPadTop",
+        "convPadLeft": "ctImplicitPadLeft",
+        "convInD": "dim(shapes.x, 2)",
+        "convInH": "dim(shapes.x, 3)",
+        "convInW": "dim(shapes.x, 4)",
+        "convOutH": "dim(shapes.y, 3)",
+        "convOutW": "dim(shapes.y, 4)",
+        "convInChannels": "dim(shapes.x, 1)"
+      },
+      "intermediates": [{ "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" }],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightFlipForward",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "derive": { "forwardFlip": true },
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dImplicitSubgroupMatrix",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w_t", "xm", "y"],
+          "dispatch": {
+            "x": "ceilDiv(ctImplicitOutVolume, tunables.SGMAT_TILE_COLS)",
+            "y": "ctImplicitYWorkgroups",
+            "z": "dim(shapes.x, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_implicit_sgmat_bias",
+      "priority": 61,
+      "when": ["biasContract", "f32Type", "wave32Effective", "ctImplicitOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f32\"",
+        "directMatrixStore": "ctImplicitDirectStore",
+        "tileRows": "tunables.SGMAT_TILE_ROWS",
+        "subgroupRows": "tunables.SGMAT_SUBGROUP_ROWS",
+        "subgroupCols": "tunables.SGMAT_SUBGROUP_COLS",
+        "workgroupThreads": "tunables.SGMAT_WORKGROUP_THREADS",
+        "M": "dim(shapes.w, 1)",
+        "K": "ctImplicitK",
+        "N": "ctImplicitOutVolume",
+        "padded": true,
+        "kPadded": "ctImplicitKPadded",
+        "implicitIm2col": true,
+        "convSpatialDims": 3,
+        "convKernelD": "dim(shapes.w, 2)",
+        "convKernelH": "dim(shapes.w, 3)",
+        "convKernelW": "dim(shapes.w, 4)",
+        "convStrideD": 1,
+        "convStrideH": 1,
+        "convStrideW": 1,
+        "convDilationD": 1,
+        "convDilationH": 1,
+        "convDilationW": 1,
+        "convPadFront": "ctImplicitPadFront",
+        "convPadTop": "ctImplicitPadTop",
+        "convPadLeft": "ctImplicitPadLeft",
+        "convInD": "dim(shapes.x, 2)",
+        "convInH": "dim(shapes.x, 3)",
+        "convInW": "dim(shapes.x, 4)",
+        "convOutH": "dim(shapes.y, 3)",
+        "convOutW": "dim(shapes.y, 4)",
+        "convInChannels": "dim(shapes.x, 1)"
+      },
+      "intermediates": [{ "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" }],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightFlipForward",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "derive": { "forwardFlip": true },
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dImplicitSubgroupMatrixBias",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "bindings": ["w_t", "xm", "bias", "y"],
+          "dispatch": {
+            "x": "ceilDiv(ctImplicitOutVolume, tunables.SGMAT_TILE_COLS)",
+            "y": "ctImplicitYWorkgroups",
+            "z": "dim(shapes.x, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm",
+      "priority": 50,
+      "when": ["noBiasContract", "f32Type", "wave32Effective", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dM >= tunables.SGMAT_MIN_M", "dim(shapes.x, 1) % tunables.SGMAT_K_ALIGNMENT == 0", "gemm3dN % tunables.SGMAT_N_ALIGNMENT == 0", "sgmat3dDeviceCovered", "gemm3dDispatchFits", "f32Gemm3dScratchFits"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f32\"",
+        "directMatrixStore": "gemm3dM % tunables.SGMAT_TILE_ROWS == 0",
+        "tileRows": "tunables.SGMAT_TILE_ROWS",
+        "tileCols": "tunables.SGMAT_TILE_COLS",
+        "workgroupThreads": "tunables.SGMAT_WORKGROUP_THREADS",
+        "subgroupRows": "tunables.SGMAT_SUBGROUP_ROWS",
+        "subgroupCols": "tunables.SGMAT_SUBGROUP_COLS",
+        "M": "gemm3dM",
+        "K": "dim(shapes.x, 1)",
+        "N": "gemm3dN"
+      },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemm",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t"],
+          "dispatch": {
+            "x": "ceilDiv(gemm3dN, tunables.SGMAT_TILE_COLS)",
+            "y": "ceilDiv(gemm3dM, tunables.SGMAT_TILE_ROWS)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2Im",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm_bias",
+      "priority": 55,
+      "when": ["biasContract", "f32Type", "wave32Effective", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dM >= tunables.SGMAT_MIN_M", "dim(shapes.x, 1) % tunables.SGMAT_K_ALIGNMENT == 0", "gemm3dN % tunables.SGMAT_N_ALIGNMENT == 0", "sgmat3dDeviceCovered", "gemm3dDispatchFits", "f32Gemm3dScratchFits"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f32", "resultComponentType": "f32", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f32\"",
+        "directMatrixStore": "gemm3dM % tunables.SGMAT_TILE_ROWS == 0",
+        "tileRows": "tunables.SGMAT_TILE_ROWS",
+        "tileCols": "tunables.SGMAT_TILE_COLS",
+        "workgroupThreads": "tunables.SGMAT_WORKGROUP_THREADS",
+        "subgroupRows": "tunables.SGMAT_SUBGROUP_ROWS",
+        "subgroupCols": "tunables.SGMAT_SUBGROUP_COLS",
+        "M": "gemm3dM",
+        "K": "dim(shapes.x, 1)",
+        "N": "gemm3dN"
+      },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemm",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t"],
+          "dispatch": {
+            "x": "ceilDiv(gemm3dN, tunables.SGMAT_TILE_COLS)",
+            "y": "ceilDiv(gemm3dM, tunables.SGMAT_TILE_ROWS)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2ImBias",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm_tiled_f32",
+      "priority": 30,
+      "when": ["noBiasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dDispatchFits", "f32Gemm3dScratchFits"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            "w_t",
+            "xm",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemm3dM" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "N", "type": "u32", "value": "gemm3dN" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "ceilDiv(gemm3dN, 32)", "y": "ceilDiv(gemm3dM, 32)", "z": "dim(shapes.x, 0)" }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2Im",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm_tiled_f32_reg",
+      "priority": 32,
+      "when": ["noBiasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dDispatchFits", "f32Gemm3dScratchFits", "ceilDiv(gemm3dM, 64) * ceilDiv(gemm3dN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT"],
+      "derive": { "usesF16": false, "gemmKTile": "32 if dim(shapes.x, 1) % 32 == 0 else 16" },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            "w_t",
+            "xm",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemm3dM" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "N", "type": "u32", "value": "gemm3dN" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "ceilDiv(gemm3dN, 64)", "y": "ceilDiv(gemm3dM, 64)", "z": "dim(shapes.x, 0)" }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2Im",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm_tiled_f32_bias",
+      "priority": 35,
+      "when": ["biasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dDispatchFits", "f32Gemm3dScratchFits"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            "w_t",
+            "xm",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemm3dM" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "N", "type": "u32", "value": "gemm3dN" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "ceilDiv(gemm3dN, 32)", "y": "ceilDiv(gemm3dM, 32)", "z": "dim(shapes.x, 0)" }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2ImBias",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_gemm_tiled_f32_bias_reg",
+      "priority": 37,
+      "when": ["biasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk", "gemm3dN > 0", "gemm3dDispatchFits", "f32Gemm3dScratchFits", "ceilDiv(gemm3dM, 64) * ceilDiv(gemm3dN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT"],
+      "derive": { "usesF16": false, "gemmKTile": "32 if dim(shapes.x, 1) % 32 == 0 else 16" },
+      "intermediates": [
+        { "id": "wt", "dtype": "float32", "shape": "[gemmWeightElements]" },
+        { "id": "cols", "dtype": "float32", "shape": "[gemm3dColumnElements]" }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTranspose3dWeightReorder",
+          "shader": "conv-transpose3d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((gemmWeightElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTranspose3dColsGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            "w_t",
+            "xm",
+            "y_t",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "M", "type": "u32", "value": "gemm3dM" },
+                { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "N", "type": "u32", "value": "gemm3dN" }
+              ]
+            }
+          ],
+          "dispatch": { "x": "ceilDiv(gemm3dN, 64)", "y": "ceilDiv(gemm3dM, 64)", "z": "dim(shapes.x, 0)" }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTranspose3dCol2ImBias",
+          "shader": "conv-transpose3d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params_col2im"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm",
+      "priority": 50,
+      "when": ["noBiasContract", "f16Type", "wave32Effective", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f16GemmScratchFits", "dim(shapes.x, 1) % 32 == 0", "(dim(shapes.x, 2) * dim(shapes.x, 3)) % 64 == 0", "rank4OutputShapeOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f16\"",
+        "M": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+        "K": "dim(shapes.x, 1)",
+        "N": "dim(shapes.x, 2) * dim(shapes.x, 3)"
+      },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float16",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float16",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemm",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            { "scratch": "wt", "name": "w", "buffer": "read-only-storage", "elementType": "f16" },
+            "xm",
+            { "scratch": "cols", "name": "y", "elementType": "f16" }
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 32)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2Im",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_bias",
+      "priority": 55,
+      "when": ["biasContract", "f16Type", "wave32Effective", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f16GemmScratchFits", "dim(shapes.x, 1) % 32 == 0", "(dim(shapes.x, 2) * dim(shapes.x, 3)) % 64 == 0", "rank4OutputShapeOk"],
+      "requires": {
+        "features": ["subgroups", "chromium-experimental-subgroup-matrix"],
+        "subgroupMatrixConfigs": [{ "componentType": "f16", "M": 8, "N": 8, "K": 8 }]
+      },
+      "derive": {
+        "fScalar": "\"f16\"",
+        "M": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+        "K": "dim(shapes.x, 1)",
+        "N": "dim(shapes.x, 2) * dim(shapes.x, 3)"
+      },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float16",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float16",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemm",
+          "shader": "conv-1x1-subgroup-matrix.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": [
+            { "scratch": "wt", "name": "w", "buffer": "read-only-storage", "elementType": "f16" },
+            "xm",
+            { "scratch": "cols", "name": "y", "elementType": "f16" }
+          ],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 32)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2ImBias",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled",
+      "priority": 30,
+      "when": ["noBiasContract", "f16Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f16GemmScratchFits", "rank4OutputShapeOk"],
+      "derive": { "usesF16": true },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float16",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float16",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 64)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2Im",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled_bias",
+      "priority": 35,
+      "when": ["biasContract", "f16Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f16GemmScratchFits", "rank4OutputShapeOk"],
+      "derive": { "usesF16": true },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float16",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float16",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmTiledReg",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 64)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2ImBias",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled_f32",
+      "priority": 30,
+      "when": ["noBiasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 32)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 32)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2Im",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled_f32_reg",
+      "priority": 32,
+      "when": ["noBiasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk", "ceilDiv(gemmM, 64) * ceilDiv(gemmN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmRegTiled",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 64)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2Im",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled_f32_bias",
+      "priority": 35,
+      "when": ["biasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmTiled",
+          "shader": "conv-1x1-gemm-tiled.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 32)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 32)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2ImBias",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_gemm_tiled_f32_bias_reg",
+      "priority": 37,
+      "when": ["biasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk", "ceilDiv(gemmM, 64) * ceilDiv(gemmN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT"],
+      "derive": { "usesF16": false },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        },
+        {
+          "id": "cols",
+          "dtype": "float32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.x, 2) * dim(shapes.x, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeColsGemmRegTiled",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "derive": { "hasBias": false },
+          "bindings": ["w_t", "xm", "y_t", "params_gemm"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.x, 2) * dim(shapes.x, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) / 64)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "col2im",
+          "name": "ConvTransposeCol2ImBias",
+          "shader": "conv-transpose2d-col2im.wgsl.jinja",
+          "bindings": ["cols", "bias", "y", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_phase_gemm_tiled",
+      "priority": 60,
+      "when": ["noBiasContract", "phase2dCovered"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose2d.PhaseGemmTiled",
+          "shader": "conv-transpose2d-phase-gemm-tiled.wgsl.jinja",
+          "derive": {
+            "batch": "dim(shapes.x, 0)",
+            "inHeight": "dim(shapes.x, 2)",
+            "inWidth": "dim(shapes.x, 3)",
+            "outHeight": "dim(shapes.y, 2)",
+            "outWidth": "dim(shapes.y, 3)",
+            "mTile": "tunables.PHASE2D_GEMM_TILE",
+            "nTile": "tunables.PHASE2D_GEMM_TILE",
+            "kTile": "tunables.PHASE2D_GEMM_K_TILE",
+            "threadRows": "tunables.PHASE2D_GEMM_THREAD_TILE",
+            "threadColumns": "tunables.PHASE2D_GEMM_THREAD_TILE",
+            "workgroupEdge": "tunables.PHASE2D_GEMM_WORKGROUP_EDGE"
+          },
+          "bindings": ["x", "w", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.x, 2) * dim(shapes.x, 3), tunables.PHASE2D_GEMM_TILE)",
+            "y": "ceilDiv(dim(shapes.y, 1), tunables.PHASE2D_GEMM_TILE)",
+            "z": "dim(shapes.x, 0) * 4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_phase_gemm_tiled_bias",
+      "priority": 65,
+      "when": ["biasContract", "phase2dCovered"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose2d.PhaseGemmTiledBias",
+          "shader": "conv-transpose2d-phase-gemm-tiled.wgsl.jinja",
+          "derive": {
+            "batch": "dim(shapes.x, 0)",
+            "inHeight": "dim(shapes.x, 2)",
+            "inWidth": "dim(shapes.x, 3)",
+            "outHeight": "dim(shapes.y, 2)",
+            "outWidth": "dim(shapes.y, 3)",
+            "mTile": "tunables.PHASE2D_GEMM_TILE",
+            "nTile": "tunables.PHASE2D_GEMM_TILE",
+            "kTile": "tunables.PHASE2D_GEMM_K_TILE",
+            "threadRows": "tunables.PHASE2D_GEMM_THREAD_TILE",
+            "threadColumns": "tunables.PHASE2D_GEMM_THREAD_TILE",
+            "workgroupEdge": "tunables.PHASE2D_GEMM_WORKGROUP_EDGE"
+          },
+          "bindings": ["x", "w", "bias", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.x, 2) * dim(shapes.x, 3), tunables.PHASE2D_GEMM_TILE)",
+            "y": "ceilDiv(dim(shapes.y, 1), tunables.PHASE2D_GEMM_TILE)",
+            "z": "dim(shapes.x, 0) * 4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped_stride_phase_blocked",
+      "priority": 25,
+      "when": ["noBiasContract", "rank4GroupedContract", "f16Ok(dtypes.T)", "strideH >= 2", "strideW >= 2", "dilationH == 1", "dilationW == 1", "dim(shapes.w, 2) >= 2", "dim(shapes.w, 2) <= 7", "dim(shapes.w, 3) >= 2", "dim(shapes.w, 3) <= 7", "dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideH - (padTop + padBottom) + dim(shapes.w, 2) + outputPaddingH", "dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideW - (padLeft + padRight) + dim(shapes.w, 3) + outputPaddingW", "groupedStridePhaseBlockedFits"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.GroupedStridePhaseBlocked",
+          "shader": "conv-transpose2d-grouped-stride-phase-blocked.wgsl.jinja",
+          "derive": {
+            "outCPerGroup": "groupedOutCPerGroup",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "groups": "attrs.group",
+            "ocBlock": "groupedBlockOc"
+          },
+          "bindings": ["x", "w", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3), tunables.WORKGROUP_SIZE)",
+            "y": "groupedPlanes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped_stride_phase",
+      "priority": 20,
+      "when": ["noBiasContract", "rank4GroupedContract", "f16Ok(dtypes.T)", "strideH >= 2", "strideW >= 2", "dilationH == 1", "dilationW == 1", "dim(shapes.w, 2) >= 2", "dim(shapes.w, 2) <= 7", "dim(shapes.w, 3) >= 2", "dim(shapes.w, 3) <= 7", "dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideH - (padTop + padBottom) + dim(shapes.w, 2) + outputPaddingH", "dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideW - (padLeft + padRight) + dim(shapes.w, 3) + outputPaddingW"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.GroupedStridePhase",
+          "shader": "conv-transpose2d-grouped-stride-phase.wgsl.jinja",
+          "derive": {
+            "outCPerGroup": "dim(shapes.y, 1) / attrs.group",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW"
+          },
+          "bindings": ["x", "w", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped_stride_phase_blocked_bias",
+      "priority": 25,
+      "when": ["biasContract", "rank4GroupedContract", "f16Ok(dtypes.T)", "strideH >= 2", "strideW >= 2", "dilationH == 1", "dilationW == 1", "dim(shapes.w, 2) >= 2", "dim(shapes.w, 2) <= 7", "dim(shapes.w, 3) >= 2", "dim(shapes.w, 3) <= 7", "dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideH - (padTop + padBottom) + dim(shapes.w, 2) + outputPaddingH", "dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideW - (padLeft + padRight) + dim(shapes.w, 3) + outputPaddingW", "groupedStridePhaseBlockedFits"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.GroupedStridePhaseBlockedBias",
+          "shader": "conv-transpose2d-grouped-stride-phase-blocked.wgsl.jinja",
+          "derive": {
+            "outCPerGroup": "groupedOutCPerGroup",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "groups": "attrs.group",
+            "ocBlock": "groupedBlockOc"
+          },
+          "bindings": ["x", "w", "bias", "y_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3), tunables.WORKGROUP_SIZE)",
+            "y": "groupedPlanes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped_stride_phase_bias",
+      "priority": 20,
+      "when": ["biasContract", "rank4GroupedContract", "f16Ok(dtypes.T)", "strideH >= 2", "strideW >= 2", "dilationH == 1", "dilationW == 1", "dim(shapes.w, 2) >= 2", "dim(shapes.w, 2) <= 7", "dim(shapes.w, 3) >= 2", "dim(shapes.w, 3) <= 7", "dim(shapes.y, 2) == (dim(shapes.x, 2) - 1) * strideH - (padTop + padBottom) + dim(shapes.w, 2) + outputPaddingH", "dim(shapes.y, 3) == (dim(shapes.x, 3) - 1) * strideW - (padLeft + padRight) + dim(shapes.w, 3) + outputPaddingW"],
+      "derive": { "phaseWeightElement": "dtypes.T", "phaseOutputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose.GroupedStridePhaseBias",
+          "shader": "conv-transpose2d-grouped-stride-phase.wgsl.jinja",
+          "derive": {
+            "outCPerGroup": "dim(shapes.y, 1) / attrs.group",
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW"
+          },
+          "bindings": ["x", "w", "bias", "y_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d",
+      "priority": 0,
+      "when": ["noBiasContract", "f32Type or f16Type", "rank3DenseContract", "rank3OutputShapeOk or (f32Type and ((attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\") and dim(shapes.y, 2) == dim(shapes.x, 2) * strideW))"],
+      "derive": { "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1d",
+          "shader": "conv-transpose1d-ncl.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_bias",
+      "priority": 10,
+      "when": ["biasContract", "f32Type or f16Type", "rank3DenseContract", "rank3OutputShapeOk"],
+      "derive": { "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1dBias",
+          "shader": "conv-transpose1d-ncl.wgsl.jinja",
+          "bindings": ["x", "w_main", "bias", "y", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_grouped",
+      "priority": 10,
+      "when": ["noBiasContract", "f32Type or f16Type", "rank3GroupedContract", "rank3OutputShapeOk"],
+      "derive": { "grouped": true, "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1dGrouped",
+          "shader": "conv-transpose1d-ncl.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_ncl1d_grouped"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_grouped_bias",
+      "priority": 15,
+      "when": ["biasContract", "f32Type or f16Type", "rank3GroupedContract", "rank3OutputShapeOk"],
+      "derive": { "grouped": true, "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose1dGroupedBias",
+          "shader": "conv-transpose1d-ncl.wgsl.jinja",
+          "bindings": ["x", "w_main", "bias", "y", "params_ncl1d_grouped"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "priority": 0,
+      "when": ["noBiasContract", "f32Type or f16Type", "rank4DenseContract", "(rank4OutputShapeOk or ((attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\") and dim(shapes.y, 2) == dim(shapes.x, 2) * strideH and dim(shapes.y, 3) == dim(shapes.x, 3) * strideW))"],
+      "derive": { "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose",
+          "shader": "conv-transpose2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_nchw2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_bias",
+      "priority": 10,
+      "when": ["biasContract", "f32Type or f16Type", "rank4DenseContract", "rank4OutputShapeOk"],
+      "derive": { "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose",
+          "shader": "conv-transpose2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w_main", "bias", "y", "params_nchw2d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d",
+      "priority": 0,
+      "when": ["noBiasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose3d",
+          "shader": "conv-transpose3d-ncdhw.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_ncdhw3d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_bias",
+      "priority": 10,
+      "when": ["biasContract", "f32Type", "rank5DenseContract", "rank5OutputShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTranspose3dBias",
+          "shader": "conv-transpose3d-ncdhw.wgsl.jinja",
+          "bindings": ["x", "w_main", "bias", "y", "params_ncdhw3d"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped",
+      "priority": 10,
+      "when": ["noBiasContract", "f32Type or f16Type", "rank4GroupedContract", "rank4OutputShapeOk"],
+      "derive": { "grouped": true, "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTransposeGrouped",
+          "shader": "conv-transpose2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_nchw2d_grouped"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_grouped_bias",
+      "priority": 15,
+      "when": ["biasContract", "f32Type or f16Type", "rank4GroupedContract", "rank4OutputShapeOk"],
+      "derive": { "grouped": true, "usesF16": "dtypes.T == \"f16\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTransposeGrouped",
+          "shader": "conv-transpose2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w_main", "bias", "y", "params_nchw2d_grouped"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_depthwise_pointwise_vec4",
+      "priority": 30,
+      "when": ["noBiasContract", "f32Type", "rank4DepthwisePointwiseVec4Contract"],
+      "derive": { "grouped": true, "depthwisePointwiseVec4": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvTransposeDepthwisePointwiseVec4",
+          "shader": "conv-transpose2d-nchw.wgsl.jinja",
+          "bindings": ["x", "w_main", "y", "params_conv_transpose2d_nchw"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_exact_store_gemm_f32",
+      "priority": 38,
+      "when": ["noBiasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk", "exactTiling2d", "ceilDiv(gemmM, 64) * ceilDiv(gemmN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT", "device.limits.maxComputeInvocationsPerWorkgroup >= 128", "device.limits.maxComputeWorkgroupSizeX >= 16", "device.limits.maxComputeWorkgroupSizeY >= 8", "device.limits.maxComputeWorkgroupStorageSize >= 8192", "device.limits.maxStorageBuffersPerShaderStage >= 4"],
+      "derive": {
+        "usesF16": false,
+        "convTransposeExactStore": true,
+        "convTransposeKernelH": "dim(shapes.w, 2)",
+        "convTransposeKernelW": "dim(shapes.w, 3)",
+        "convTransposeInputW": "dim(shapes.x, 3)",
+        "convTransposeOutputH": "dim(shapes.y, 2)",
+        "convTransposeOutputW": "dim(shapes.y, 3)"
+      },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeExactOutputGemm",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w_t", "xm", "y", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(gemmN, 64)", "y": "ceilDiv(gemmM, 64)", "z": "dim(shapes.x, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_exact_store_gemm_f32_bias",
+      "priority": 38,
+      "when": ["biasContract", "f32Type", "rank4DenseContract", "gemmN > 0", "gemmDispatchFits", "f32GemmScratchFits", "rank4OutputShapeOk", "exactTiling2d", "ceilDiv(gemmM, 64) * ceilDiv(gemmN, 64) >= tunables.GEMM_REG_MIN_TILE_PRODUCT", "device.limits.maxComputeInvocationsPerWorkgroup >= 128", "device.limits.maxComputeWorkgroupSizeX >= 16", "device.limits.maxComputeWorkgroupSizeY >= 8", "device.limits.maxComputeWorkgroupStorageSize >= 8192", "device.limits.maxStorageBuffersPerShaderStage >= 4"],
+      "derive": {
+        "usesF16": false,
+        "convTransposeExactStore": true,
+        "convTransposeKernelH": "dim(shapes.w, 2)",
+        "convTransposeKernelW": "dim(shapes.w, 3)",
+        "convTransposeInputW": "dim(shapes.x, 3)",
+        "convTransposeOutputH": "dim(shapes.y, 2)",
+        "convTransposeOutputW": "dim(shapes.y, 3)"
+      },
+      "intermediates": [
+        {
+          "id": "wt",
+          "dtype": "float32",
+          "shape": "[dim(shapes.w, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "reorder",
+          "name": "ConvTransposeWeightReorder",
+          "shader": "conv-transpose2d-weight-reorder.wgsl.jinja",
+          "bindings": ["wsrc", "wt", "params_reorder"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.w)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "gemm",
+          "name": "ConvTransposeExactOutputGemm",
+          "shader": "conv-1x1-gemm-tiled-reg.wgsl.jinja",
+          "bindings": ["w_t", "xm", "y", "bias", "params_gemm"],
+          "dispatch": { "x": "ceilDiv(gemmN, 64)", "y": "ceilDiv(gemmM, 64)", "z": "dim(shapes.x, 0)" }
+        }
+      ]
+    }
+  ]
+}

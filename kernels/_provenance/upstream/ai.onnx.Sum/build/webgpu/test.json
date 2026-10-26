@@ -1,0 +1,577 @@
+{
+  "cases": [
+    {
+      "name": "max_arity_float16_positions",
+      "provenance": {
+        "notes": "Synthetic four-input float16 Sum contract fixture; element-varying operands make every bounded input position contribute to a non-constant exact sum."
+      },
+      "inputs": {
+        "a": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0] } },
+        "b": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [2.0, 4.0, 6.0, 8.0, 10.0] } },
+        "c": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [4.0, 1.0, 3.0, 2.0, 5.0] } },
+        "d": { "dtype": "float16", "shape": [5], "data": { "kind": "values", "values": [8.0, 2.0, 1.0, 4.0, 3.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [15.0, 9.0, 13.0, 18.0, 23.0] }
+        }
+      }
+    },
+    {
+      "name": "same_shape",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_subnormal_three_input_sum_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes float32 subnormals to zero; the subnormal addends/sum cannot be reproduced on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test1",
+        "notes": "Variadic Sum must preserve finite subnormal totals; a flush-to-zero path erases residual-like lanes before downstream scaling can amplify them."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, -1e-40, 0.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-40] } },
+        "c": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, -1e-40, -1e-40] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [3e-40, -3e-40, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "f32_subnormal_three_input_sum_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes float32 subnormals to zero; the subnormal addends/sum cannot be reproduced on GPU."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test1",
+        "notes": "Vectorized variadic Sum must preserve finite subnormal totals."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1e-40, -1e-40, 0.0, 1e-39] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-40, -1e-39] }
+        },
+        "c": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1e-40, -1e-40, -1e-40, 0.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [3e-40, -3e-40, 0.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "float16_vec4_same_shape",
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.5, -4.0, 0.25, 10.0, -100.0, 0.001] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.5, 2.0, -1.5, 4.0, 0.75, -5.0, 100.0, -0.001] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [8],
+          "tolerance": 0.001,
+          "data": { "kind": "values", "values": [1.5, 0.0, 2.0, 0.0, 1.0, 5.0, 0.0, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "same_shape_vec4_three_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, 5.0, -2.0, 4.0, 0.0, 6.0, 10.0, -10.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [3.0, 2.0, -4.0, 8.0, 1.0, 1.0, 9.0, -9.0] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.0, 7.0, -3.0, 2.0, -1.0, 8.0, 11.0, -11.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [8],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [4.0, 14.0, -9.0, 14.0, 0.0, 15.0, 30.0, -30.0] }
+        }
+      }
+    },
+    {
+      "name": "float16_vec4_three_input",
+      "provenance": {
+        "notes": "The float16 three-input vec4 path widens each operand to f32 before the extra-operand fold. Every operand and partial sum is an exactly representable dyadic float16 value, so dropping or double-counting C changes an exact zero-tolerance result."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 16.0, -0.25, 6.0, -32.0, 0.125] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [2.0, -1.5, -1.0, 8.0, 0.125, 3.0, -8.0, 0.375] }
+        },
+        "c": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.5, -4.0, 3.0, -4.0, -0.5, 12.0, 24.0, 0.5] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [8],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [3.5, -7.5, 2.5, 20.0, -0.625, 21.0, -16.0, 1.0] }
+        }
+      }
+    },
+    {
+      "name": "broadcast_rank4",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 1, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.07 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank0_rhs_scalar_broadcast",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "b": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-1.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_two_inputs_no_broadcasting_3d",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.SumMultipleInputsNoBroadcasting(num_inputs=2)"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_four_inputs_no_broadcasting_3d_variadic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.SumMultipleInputsNoBroadcasting(num_inputs=4)",
+        "notes": "ONNX Sum is variadic; this catches implementations capped at three inputs."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "c": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "d": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 3, 3], "tolerance": 0, "data": { "kind": "constant", "value": 4.0 } }
+      }
+    },
+    {
+      "name": "ort_four_inputs_nan_infinity_variadic",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.SumMultipleInputsNoBroadcasting(num_inputs=4)",
+        "notes": "Extends ORT's four-input Sum coverage with NaN propagation and inf-minus-inf cancellation."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, "Infinity", 1.0, 8.0] } },
+        "b": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [3.0, "-Infinity", 5.0, 4.0] } },
+        "c": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [5.0, 2.0, "NaN", -4.0] } },
+        "d": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [7.0, 6.0, 9.0, "NaN"] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 0,
+          "allowNaN": true,
+          "data": { "kind": "values", "values": [16.0, "NaN", "NaN", "NaN"] }
+        }
+      }
+    },
+    {
+      "name": "ort_fifteen_inputs_no_broadcasting_3d_variadic_gpu_gap",
+      "skipGpu": {
+        "category": "todo",
+        "reason": "A single-pass implementation needs 15 input bindings plus one output binding, which exceeds WebGPU's guaranteed storage-buffer limit. A multi-pass in-place accumulator can implement this portable high-arity route but is not yet available."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.SumMultipleInputsNoBroadcasting(num_inputs=15)",
+        "notes": "ORT explicitly covers high-arity no-broadcast Sum paths; this catches implementations capped at a small fixed arity."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "b": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "c": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "d": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "e": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "f": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "g": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "h": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "i": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "j": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "k": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "l": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "m": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "n": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "o": { "dtype": "float32", "shape": [3, 3, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [3, 3, 3], "tolerance": 0, "data": { "kind": "constant", "value": 15.0 } }
+      }
+    },
+    {
+      "name": "ort_opset6_two_input_same_shape_projection",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_6",
+        "notes": "Two-input projection of ORT's same-shape three-input case."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 1.0, -1.0, 1.1, -100.0, -5.4, 0.01, -10000.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 2.0, -2.0, 2.2, 64.0, -1.0, 0.02, 0.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_opset6_three_input_same_shape_exact",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_6"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 1.0, -1.0, 1.1, -100.0, -5.4, 0.01, -10000.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 2.0, -2.0, 2.2, 64.0, -1.0, 0.02, 0.25] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 3.0, -3.0, 3.3, 64.0, 5.4, 0.03, 10000.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [3.0, 0.0, 6.0, -6.0, 6.6, 28.0, -1.0, 0.06, 0.25] }
+        }
+      }
+    },
+    {
+      "name": "ort_opset8_vector_column_broadcast_projection",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test1",
+        "notes": "Two-input projection exercising vector plus column multidirectional broadcasting."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_opset8_three_input_vector_column_depth_broadcast_exact",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test1"
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } },
+        "c": { "dtype": "float32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [100.0, 200.0, 300.0] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 3, 3],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [111.0, 112.0, 113.0, 121.0, 122.0, 123.0, 131.0, 132.0, 133.0, 211.0, 212.0, 213.0, 221.0, 222.0, 223.0, 231.0, 232.0, 233.0, 311.0, 312.0, 313.0, 321.0, 322.0, 323.0, 331.0, 332.0, 333.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_opset8_four_input_vector_column_depth_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test1",
+        "notes": "Extends ORT's multidirectional broadcast case to a valid four-input ONNX variadic Sum node."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [10.0, 20.0, 30.0] } },
+        "c": { "dtype": "float32", "shape": [3, 1, 1], "data": { "kind": "values", "values": [100.0, 200.0, 300.0] } },
+        "d": {
+          "dtype": "float32",
+          "shape": [1, 1, 3],
+          "data": { "kind": "values", "values": [1000.0, 2000.0, 3000.0] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [3, 3, 3],
+          "tolerance": 0,
+          "data": {
+            "kind": "values",
+            "values": [1111.0, 2112.0, 3113.0, 1121.0, 2122.0, 3123.0, 1131.0, 2132.0, 3133.0, 1211.0, 2212.0, 3213.0, 1221.0, 2222.0, 3223.0, 1231.0, 2232.0, 3233.0, 1311.0, 2312.0, 3313.0, 1321.0, 2322.0, 3323.0, 1331.0, 2332.0, 3333.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_opset8_matrix_vector_broadcast_projection",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.Sum_8_Test2",
+        "notes": "Two-input projection of ORT's matrix plus trailing-vector broadcast case."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 3],
+          "data": { "kind": "values", "values": [1.0, 0.0, 1.0, -1.0, 1.1, -100.0, -5.4, 0.01, -74.0] }
+        },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 0.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_sum_two_inputs",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sum_two_inputs" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 3.0, 4.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_sum_one_input_identity",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sum_one_input" },
+      "inputs": { "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "onnx_backend_sum_example_three_inputs",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_sum_example" },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [3.0, 0.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 3.0, 4.0] } },
+        "c": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.0, 6.0, 6.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_dim_zero_equal_rank",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.DimWithZeroHandling",
+        "notes": "Projected from ORT's binary elementwise zero-dimension Add coverage to generic ONNX multidirectional broadcasting."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [3, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_dim_zero_scalar_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+        "test": "MathOpTest.DimWithZeroHandling",
+        "notes": "Projected from ORT's binary elementwise zero-dimension Add coverage to generic ONNX multidirectional broadcasting."
+      },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } },
+        "b": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "single_input_empty_shape",
+      "inputs": { "a": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "y": { "dtype": "float32", "shape": [0], "tolerance": 0 } }
+    },
+    {
+      "name": "f16_broadcast_differing_shapes",
+      "inputs": {
+        "a": { "dtype": "float16", "shape": [1, 4], "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0] } },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.41 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 4], "tolerance": 0.001 } }
+    },
+    {
+      "name": "rank7_broadcast_two_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "three_input_empty_dim_broadcast",
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [1.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [2, 0], "data": { "kind": "values", "values": [] } },
+        "c": { "dtype": "float32", "shape": [1, 0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "four_input_mixed_broadcast_vec4",
+      "provenance": {
+        "notes": "Checks mixed four-input vec4 broadcasting: A and C retain the eight-wide innermost dimension, while B broadcasts channel scalars and D broadcasts one scalar across every output lane."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": { "dtype": "float32", "shape": [1, 3, 1, 1], "data": { "kind": "values", "values": [1.0, 2.0, 4.0] } },
+        "c": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.125 }
+        },
+        "d": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 8], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "three_input_mixed_broadcast_vec4_candidate",
+      "provenance": {
+        "notes": "Three-input Sum mixes broadcast patterns: A is dense [2,3,2,8], B broadcasts its outer batch and inner-most axis [1,3,2,1], and C broadcasts its two middle axes [2,1,1,8]; checks that each input's distinct broadcast pattern combines correctly."
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3, 2, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1, 3, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0, 16.0, 32.0] }
+        },
+        "c": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.125 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 8], "tolerance": 0.000001, "relTolerance": 0.000001 } }
+    },
+    {
+      "name": "rank8_broadcast_two_input",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 1, 2, 1, 2, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 2, 2, 2, 2, 2, 3], "tolerance": 0.000001 } }
+    }
+  ]
+}

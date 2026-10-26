@@ -1,0 +1,4200 @@
+{
+  "fixtureArrays": {
+    "f16_no_trans_no_bias_generic_input_a": [0.5, 1, -0.5, 2, -1, 0.25, 1.5, -2, 0.75, -1.25, 2, 0.5, -0.75, 1, -1.5, 0.25, 1.25, -0.5, 0.75, -1, 2, -0.25, 0.5, 1.5, -2, 0.25, -1.25, 1, 0.5, -0.75, 1.5, -0.5],
+    "f16_no_trans_no_bias_generic_input_b": [0.25, -0.5, 1, 0.75, -1.25, 0.5, -1, 0.5, 0.25, -0.75, 1.5, -0.25, 0.5, 1.25, -0.5, 0.25, -1, 0.75, -0.25, 0.5, 1, -1.5, 0.25, 0.5, 1, -0.75, 0.5, 0.25, -0.5, 1.25, -0.5, 0.25, -1, 0.5, 0.75, -0.25, 0.25, -0.5, 1.5, -1, 0.5, 0.25, 0.75, 1, -0.25, 0.5, -1.25, 0.5],
+    "generic_layout_m1_transb_weights": [0.25, 0.5, 0.75, 1, 1.25, 1.5, 0, 0.5, 1, 1.5, 2, 2.5, -0.25, 0.5, 1.25, 2, 2.75, 3.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5, -0.75, 0.5, 1.75, 3, 4.25, 5.5, -1, 0.5, 2, 3.5, 5, 6.5, -1.25, 0.5, 2.25, 4, 5.75, 7.5, -1.5, 0.5, 2.5, 4.5, 6.5, 8.5],
+    "onnx_backend_default_vector_bias_input_b": [0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125],
+    "onnx_backend_gemm_alpha_input_b": [0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678],
+    "onnx_backend_gemm_default_matrix_bias_input_a": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157],
+    "onnx_backend_gemm_default_matrix_bias_input_b": [0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125],
+    "ort_broadcast_scalar_2d_bias_input_b": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  },
+  "cases": [
+    {
+      "name": "f32_subnormal_times_large_scale_dot_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the 1e-39 operand collapses so the dot product cannot reach a finite value."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNoTrans",
+        "notes": "A Gemm dot product of subnormal inputs against large finite weights should accumulate to an ordinary finite value, not collapse to zero."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "values", "values": [1e-39, 2e-39, 5e-39, 1e-38] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 1], "data": { "kind": "constant", "value": 1e+38 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "f32_normal_inputs_subnormal_dot_product_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the 3e-40 subnormal result collapses to zero."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNoTrans",
+        "notes": "Normal float32 operands can produce a valid subnormal Gemm output; the dot product should not flush to zero."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [1e-20, 2e-20] } },
+        "b": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "constant", "value": 1e-20 } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [1, 1], "tolerance": 0, "data": { "kind": "values", "values": [3e-40] } }
+      }
+    },
+    {
+      "name": "beta_zero_ignores_nonfinite_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroBeta",
+        "notes": "When beta is zero, the scalar C term is inactive. Infinite and NaN bias values must not contaminate the finite A*B result through 0*Inf or 0*NaN."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 0 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": [1.0, 2.0] } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [3.0, 4.0, 5.0, 6.0] } },
+        "bias": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": ["Infinity", "NaN"] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "beta_zero_ignores_nonfinite_matrix_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroBeta",
+        "notes": "When beta is zero, every element of matrix-shaped C is inactive. Infinite and NaN bias values must not contaminate the finite A*B result through 0*Inf or 0*NaN."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 0 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, -1.0, 3.0] } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [3.0, 4.0, 5.0, 6.0] } },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": ["Infinity", "NaN", "-Infinity", "NaN"] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "alpha_zero_ignores_nonfinite_product",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroAlpha",
+        "notes": "Diverges from the upstream test's inputs (inputs.bias shape [1] values [7.0] -> shape [2] values [7.0, -3.0]); the expected output is recomputed by the CPU reference for the new inputs. When alpha is zero, the A*B term is inactive. Non-finite products such as Inf*0 must not contaminate the finite beta*C result, and the two bias columns differ so a column-broadcast error is visible."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 0, "beta": 1 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [1, 2], "data": { "kind": "values", "values": ["Infinity", "-Infinity"] } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } },
+        "bias": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [7.0, -3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_f16_no_trans_full_bias",
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2, 1.0, -2.1, 1.3, 4.1, 1.3, -8.1] }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.008 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Float16 Gemm without transposition exercises a full output-shaped bias."
+      }
+    },
+    {
+      "name": "ort_f16_no_trans_vector_bias",
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2, 1.0, -2.1, 1.3, 4.1, 1.3, -8.1] }
+        },
+        "bias": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [0.5, 2.1, 1.2] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.008 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Float16 Gemm without transposition exercises row-vector bias broadcasting."
+      }
+    },
+    {
+      "name": "ort_f16_no_trans_shape1_scalar_bias",
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2, 1.0, -2.1, 1.3, 4.1, 1.3, -8.1] }
+        },
+        "bias": { "dtype": "float16", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.008 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Float16 Gemm without transposition exercises length-one scalar-bias broadcasting."
+      }
+    },
+    {
+      "name": "ort_f16_transB_shape1_scalar_bias",
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2, 1.0, -2.1, 1.3, 4.1, 1.3, -8.1] }
+        },
+        "bias": { "dtype": "float16", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.008 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Float16 Gemm with transposed B exercises scalar-bias broadcasting."
+      }
+    },
+    {
+      "name": "matrix_no_bias",
+      "attrs": { "alpha": 0.75, "beta": 0.5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "matrix_bias",
+      "attrs": { "alpha": 0.75, "beta": 0.5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.11 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.23 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "matrix_full_bias",
+      "attrs": { "alpha": 0.5, "beta": -1.25 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.11 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.23, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "scalar_bias_broadcast",
+      "attrs": { "alpha": -0.25, "beta": 2.5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.09 }
+        },
+        "bias": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [-0.75] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "model_transposed_weight_no_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 3, "inFeatures": 4, "outFeatures": 5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "model_transposed_weight_m1_vec4",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 1, "inFeatures": 8, "outFeatures": 8 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8, 8],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "model_transposed_weight_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 3, "inFeatures": 4, "outFeatures": 5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.31, "cosStep": 0.23 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "model_transposed_weight_subgroup",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 64], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "model_transposed_weight_subgroup_direct_store_m64x64x128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Aligned float32 model-layout GEMM with two K blocks and two N blocks checks every output and direct matrix storage."
+      }
+    },
+    {
+      "name": "generic_transA_subgroup_matrix_split_tails_m66x34x66",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [34, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [34, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.041, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [66, 66], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Simultaneous M/N and K tails: the aligned 64x64 bulk uses direct subgroup-matrix stores, followed by guarded two-column and two-row fringe passes."
+      }
+    },
+    {
+      "name": "model_subgroup_matrix_split_n_tail_m64x32x4098",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 32, "outFeatures": 4098 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.021, "cosStep": 0.047, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4098, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.043, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 4098], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Wide N-only tail split: 64 full 64-column tiles use direct subgroup-matrix stores, while a second guarded pass computes only the final two columns. Reduced-feature tiers use the scalar/register fallback."
+      }
+    },
+    {
+      "name": "model_transposed_weight_subgroup_direct_a_double_b_m96x64x64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 96, "inFeatures": 64, "outFeatures": 64 },
+      "tunables": { "sgmatConfig": 13 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [96, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Direct-storage A matrices plus a ping-pong shared B tile validate the one-barrier-per-K-tile pipeline."
+      }
+    },
+    {
+      "name": "model_transposed_weight_subgroup_direct_store_m96x64x128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 96, "inFeatures": 64, "outFeatures": 128 },
+      "tunables": { "sgmatConfig": 10 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.047, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.041, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [96, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "A three-row-band subgroup-matrix configuration representative of large float32 model shapes exercises generalized tiling and direct matrix stores."
+      }
+    },
+    {
+      "name": "f32_model_subgroup_matrix_subnormal_dot_products_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the ~3e-39 subnormal dot products collapse to zero (subgroup-matrix path)."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNoTrans",
+        "notes": "M=32, input features 32, and output features 64; normal inputs multiply to finite subnormal results that must not flush to zero."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 32], "data": { "kind": "constant", "value": 1e-20 } },
+        "b": { "dtype": "float32", "shape": [64, 32], "data": { "kind": "constant", "value": 1e-20 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 64], "tolerance": 1e-43 } }
+    },
+    {
+      "name": "f32_model_subgroup_matrix_bias_subnormal_dot_products_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero in f32; the ~3e-39 subnormal dot products collapse to zero (subgroup-matrix bias path)."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNoTrans",
+        "notes": "On the model subgroup-matrix path, a zero bias must leave finite subnormal dot products unchanged."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [32, 32], "data": { "kind": "constant", "value": 1e-20 } },
+        "b": { "dtype": "float32", "shape": [64, 32], "data": { "kind": "constant", "value": 1e-20 } },
+        "bias": { "dtype": "float32", "shape": [64], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 64], "tolerance": 1e-43 } }
+    },
+    {
+      "name": "model_transposed_weight_subgroup_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 40, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [40, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [40, 128], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "model_f32_tiled_partial_no_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 20, "inFeatures": 64, "outFeatures": 96 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [20, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [20, 96], "tolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Float32 GEMM with transB=1, 20 rows, 64 input features, and 96 output features checks partial output tiles without bias."
+      }
+    },
+    {
+      "name": "model_f32_tiled_partial_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 20, "inFeatures": 64, "outFeatures": 96 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [20, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [20, 96], "tolerance": 0.00001 } },
+      "provenance": {
+        "notes": "A rank-1 bias of length 96 is added in the tiled epilogue while partial M and N tiles remain guarded."
+      }
+    },
+    {
+      "name": "model_f16_tiled_no_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 40, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [40, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [40, 128], "tolerance": 0.02 } },
+      "provenance": {
+        "notes": "f16 model-path (args.M defined) transB=1 GEMM, M>1, inFeatures%64==0 -> exercises model_dense_f16_tiled (no-MMA register-blocked fallback) AND model_subgroup_matrix."
+      }
+    },
+    {
+      "name": "model_f16_transb_dense_m256_k512_n512",
+      "provenance": {
+        "notes": "Float16 matrix multiplication with transposed B and equal reduction and output widths."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 256, "inFeatures": 512, "outFeatures": 512 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [256, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [512, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [256, 512], "tolerance": 0.02 } }
+    },
+    {
+      "name": "model_f16_transb_dense_m256_k1024_n1024",
+      "provenance": {
+        "notes": "Deep float16 matrix multiplication with transposed B is compared against the CPU reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 256, "inFeatures": 1024, "outFeatures": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1024, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [256, 1024], "tolerance": 0.01 } }
+    },
+    {
+      "name": "model_band_transb_splitk_m8_k4096_n64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 8, "inFeatures": 4096, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 64], "tolerance": 0.02 } },
+      "provenance": {
+        "notes": "A K=4096 reduction with 64 output columns checks the complete dot product on float16 operands and output, accumulated in float32."
+      }
+    },
+    {
+      "name": "model_band_transb_splitk_bias_m8_k4096_n64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 8, "inFeatures": 4096, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 64], "tolerance": 0.02 } },
+      "provenance": { "notes": "A long reduction with bias checks that bias is added exactly once to the final sum." }
+    },
+    {
+      "name": "model_f16_tiled_tail_f16_output",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 3, "inFeatures": 64, "outFeatures": 6 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [3, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.4 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [6, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.11, "scale": 0.4 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [3, 6], "tolerance": 0.02 } },
+      "provenance": {
+        "notes": "Float16 GEMM with K=64 and N=6 checks the partial output tile and float16 result rounding."
+      }
+    },
+    {
+      "name": "model_f16_tiled_bias",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 40, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [40, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [40, 128], "tolerance": 0.02 } },
+      "provenance": {
+        "notes": "f16 model-path (args.M defined) transB=1 GEMM, M>1, inFeatures%64==0 -> exercises model_dense_f16_tiled_bias (no-MMA register-blocked fallback) AND model_subgroup_matrix_bias."
+      }
+    },
+    {
+      "name": "transA_no_bias",
+      "attrs": { "alpha": 1.25, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_vector_bias",
+      "attrs": { "alpha": -0.75, "beta": 1.5, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.09 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.23 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.5, -1.25, 2.0, -0.75, 1.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_row_bias_broadcast",
+      "attrs": { "alpha": 0.625, "beta": -1.25, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.21, "cosStep": 0.09 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.15, "cosStep": 0.23 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [-0.5, 1.25, -2.0, 0.75, -1.5] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transB_no_bias",
+      "attrs": { "alpha": -0.5, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.09 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transB_vector_bias",
+      "attrs": { "alpha": 0.5, "beta": -2, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.27 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.07 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, -0.25, 3.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transB_row_bias_broadcast",
+      "attrs": { "alpha": -1.25, "beta": 0.75, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.31 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.09 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [0.25, -1.5, 2.5, -0.75, 1.25] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_transB_no_bias",
+      "attrs": { "alpha": 0.875, "beta": 1, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.12, "cosStep": 0.28 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.22, "cosStep": 0.08 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_transB_vector_bias",
+      "attrs": { "alpha": -0.5, "beta": 1.75, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.16, "cosStep": 0.24 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.18, "cosStep": 0.14 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [5],
+          "data": { "kind": "values", "values": [0.25, -1.0, 1.5, -0.5, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_transB_row_bias_broadcast",
+      "attrs": { "alpha": 1.125, "beta": -0.625, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.14, "cosStep": 0.26 }
+        },
+        "b": { "dtype": "float32", "shape": [5, 4], "data": { "kind": "fillFloat32", "sinStep": 0.2, "cosStep": 0.1 } },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "values", "values": [-0.25, 0.75, -1.25, 1.5, -2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "transA_transB_scalar_bias_broadcast",
+      "attrs": { "alpha": -1.375, "beta": 2.25, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "fillFloat32", "sinStep": 0.1, "cosStep": 0.22 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.24, "cosStep": 0.12 }
+        },
+        "bias": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [0.375] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "rank2_row_bias_broadcast",
+      "attrs": { "alpha": 0.75, "beta": 0.5, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.29 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.11 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.23 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_no_trans_full_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNoTrans"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmBroadcast"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_row_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemm2DBroadcast_2"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_scalar_rank1_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmScalarBroadcast"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_transA_transB_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmTrans"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 2],
+          "data": { "kind": "values", "values": [1.0, -1.0, 2.0, -2.0, 3.0, -3.0, 4.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [3, 4], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_transB_row_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmTransB"
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [3, 4], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [1, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_alpha_beta_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmAlphaBeta"
+      },
+      "attrs": { "alpha": 0.5, "beta": 2, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_alpha_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroAlpha",
+        "notes": "Diverges from the upstream test's inputs (inputs.bias constant 1.0 -> values [1.0, 2.0, 3.0]); the expected output is recomputed by the CPU reference for the new inputs. A distinct value per bias column keeps beta*C observable per column while alpha is zero."
+      },
+      "attrs": { "alpha": 0, "beta": 2, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_beta_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroBeta"
+      },
+      "attrs": { "alpha": 2, "beta": 0, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "alpha_zero_overflow_no_bias_nan",
+      "attrs": { "alpha": 0, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [1e+30, 1e+30, 1e+30, 1e+30] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [1e+30, 1e+30, 1e+30, 1e+30] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "alpha_zero_overflow_vector_bias_nan",
+      "attrs": { "alpha": 0, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [1e+30, 1e+30, 1e+30, 1e+30] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2, 2],
+          "data": { "kind": "values", "values": [1e+30, 1e+30, 1e+30, 1e+30] }
+        },
+        "bias": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_full_matrix_bias_false_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmFalseBroadcast",
+        "notes": "Full C matrix is not broadcast; each output row receives its own bias row."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 2.0, 2.0, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_beta_zero_full_matrix_bias_ignored",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmNaN",
+        "notes": "ORT's named case verifies beta=0 makes the full C matrix irrelevant to the result."
+      },
+      "attrs": { "alpha": 1, "beta": 0, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": { "dtype": "float32", "shape": [4, 3], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": { "dtype": "float32", "shape": [2, 3], "data": { "kind": "constant", "value": 1.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_scalar_bias_broadcast",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmScalarBroadcast"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_scalar_2d_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemm2DBroadcast_3"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_broadcast_scalar_2d_bias_input_b" } }
+        },
+        "bias": { "dtype": "float32", "shape": [1, 1], "data": { "kind": "values", "values": [1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_column_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemm2DBroadcast_1"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_broadcast_column_bias_3x4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemm2DBroadcast_4"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_broadcast_scalar_2d_bias_input_b" } }
+        },
+        "bias": { "dtype": "float32", "shape": [3, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_transB_column_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmTransB_1"
+      },
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [2, 1], "data": { "kind": "values", "values": [1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_missing_bias_opset11",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.MissingBias"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_alpha_no_bias_opset11",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmWithAlphaOpset11"
+      },
+      "attrs": { "alpha": 2 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_empty_m_dimension",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.GemmEmptyTensor"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [0, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_zero_k_with_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.ZeroKWithBias"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4, 0], "data": { "kind": "values", "values": [] } },
+        "b": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } },
+        "bias": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_k_no_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.ZeroKWithNoBias"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 0 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [4, 0], "data": { "kind": "values", "values": [] } },
+        "b": { "dtype": "float32", "shape": [0, 4], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_zero_alpha_beta_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmZeroAlphaBeta",
+        "notes": "Diverges from the upstream test's inputs (inputs.a values [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] -> constant 1.0); the expected output is recomputed by the CPU reference for the new inputs. With alpha and beta both zero the result is zero for every A, B and C, so the operands are uniform: any surviving A*B or beta*C term shows up as a nonzero value."
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 0, "beta": 0 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "constant", "value": 1.0 } },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_beta_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmBeta"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 2 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_alpha_vector_bias",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "test": "GemmOpTypedTests.TestGemmAlpha"
+      },
+      "attrs": { "transA": 0, "transB": 0, "alpha": 0.5, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "bias": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 1.0, 1.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_default_no_bias",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_no_bias",
+        "test": "test_gemm_default_no_bias"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 10],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [10, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125, 0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042, 0.21038256585597992, 0.12892629206180573, 0.31542834639549255, 0.36371076107025146]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_default_vector_bias",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_vector_bias",
+        "test": "test_gemm_default_vector_bias"
+      },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 7],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [7, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_default_vector_bias_input_b" } }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_all_attributes",
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_all_attributes",
+        "test": "test_gemm_all_attributes"
+      },
+      "attrs": { "alpha": 0.25, "beta": 0.3499999940395355, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948, 0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097]
+          }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_gemm_alpha",
+      "attrs": { "alpha": 0.5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_alpha_input_b" } }
+        },
+        "bias": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_alpha" }
+    },
+    {
+      "name": "onnx_backend_gemm_beta",
+      "attrs": { "beta": 0.5 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 7],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [7, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_default_vector_bias_input_b" } }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_beta" }
+    },
+    {
+      "name": "onnx_backend_gemm_default_matrix_bias",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_a" }
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [6, 4],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_b" }
+          }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.6976311802864075, 0.0602254718542099, 0.6667667031288147, 0.670637845993042, 0.21038256585597992, 0.12892629206180573, 0.31542834639549255, 0.36371076107025146, 0.5701967477798462, 0.4386015236377716, 0.9883738160133362, 0.10204481333494186]
+          }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_matrix_bias" }
+    },
+    {
+      "name": "onnx_backend_gemm_default_scalar_bias",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [3, 4],
+          "data": {
+            "kind": "values",
+            "values": [0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157]
+          }
+        },
+        "bias": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [3.140000104904175] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_scalar_bias" }
+    },
+    {
+      "name": "onnx_backend_gemm_default_single_elem_vector_bias",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 7],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966, 0.08712930232286453, 0.020218396559357643, 0.832619845867157, 0.7781567573547363, 0.8700121641159058, 0.978618323802948]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [7, 3],
+          "data": {
+            "kind": "values",
+            "values": [0.7991585731506348, 0.4614793658256531, 0.7805292010307312, 0.11827442795038223, 0.6399210095405579, 0.14335328340530396, 0.9446688890457153, 0.5218483209609985, 0.4146619439125061, 0.26455560326576233, 0.7742336988449097, 0.4561503231525421, 0.568433940410614, 0.018789799883961678, 0.6176354885101318, 0.6120957136154175, 0.6169340014457703, 0.9437480568885803, 0.681820273399353, 0.35950788855552673, 0.43703195452690125]
+          }
+        },
+        "bias": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.6976311802864075] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 3] } },
+      "provenance": {
+        "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_single_elem_vector_bias"
+      }
+    },
+    {
+      "name": "onnx_backend_gemm_default_zero_bias",
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 5],
+          "data": {
+            "kind": "values",
+            "values": [0.54881352186203, 0.7151893377304077, 0.6027633547782898, 0.5448831915855408, 0.42365479469299316, 0.6458941102027893, 0.4375872015953064, 0.891772985458374, 0.9636627435684204, 0.3834415078163147, 0.7917250394821167, 0.5288949012756348, 0.5680445432662964, 0.9255966544151306, 0.07103605568408966]
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [5, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_alpha_input_b" } }
+        },
+        "bias": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_default_zero_bias" }
+    },
+    {
+      "name": "onnx_backend_gemm_transposeA",
+      "attrs": { "transA": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [6, 3],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_a" }
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [6, 4],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_b" }
+          }
+        },
+        "bias": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_transposeA" }
+    },
+    {
+      "name": "onnx_backend_gemm_transposeB",
+      "attrs": { "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [3, 6],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_a" }
+          }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4, 6],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/onnx_backend_gemm_default_matrix_bias_input_b" }
+          }
+        },
+        "bias": { "dtype": "float32", "shape": [1, 4], "data": { "kind": "values", "values": [0.0, 0.0, 0.0, 0.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4] } },
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_gemm_transposeB" }
+    },
+    {
+      "name": "dispatch_cliff_mtile_rows_524296",
+      "provenance": {
+        "notes": "M=524,296 produces 65,537 eight-row tiles and a folded y=65,535, z=2 dispatch. Distinct row data makes incorrect y/z tile reconstruction observable."
+      },
+      "attrs": { "alpha": 1, "beta": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [524296, 2],
+          "data": { "kind": "cycle", "values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7] }
+        },
+        "b": { "dtype": "float32", "shape": [2, 2], "data": { "kind": "cycle", "values": [1.0, -1.0, 0.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [524296, 2], "tolerance": 0.001 } }
+    },
+    {
+      "name": "dispatch_cliff_model_vec4_outfeatures_262148",
+      "provenance": {
+        "notes": "A model GEMV with 262,148 output features produces 65,537 vec4 groups and a folded x=65,535, z=2 dispatch. The final partial dispatch exercises column reconstruction and the output bound guard."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 1, "inFeatures": 4, "outFeatures": 262148 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [262148, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.023 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 262148], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "dispatch_cliff_model_scalar_outfeatures_65537",
+      "provenance": {
+        "notes": "A single-row GEMM with 65,537 output features crosses the per-axis dispatch limit; the final output must be computed once and stored in bounds."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 1, "inFeatures": 4, "outFeatures": 65537 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [65537, 4],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.037 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 65537], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "f16_no_trans_no_bias_generic",
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_a" } }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 6], "tolerance": 0.02 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Exercises an f16 A*B Gemm with transA=0, transB=0, and no bias on the generic contract."
+      }
+    },
+    {
+      "name": "f16_transB_no_bias_generic",
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [4, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_a" } }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [6, 8],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 6], "tolerance": 0.02 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Exercises an f16 Gemm with transB=1 and no bias on the generic contract."
+      }
+    },
+    {
+      "name": "f16_transA_no_bias_generic",
+      "attrs": { "transA": 1, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_a" } }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_b" } }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 6], "tolerance": 0.02 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Exercises an f16 Gemm with transA=1 and no bias; A has shape [K,M]=[8,4] and the output has shape [M,N]=[4,6]."
+      }
+    },
+    {
+      "name": "f16_transA_vector_bias_generic",
+      "attrs": { "transA": 1, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 4],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_a" } }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/f16_no_trans_no_bias_generic_input_b" } }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [6],
+          "data": { "kind": "values", "values": [0.5, -1.0, 0.25, 1.5, -0.75, 2.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [4, 6], "tolerance": 0.02 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Exercises an f16 Gemm with transA=1 and a vector bias."
+      }
+    },
+    {
+      "name": "f16_no_trans_matrix_bias_clean",
+      "attrs": { "transA": 0, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, -1.0, -2.0, -3.0, -4.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2, 1.0, -2.1, 1.3, 4.1, 1.3, -8.1] }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [2, 3],
+          "data": { "kind": "values", "values": [0.5, 2.1, 1.2, -0.3, -1.2, 0.2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3], "tolerance": 0.02 } },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/math/gemm_test.cc",
+        "notes": "Float16 GEMM with transB=0 and a full [M,N] matrix bias checks per-element bias addition and output rounding."
+      }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_512x64x1024",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 512, "inFeatures": 64, "outFeatures": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_bias_512x64x1024",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 512, "inFeatures": 64, "outFeatures": 1024 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.19 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_block128_n_tail_m128x32x4100",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 128, "inFeatures": 32, "outFeatures": 4100 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4100, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 4100], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "A 128-row float32 GEMM with N=4100 combines complete wide output tiles with a four-column tail."
+      }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_bias_block128_n_tail_m128x32x4100",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 128, "inFeatures": 32, "outFeatures": 4100 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.031, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4100, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [4100],
+          "data": { "kind": "fillFloat32", "sinStep": 0.041, "cosStep": 0.053, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 4100], "tolerance": 0.0001 } },
+      "provenance": { "notes": "A wide 128-row portable register block exercises the bias epilogue with an N tail." }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_ragged_tiles_m200x64x2050",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 200, "inFeatures": 64, "outFeatures": 2050 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2050, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [200, 2050], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_dense_f32_tiled_reg_bias_ragged_tiles_m200x64x2050",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 200, "inFeatures": 64, "outFeatures": 2050 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2050, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [200, 2050], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_scalar_gemv_zero_n_outfeatures_empty",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 4, "inFeatures": 6, "outFeatures": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [4, 6],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.13 }
+        },
+        "b": { "dtype": "float32", "shape": [0, 6], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": {
+        "y": { "dtype": "float32", "shape": [4, 0], "data": { "kind": "values", "values": [] }, "tolerance": 0 }
+      }
+    },
+    {
+      "name": "model_subgroup_matrix_partial_M_edge_m58x32x64",
+      "requires": { "features": ["subgroups", "chromium-experimental-subgroup-matrix", "shader-f16"] },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 58, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [58, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [58, 64], "tolerance": 0.02 } }
+    },
+    {
+      "name": "model_subgroup_matrix_partial_M_edge_m57x32x64",
+      "requires": { "features": ["subgroups", "chromium-experimental-subgroup-matrix"] },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 57, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [57, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [57, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Partial-M subgroup-matrix edge, extreme case: M=57 makes the last matC1x block's row_limit = 57-56 = 1, so only local row 0 (global 56) survives storeOutput's guard while lanes for rows 1..7 diverge. Guards the scratch store/readback barrier that keeps the divergent-subgroup readback well-defined."
+      }
+    },
+    {
+      "name": "model_subgroup_matrix_partial_M_edge_m50x64x128",
+      "requires": { "features": ["subgroups", "chromium-experimental-subgroup-matrix"] },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 50, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [50, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [50, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Partial-M subgroup-matrix edge in the matC0x (not matC1x) store block: M=50, 2nd M-tile valid rows 32-49, so the base_A=16 subtile's matC0x block (rows 48-55) has row_limit=2 -> divergence in a different store than m58. inFeatures=64 exercises 2 K-tiles and outFeatures=128 two column tiles, so the barrier is stressed across k-iterations and both subtile_idx halves."
+      }
+    },
+    {
+      "name": "generic_transA_subgroup_matrix_aligned_m64x32x128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.047, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.041, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Aligned generic transA/transB=0 path: A and B retain native K-major storage while the shared subgroup-matrix loader supplies the logical transpose."
+      }
+    },
+    {
+      "name": "reg_generic_transA_m200x64x2050",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 200],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [200, 2050], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "reg_generic_transA_vec4_m512_k128_n512",
+      "provenance": {
+        "notes": "Transposed A with K=128, four-aligned M and non-unit alpha checks complete matrix products."
+      },
+      "attrs": { "alpha": 0.5, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 512], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "reg_generic_transA_alpha_ragged_m130x72x520",
+      "attrs": { "alpha": 1.25, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [72, 130],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [72, 520],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [130, 520], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "reg_generic_transA_simultaneous_tail_m130x66x520",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [66, 130],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.053, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [66, 520],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.059, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [130, 520], "tolerance": 0.0002 } },
+      "provenance": {
+        "notes": "Simultaneous transA M/N/K tails exercise guarded operand loads and the register-blocked epilogue when no dimension is tile-aligned."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_m200x64x2050",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [200, 2050], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_generic_notrans_m128_k96_n192",
+      "provenance": { "notes": "Distinct M=128, K=96 and N=192 dimensions check nontransposed GEMM indexing." },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.073, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.053, "cosStep": 0.117, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 192], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "sgmat_generic_transb_f16_m128_k96_n192",
+      "provenance": {
+        "notes": "Float16 GEMM with transposed B in [N,K] layout checks distinct M=128, K=96 and N=192 dimensions."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.073, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [192, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.053, "cosStep": 0.117, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [128, 192], "tolerance": 0.05, "relTolerance": 0.01 } }
+    },
+    {
+      "name": "reg_generic_notrans_f16_m200x64x2050",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 2050],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [200, 2050], "tolerance": 0.0001, "relTolerance": 0.001 } },
+      "provenance": {
+        "notes": "The f16_reg_* fixtures all fit a single 64x64 output tile at alpha=beta=1. This one spans many M and N tiles, so it covers the grid-stride loops at the narrow tile width."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_vec4_m128x32x512",
+      "attrs": { "alpha": 0.75, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 512], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Nontransposed GEMM with non-unit alpha checks all 512 output columns and their numerical values."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_vec4_splitk_m128x1024x2048",
+      "attrs": { "alpha": 0.75, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 2048], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Locks the split-K four-wide 128x64 generic no-transpose path: 32 output tiles over K=1024 take eight K slices, each partial scaled by the non-unit alpha before the combine sums them."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_vec4_k_gt_n_m128x512x256",
+      "attrs": { "alpha": 0.75, "beta": 1, "transA": 0, "transB": 0 },
+      "tunables": { "GENERIC_VEC4_LARGE_MIN_M": 128, "GENERIC_VEC4_LARGE_MIN_N": 256 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 256], "tolerance": 0.0002 } },
+      "provenance": {
+        "notes": "K exceeds N on the vectorized 128x64 register tile, exercising its asymmetric operand staging and complete output stores."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_alpha_ragged_m130x72x520",
+      "attrs": { "alpha": 0.75, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [130, 72],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [72, 520],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [130, 520], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_subgroup_matrix_tail_m40x34x96",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 40, "inFeatures": 34, "outFeatures": 96 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [40, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 34],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [40, 96], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "A float32 model-layout GEMM with M=40, K=34, and N=96 checks partial output rows, input tail values, and final output columns on devices with and without subgroup matrices."
+      }
+    },
+    {
+      "name": "model_reg_k_unaligned_bias_m48x66x80",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 48, "inFeatures": 66, "outFeatures": 80 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [48, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [80, 66],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [80],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [48, 80], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "With inFeatures=66, transB=1, and row bias, the register-tiled bias path receives a ragged final BK=16 tile containing k=64 and 65."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_bias_m64x32x64",
+      "attrs": { "alpha": 0.75, "beta": 0.5, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Checks no-transpose matrix multiplication with an ONNX row bias and non-unit alpha and beta."
+      }
+    },
+    {
+      "name": "reg_generic_notrans_bias_f16_m64x32x64",
+      "attrs": { "alpha": 0.75, "beta": 0.5, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.13, "cosStep": 0.19, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 64], "tolerance": 0.0001, "relTolerance": 0.001 } },
+      "provenance": { "notes": "Non-unit alpha and beta exercise float16 register-tiled Gemm with an ONNX row bias." }
+    },
+    {
+      "name": "reg_generic_transA_bias_m64x32x64",
+      "attrs": { "alpha": 0.75, "beta": 0.5, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [32, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.2 }
+        },
+        "bias": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.375] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Checks transposed-A matrix multiplication with scalar C broadcasting and non-unit alpha and beta."
+      }
+    },
+    {
+      "name": "transb_reg_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "transposed operands use the packed kernels",
+        "notes": "transB=1 is the torch nn.Linear export shape; it must reach the register-blocked generic kernel, not the naive scalar path."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 96], "tolerance": 0.0005 } }
+    },
+    {
+      "name": "transab_reg_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "transposed operands use the packed kernels",
+        "notes": "transB=1 is the torch nn.Linear export shape; it must reach the register-blocked generic kernel, not the naive scalar path."
+      },
+      "attrs": { "alpha": 0.5, "beta": 1, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 96], "tolerance": 0.0005 } }
+    },
+    {
+      "name": "transb_bias_row_reg_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "transposed operands use the packed kernels",
+        "notes": "transB=1 is the torch nn.Linear export shape; it must reach the register-blocked generic kernel, not the naive scalar path."
+      },
+      "attrs": { "alpha": 1, "beta": 2, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.3 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 96], "tolerance": 0.0005 } }
+    },
+    {
+      "name": "transab_bias_row_reg_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "transposed operands use the packed kernels",
+        "notes": "transA=transB=1 with a row bias on the register-blocked generic kernel."
+      },
+      "attrs": { "alpha": 1, "beta": 0.5, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.19, "cosStep": 0.31, "scale": 0.3 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.13, "scale": 0.3 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.3 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 96], "tolerance": 0.0005 } }
+    },
+    {
+      "name": "f16_reg_notrans_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Diverges from the upstream test's inputs (inputs.b fillFloat32 -> fillFloat32; inputs.a fillFloat32 -> fillFloat32); the expected output is recomputed by the CPU reference for the new inputs. Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32. Offset operands keep each K=48 dot product near K*aOffset*bOffset so the float16 tolerance stays proportional to the result."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25, "offset": 0.3 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [48, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25, "offset": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transb_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transa_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [48, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transab_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transb_bias_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_notrans_bias_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [48, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transa_bias_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [48, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "f16_reg_transab_bias_m64_k48_n96",
+      "provenance": {
+        "source": "onnxruntime/core/providers/webgpu/math/gemm_packed.cc",
+        "test": "f16 Gemm uses the packed kernels",
+        "notes": "Generic f16 (plain ONNX Gemm node, no model-layout args) must reach the register-blocked kernel; accumulation stays f32."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [48, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.23, "cosStep": 0.41, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 96], "tolerance": 0.02 } }
+    },
+    {
+      "name": "model_subgroup_matrix_bias_m64x64x128",
+      "provenance": {
+        "notes": "Bias on the model-layout wave32 subgroup-matrix path checks the shared kernel's biased epilogue."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "model_subgroup_matrix_tail_m32x48x96",
+      "provenance": {
+        "notes": "A model-layout GEMM with 48 input and 96 output features checks partial K and N tiles and guarded output stores."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 48, "outFeatures": 96 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 96], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "model_subgroup_matrix_f16_m32x32x64",
+      "provenance": {
+        "notes": "float16 activations, weights, and output on the model-layout subgroup-matrix path check half-precision operand loads, tile zero fill, and output stores."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.25 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 64], "tolerance": 0.05 } }
+    },
+    {
+      "name": "model_subgroup_matrix_f16_bias_m32x32x64",
+      "provenance": {
+        "notes": "f16 with bias on the model-layout subgroup-matrix kernel, pairing the half-precision operands with the bias epilogue."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.25 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.25 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 64], "tolerance": 0.05 } }
+    },
+    {
+      "name": "model_subgroup_matrix_tail_f16_m32_k48_n96",
+      "provenance": {
+        "notes": "A float16 GEMM with K=48 leaves a 16-element reduction tail against 32-wide tiles, while N=96 leaves a 32-column output tail against 64-wide tiles. Both guarded edges process float16 operands."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.2, "offset": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [96, 48],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.2, "offset": 0.4 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 96], "tolerance": 0.05, "relTolerance": 0.01 } },
+      "args": { "M": 32, "inFeatures": 48, "outFeatures": 96 }
+    },
+    {
+      "name": "f16_model_sgmat_splitk_m8_k1024_n128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 8, "inFeatures": 1024, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [8, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.029, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [8, 128], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f16_model_sgmat_splitk_bias_partial_m10_k2048_n64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 10, "inFeatures": 2048, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [10, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.031, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.41 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [10, 64], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f32_model_sgmat_splitk_m16_k1024_n64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 16, "inFeatures": 1024, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [16, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [16, 64], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "f32_model_sgmat_splitk_bias_partial_m40_k1024_n128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 40, "inFeatures": 1024, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [40, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.041, "cosStep": 0.089 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.41 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [40, 128], "tolerance": 0.0002 } }
+    },
+    {
+      "name": "generic_transb_f16_vec4_register_tile_m128_k64_n2048",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [128, 2048], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "generic_transb_f16_deep_m256_k1024_n256",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "tunables": { "GENERIC_TRANSB_VEC4_MIN_BLOCKS": 16 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.1 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [256, 256], "tolerance": 0.02, "relTolerance": 0.005 } },
+      "provenance": { "notes": "Compact float16 matrix multiplication with transposed B and a deep reduction." }
+    },
+    {
+      "name": "generic_transb_f16_small_tile_band_m128_k64_n4096",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.029, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.023, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [128, 4096], "tolerance": 0.02, "relTolerance": 0.005 } },
+      "provenance": {
+        "notes": "A float16 transposed-B GEMM with 128 output rows and 4,096 columns checks a large aligned output without bias."
+      }
+    },
+    {
+      "name": "generic_transb_f16_vec4_register_tile_64row_block_m64_k64_n2048",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.011, "scale": 0.5 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.037, "scale": 0.5 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 2048], "tolerance": 0.02, "relTolerance": 0.005 } }
+    },
+    {
+      "name": "alpha_zero_over_infinite_product",
+      "provenance": {
+        "notes": "alpha 0 against an infinite A.B product. Gemm deliberately selects an exact zero rather than letting 0 * Inf produce NaN, and C still passes through beta; the case pins that guard."
+      },
+      "attrs": { "alpha": 0, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": { "dtype": "float32", "shape": [2, 4], "data": { "kind": "cycle", "values": ["Infinity", 1.0, 2.0, 0.5] } },
+        "b": { "dtype": "float32", "shape": [4, 4], "data": { "kind": "constant", "value": 1.0 } },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0, "allowNaN": true } }
+    },
+    {
+      "name": "generic_layout_m1_transb_vec4",
+      "provenance": {
+        "notes": "A batch-one classifier head with an ordinary row-major layout exercises the vec4 matrix-vector route with transposed B."
+      },
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 6],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 3.0, -1.5, 2.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/generic_layout_m1_transb_weights" } }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [3.75, 6.0, 8.25, 10.5, 12.75, 15.0, 17.25, 19.5] },
+          "tolerance": 0.00001
+        }
+      }
+    },
+    {
+      "name": "generic_layout_m1_transb_vec4_f16",
+      "provenance": {
+        "notes": "A float16 batch-one classifier head with an ordinary row-major layout exercises the vec4 matrix-vector route with transposed B."
+      },
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [1, 6],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 3.0, -1.5, 2.0] }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/generic_layout_m1_transb_weights" } }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float16",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [3.75, 6.0, 8.25, 10.5, 12.75, 15.0, 17.25, 19.5] },
+          "tolerance": 0.02
+        }
+      },
+      "requires": { "features": ["shader-f16"] }
+    },
+    {
+      "name": "generic_layout_m1_transb_vec4_bias",
+      "provenance": {
+        "notes": "The same classifier head carrying the bias that batch-norm folding leaves on it, which is the ordinary form."
+      },
+      "attrs": { "transA": 0, "transB": 1, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1, 6],
+          "data": { "kind": "values", "values": [1.0, -2.0, 0.5, 3.0, -1.5, 2.0] }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [8, 6],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/generic_layout_m1_transb_weights" } }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [8],
+          "data": { "kind": "values", "values": [0.5, -1.0, 0.25, 2.0, -0.75, 1.5, 0.0, -2.5] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [4.25, 5.0, 8.5, 12.5, 12.0, 16.5, 17.25, 17.0] },
+          "tolerance": 0.00001
+        }
+      }
+    },
+    {
+      "name": "transA_sgmat_preferred_floor_m512_k128_n1024",
+      "attrs": { "transA": 1, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.037, "scale": 0.05, "offset": 0.02 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.029, "scale": 0.05, "offset": 0.03 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [512, 1024], "tolerance": 0.0001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Transposed-A matrix multiplication with K=128 and nonuniform operands keeps the strict float32 tolerance meaningful."
+      }
+    },
+    {
+      "name": "transA_sgmat_preferred_high_aspect_m128_k512_n4096",
+      "attrs": { "transA": 1, "transB": 0, "alpha": 1, "beta": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [512, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.037, "scale": 0.05, "offset": 0.02 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [512, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.029, "scale": 0.05, "offset": 0.03 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 4096], "tolerance": 0.0001, "relTolerance": 0.00001 } },
+      "provenance": {
+        "notes": "Transposed-A matrix multiplication with A stored [512,128] (K=512, M=128) and N=4096 keeps nonuniform operands under the strict float32 tolerance."
+      }
+    },
+    {
+      "name": "model_direct_a_boundary_m63_k96_n128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 63, "inFeatures": 96, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [63, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2, "offset": -0.013 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2, "offset": -0.013 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [63, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Complete 64-row bands and adjacent row tails exercise direct activation loads versus guarded staging. Reduction depth spans one and three 32-element tiles; nonuniform signed operands exercise accumulation."
+      }
+    },
+    {
+      "name": "model_direct_a_boundary_m64_k96_n128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 96, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2, "offset": 0.0 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2, "offset": 0.0 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Complete 64-row bands and adjacent row tails exercise direct activation loads versus guarded staging. Reduction depth spans one and three 32-element tiles; nonuniform signed operands exercise accumulation."
+      }
+    },
+    {
+      "name": "model_direct_a_boundary_m65_k96_n128",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 96, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2, "offset": 0.013 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2, "offset": 0.013 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 128], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Complete 64-row bands and adjacent row tails exercise direct activation loads versus guarded staging. Reduction depth spans one and three 32-element tiles; nonuniform signed operands exercise accumulation."
+      }
+    },
+    {
+      "name": "model_subgroup_matrix_m_tail_split_m1025_k1024_n256",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 1025, "inFeatures": 1024, "outFeatures": 256 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1025, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2, "offset": 0.013 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2, "offset": 0.013 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1025, 256], "tolerance": 0.0002 } },
+      "provenance": {
+        "notes": "A single tail row follows sixteen complete 64-row bands; nonuniform operands exercise the direct-store bulk and guarded tail passes."
+      }
+    },
+    {
+      "name": "model_subgroup_matrix_m_tail_split_m1087_k1024_n256",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 1087, "inFeatures": 1024, "outFeatures": 256 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [1087, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.031, "scale": 0.2, "offset": -0.011 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [256, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.047, "scale": 0.2, "offset": 0.017 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1087, 256], "tolerance": 0.0002 } },
+      "provenance": { "notes": "A 63-row tail spans two guarded row tiles after the direct-store bulk pass." }
+    },
+    {
+      "name": "model_direct_a_boundary_m128_k32_n64",
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 128, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [128, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.037, "scale": 0.2, "offset": 0.026 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.043, "scale": 0.2, "offset": 0.026 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [128, 64], "tolerance": 0.0001 } },
+      "provenance": {
+        "notes": "Complete 64-row bands and adjacent row tails exercise direct activation loads versus guarded staging. Reduction depth spans one and three 32-element tiles; nonuniform signed operands exercise accumulation."
+      }
+    },
+    {
+      "name": "bias_tile_grid_float32_m2_k32_n64",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 2, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [2, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 64], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m33_k64_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [33, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [33, 128], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m65_k128_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 128, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 128], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m256_k256_n256",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 256, "inFeatures": 256, "outFeatures": 256 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [256, 256], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m32_k32_n4032",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4032 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4032, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [4032],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 4032], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m32_k32_n4096",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4096 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4096, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 4096], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m32_k32_n4160",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4160 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [4160, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [4160],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [32, 4160], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m33_k32_n1984",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 1984 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1984, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1984],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [33, 1984], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m33_k32_n2048",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 2048 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2048, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [33, 2048], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m33_k32_n2112",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 2112 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [2112, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [2112],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [33, 2112], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m65_k32_n1344",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 32, "outFeatures": 1344 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1344, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1344],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 1344], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m65_k32_n1408",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 32, "outFeatures": 1408 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [65, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1408, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [1408],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [65, 1408], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m64_k992_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 992, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 992],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 992],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m64_k1024_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 1024, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float32_m64_k1056_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 1056, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 1056],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [128, 1056],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float32",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [64, 128], "tolerance": 0.0001, "relTolerance": 0.0001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m2_k32_n64",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 2, "inFeatures": 32, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [2, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 64], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m33_k64_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 64, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [33, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [33, 128], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m65_k128_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 128, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [65, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [65, 128], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m256_k256_n256",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 256, "inFeatures": 256, "outFeatures": 256 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [256, 256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [256],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [256, 256], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m32_k32_n4032",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4032 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4032, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [4032],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 4032], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m32_k32_n4096",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4096 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 4096], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m32_k32_n4160",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 32, "inFeatures": 32, "outFeatures": 4160 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [32, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4160, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [4160],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [32, 4160], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m33_k32_n1984",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 1984 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1984, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [1984],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [33, 1984], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m33_k32_n2048",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 2048 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2048, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [2048],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [33, 2048], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m33_k32_n2112",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 33, "inFeatures": 32, "outFeatures": 2112 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [33, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [2112, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [2112],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [33, 2112], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m65_k32_n1344",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 32, "outFeatures": 1344 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [65, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1344, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [1344],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [65, 1344], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m65_k32_n1408",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 65, "inFeatures": 32, "outFeatures": 1408 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [65, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [1408, 32],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [1408],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [65, 1408], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m64_k992_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 992, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 992],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 992],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 128], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m64_k1024_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 1024, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 128], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "bias_tile_grid_float16_m64_k1056_n128",
+      "provenance": {
+        "notes": "Biased matrix product across output-grid and reduction-length boundaries, including partial row tiles. Every output must match the independent GEMM reference."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 64, "inFeatures": 1056, "outFeatures": 128 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [64, 1056],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.23, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [128, 1056],
+          "data": { "kind": "fillFloat32", "sinStep": 0.11, "cosStep": 0.31, "scale": 0.05 }
+        },
+        "bias": {
+          "dtype": "float16",
+          "shape": [128],
+          "data": { "kind": "fillFloat32", "sinStep": 0.29, "cosStep": 0.13, "scale": 0.1 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [64, 128], "tolerance": 0.002, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "generic_notrans_vec4_row_tail_m130_k96_n192",
+      "provenance": {
+        "notes": "M=130 leaves two rows past a 128-row boundary, with K=96 and N=192; the extra rows must be included correctly in the result."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [130, 96],
+          "data": { "kind": "fillFloat32", "sinStep": 0.031, "cosStep": 0.073, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [96, 192],
+          "data": { "kind": "fillFloat32", "sinStep": 0.053, "cosStep": 0.117, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [130, 192], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "generic_notrans_vec4_splitk_row_tail_m129_k1024_n512",
+      "provenance": {
+        "notes": "M=129 is one row past a 128-row boundary, with K=1024, N=512 and alpha=0.75 scaling the output; the extra row must be included correctly in the result."
+      },
+      "attrs": { "alpha": 0.75, "beta": 1, "transA": 0, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [129, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.017, "cosStep": 0.043, "scale": 0.05 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 512],
+          "data": { "kind": "fillFloat32", "sinStep": 0.023, "cosStep": 0.037, "scale": 0.05 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [129, 512], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "generic_transb_f32_vec4_row_tail_m100_k64_n1024",
+      "provenance": {
+        "notes": "Transposed-B matrix multiplication with M=100 leaves 36 rows past a 64-row boundary (K=64, N=1024); the extra rows must be included correctly in the result."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [100, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.037, "cosStep": 0.061, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [1024, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.043, "cosStep": 0.079, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [100, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "generic_transb_f16_vec4_row_tail_m200_k64_n4096",
+      "provenance": {
+        "notes": "Transposed-B float16 matmul with M=200 leaving 8 rows past a 32-row boundary and 72 past a 128-row boundary (K=64, N=4096). Offset operands keep each dot product away from zero, so a dropped row stays observable at float16 tolerance."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [200, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.013, "cosStep": 0.021, "scale": 0.05, "offset": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [4096, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.009, "cosStep": 0.029, "scale": 0.05, "offset": 0.15 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [200, 4096], "tolerance": 0.01, "relTolerance": 0.001 } }
+    },
+    {
+      "name": "generic_transa_f32_vec4_row_tail_m132_k64_n1024",
+      "provenance": {
+        "notes": "Transposed-A matrix multiplication with A stored as [K=64, M=132] leaves four rows past a 128-row boundary (N=1024); the extra rows must be included correctly in the result."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 1, "transB": 0 },
+      "inputs": {
+        "a": {
+          "dtype": "float32",
+          "shape": [64, 132],
+          "data": { "kind": "fillFloat32", "sinStep": 0.029, "cosStep": 0.067, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float32",
+          "shape": [64, 1024],
+          "data": { "kind": "fillFloat32", "sinStep": 0.047, "cosStep": 0.083, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [132, 1024], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "model_band_transb_splitk_m7_k4096_n64",
+      "provenance": {
+        "notes": "M=7 leaves a partial final row group; all seven rows must receive the complete K=4096 reduction and be stored at their own offsets."
+      },
+      "attrs": { "alpha": 1, "beta": 1, "transA": 0, "transB": 1 },
+      "args": { "M": 7, "inFeatures": 4096, "outFeatures": 64 },
+      "inputs": {
+        "a": {
+          "dtype": "float16",
+          "shape": [7, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.03, "cosStep": 0.07, "scale": 0.2 }
+        },
+        "b": {
+          "dtype": "float16",
+          "shape": [64, 4096],
+          "data": { "kind": "fillFloat32", "sinStep": 0.05, "cosStep": 0.11, "scale": 0.2 }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [7, 64], "tolerance": 0.02 } }
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "domain": "ai.onnx",
+  "name": "Slice",
+  "sinceVersion": 13,
+  "inputs": {
+    "data": { "dtype": "T" },
+    "starts": { "dtype": "S", "rank": 1 },
+    "ends": { "dtype": "S", "rank": 1 },
+    "axes": { "dtype": "S", "rank": 1, "optional": true },
+    "steps": { "dtype": "S", "rank": 1, "optional": true }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.data" } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"],
+    "S": ["int32"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "indexScalar": "dtypes.S",
+    "scalar": "dtypes.T",
+    "dataShape": "shapes.data",
+    "outputShape": "shapes.output",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "rank": "ranks.data",
+    "sliceRank": "dim(shapes.starts, 0)"
+  },
+  "when": ["ranks.starts == 1", "ranks.ends == 1", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "data": { "elementType": "$scalar" },
+    "output": { "elementType": "$scalar" },
+    "data_main": { "name": "data", "elementType": "$vectorScalar" },
+    "output_main": { "name": "output", "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] }
+  },
+  "variants": [
+    {
+      "id": "rank2_single_axis_x4",
+      "priority": 14,
+      "when": ["dtypes.T != \"vec2<u32>\"", "present.axes", "present.steps", "ranks.data == 2", "ranks.output == 2", "ranks.axes == 1", "ranks.steps == 1", "dim(shapes.starts, 0) == 1", "dim(shapes.ends, 0) == 1", "dim(shapes.axes, 0) == 1", "dim(shapes.steps, 0) == 1", "dim(shapes.data, 1) == dim(shapes.output, 1)", "dim(shapes.data, 0) != dim(shapes.output, 0)", "dim(shapes.data, 1) % 4 != 0", "numel(shapes.output) > 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice.Rank2SingleAxisX4",
+          "shader": "slice-rank2-single-axis-x4.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output)" },
+          "bindings": [
+            "data",
+            { "arg": "starts", "elementType": "$indexScalar", "length": 1 },
+            { "arg": "axes", "elementType": "$indexScalar", "length": 1 },
+            { "arg": "steps", "elementType": "$indexScalar", "length": 1 },
+            "output"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inner_vec4",
+      "priority": 12,
+      "when": ["dtypes.T != \"vec2<u32>\"", "present.axes", "present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.axes == 1", "ranks.steps == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.axes, 0)", "dim(shapes.starts, 0) == dim(shapes.steps, 0)", "dim(shapes.starts, 0) <= ranks.data", "numel(shapes.output) > 0", "dim(shapes.data, ranks.data - 1) % 4 == 0", "dim(shapes.output, ranks.data - 1) % 4 == 0"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice.InnerVec4",
+          "shader": "datamove-slice-block.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": ["data_main", "starts", "axes", "steps", "output_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inner_vec4_no_steps",
+      "priority": 12,
+      "when": ["dtypes.T != \"vec2<u32>\"", "present.axes", "not present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.axes == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.axes, 0)", "dim(shapes.starts, 0) <= ranks.data", "numel(shapes.output) > 0", "dim(shapes.data, ranks.data - 1) % 4 == 0", "dim(shapes.output, ranks.data - 1) % 4 == 0"],
+      "derive": { "presentAxes": true, "presentSteps": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice.InnerVec4NoSteps",
+          "shader": "datamove-slice-block.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": ["data_main", "starts", "axes", "output_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inner_vec4_no_axes",
+      "priority": 12,
+      "when": ["dtypes.T != \"vec2<u32>\"", "not present.axes", "not present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) <= ranks.data", "numel(shapes.output) > 0", "dim(shapes.data, ranks.data - 1) % 4 == 0", "dim(shapes.output, ranks.data - 1) % 4 == 0"],
+      "derive": { "presentAxes": false, "presentSteps": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice.InnerVec4NoAxesNoSteps",
+          "shader": "datamove-slice-block.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": ["data_main", "starts", "output_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inner_vec4_no_axes_steps",
+      "priority": 12,
+      "when": ["dtypes.T != \"vec2<u32>\"", "not present.axes", "present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.steps == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.steps, 0)", "dim(shapes.starts, 0) <= ranks.data", "numel(shapes.output) > 0", "dim(shapes.data, ranks.data - 1) % 4 == 0", "dim(shapes.output, ranks.data - 1) % 4 == 0"],
+      "derive": { "presentAxes": false, "presentSteps": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice.InnerVec4NoAxes",
+          "shader": "datamove-slice-block.wgsl.jinja",
+          "derive": { "count": "numel(shapes.output) / 4" },
+          "bindings": ["data_main", "starts", "steps", "output_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_metadata",
+      "when": ["present.axes", "present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.axes == 1", "ranks.steps == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.axes, 0)", "dim(shapes.starts, 0) == dim(shapes.steps, 0)", "dim(shapes.starts, 0) <= ranks.data"],
+      "derive": { "presentAxes": true, "presentSteps": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice",
+          "shader": "slice.wgsl.jinja",
+          "bindings": ["data", "starts", "axes", "steps", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_metadata_no_steps",
+      "when": ["present.axes", "not present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.axes == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.axes, 0)", "dim(shapes.starts, 0) <= ranks.data"],
+      "derive": { "presentAxes": true, "presentSteps": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice",
+          "shader": "slice.wgsl.jinja",
+          "bindings": ["data", "starts", "axes", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_metadata_no_axes",
+      "when": ["not present.axes", "not present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) <= ranks.data"],
+      "derive": { "presentAxes": false, "presentSteps": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice",
+          "shader": "slice.wgsl.jinja",
+          "bindings": ["data", "starts", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_metadata_no_axes_steps",
+      "when": ["not present.axes", "present.steps", "ranks.data >= 1", "ranks.output == ranks.data", "ranks.steps == 1", "dim(shapes.starts, 0) == dim(shapes.ends, 0)", "dim(shapes.starts, 0) == dim(shapes.steps, 0)", "dim(shapes.starts, 0) <= ranks.data"],
+      "derive": { "presentAxes": false, "presentSteps": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Slice",
+          "shader": "slice.wgsl.jinja",
+          "bindings": ["data", "starts", "steps", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

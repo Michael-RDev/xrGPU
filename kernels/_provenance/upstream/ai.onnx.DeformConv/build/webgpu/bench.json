@@ -1,0 +1,98 @@
+{
+  "cases": [
+    {
+      "name": "nchw_1x8x32x32_k3",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 8, 32, 32] },
+        "w": { "dtype": "float32", "shape": [8, 8, 3, 3] },
+        "offset": { "dtype": "float32", "shape": [1, 18, 30, 30], "data": { "kind": "constant", "value": 0.0 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 30, 30] } }
+    },
+    {
+      "name": "nchw_1x8x32x32_k3_frac_offset",
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 8, 32, 32] },
+        "w": { "dtype": "float32", "shape": [8, 8, 3, 3] },
+        "offset": { "dtype": "float32", "shape": [1, 18, 30, 30], "dist": "uniform", "seed": 713, "scale": 0.25 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8, 30, 30] } }
+    },
+    {
+      "name": "nchw_2x8x32x32_k3_group2_bias_mask_frac_offset",
+      "attrs": { "group": 2, "offset_group": 2 },
+      "vars": { "N": 2, "C": 8, "OC": 8, "OH": 30, "OW": 30, "KH": 3, "KW": 3, "group": 2 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [2, 8, 32, 32], "dist": "normal", "seed": 721, "scale": 0.2 },
+        "w": { "dtype": "float32", "shape": [8, 4, 3, 3], "dist": "normal", "seed": 722, "scale": 0.1 },
+        "offset": { "dtype": "float32", "shape": [2, 36, 30, 30], "dist": "uniform", "seed": 723, "scale": 0.25 },
+        "bias": { "dtype": "float32", "shape": [8], "dist": "normal", "seed": 724, "scale": 0.05 },
+        "mask": { "dtype": "float32", "shape": [2, 18, 30, 30], "dist": "uniform", "seed": 725, "min": 0.25, "max": 1 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 8, 30, 30] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * args.N * args.OC * args.OH * args.OW * (args.C / args.group) * args.KH * args.KW"
+          }
+        ]
+      },
+      "preset": "smoke"
+    },
+    {
+      "name": "deform-conv-f32-detection-b1c64m64-128x128-k3-g4-bias-mask",
+      "preset": "stress",
+      "attrs": { "group": 4, "offset_group": 4, "pads": [1, 1, 1, 1] },
+      "vars": { "N": 1, "C": 64, "OC": 64, "OH": 128, "OW": 128, "KH": 3, "KW": 3, "group": 4 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 64, 128, 128], "dist": "normal", "seed": 731, "scale": 0.2 },
+        "w": { "dtype": "float32", "shape": [64, 16, 3, 3], "dist": "normal", "seed": 732, "scale": 0.1 },
+        "offset": { "dtype": "float32", "shape": [1, 72, 128, 128], "dist": "uniform", "seed": 733, "scale": 0.25 },
+        "bias": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 734, "scale": 0.05 },
+        "mask": {
+          "dtype": "float32",
+          "shape": [1, 36, 128, 128],
+          "dist": "uniform",
+          "seed": 735,
+          "min": 0.25,
+          "max": 1
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64, 128, 128] } },
+      "bench": {
+        "primary": true,
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * args.N * args.OC * args.OH * args.OW * (args.C / args.group) * args.KH * args.KW"
+          }
+        ]
+      }
+    },
+    {
+      "name": "deform-conv-f32-unmodulated-b1c64m64-128x128-k3-g4-pathology",
+      "preset": "stress",
+      "provenance": {
+        "source": "synthetic benchmark",
+        "notes": "An unmodulated grouped DeformConv case paired with a bias-and-mask case isolates the effects of those optional inputs."
+      },
+      "attrs": { "group": 4, "offset_group": 4, "pads": [1, 1, 1, 1] },
+      "vars": { "N": 1, "C": 64, "OC": 64, "OH": 128, "OW": 128, "KH": 3, "KW": 3, "group": 4 },
+      "inputs": {
+        "x": { "dtype": "float32", "shape": [1, 64, 128, 128], "dist": "normal", "seed": 736, "scale": 0.2 },
+        "w": { "dtype": "float32", "shape": [64, 16, 3, 3], "dist": "normal", "seed": 737, "scale": 0.1 },
+        "offset": { "dtype": "float32", "shape": [1, 72, 128, 128], "dist": "uniform", "seed": 738, "scale": 0.25 }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 64, 128, 128] } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "gflops",
+            "value": "2 * args.N * args.OC * args.OH * args.OW * (args.C / args.group) * args.KH * args.KW"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "domain": "ai.onnx",
+  "name": "BitShift",
+  "sinceVersion": 11,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" }, "y": { "onnx": "Y", "dtype": "T" } },
+  "outputs": {
+    "z": { "onnx": "Z", "dtype": "T", "rank": "max(ranks.x, ranks.y)", "shape": "broadcastShape(shapes.x, shapes.y)" }
+  },
+  "attributes": { "direction": {} },
+  "attributeConstraints": { "direction": { "required": true, "values": ["LEFT", "RIGHT"] } },
+  "typeConstraints": { "T": ["uint32", "uint8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "leftShift": "attrs.direction == \"LEFT\"",
+    "logicalDtype": "tensorDtypes.z",
+    "bitWidth": "8 if tensorDtypes.z == \"uint8\" else 32"
+  },
+  "variants": [
+    {
+      "id": "same_shape_vec4",
+      "priority": 20,
+      "when": ["sameShape(shapes.x, shapes.z)", "sameShape(shapes.y, shapes.z)", "numel(shapes.z) > 0", "numel(shapes.z) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitShift.Vec4",
+          "shader": "bitshift-vec4.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "name": "shift", "elementType": "$vectorScalar" },
+            { "arg": "z", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.z) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.z) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "broadcast",
+      "when": ["ranks.x >= 0", "ranks.y >= 0", "ranks.z >= 0", "ranks.x <= ranks.z", "ranks.y <= ranks.z"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "BitShift",
+          "shader": "bitshift.wgsl.jinja",
+          "derive": {
+            "xShape": "shapes.x",
+            "yShape": "shapes.y",
+            "zShape": "shapes.z",
+            "xRank": "ranks.x",
+            "yRank": "ranks.y",
+            "zRank": "ranks.z"
+          },
+          "bindings": [
+            "x",
+            { "arg": "y", "name": "shift" },
+            "z",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.z)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.z)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.z)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

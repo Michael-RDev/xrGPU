@@ -1,0 +1,237 @@
+{
+  "domain": "ai.onnx",
+  "name": "Clip",
+  "sinceVersion": 13,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "min": { "dtype": "T", "rank": 0, "optional": true, "shape": [] },
+    "max": { "dtype": "T", "rank": 0, "optional": true, "shape": [] }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input", "shape": "shapes.input" } },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "uint32", "int8", "uint8"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "shapeContract": "numel(shapes.input) == numel(shapes.output) and f16Ok(dtypes.T)",
+    "defaultBoundsContract": "shapeContract and not present.min and not present.max",
+    "minInputContract": "shapeContract and present.min and not present.max and ranks.min == 0 and numel(shapes.min) == 1",
+    "maxInputContract": "shapeContract and not present.min and present.max and ranks.max == 0 and numel(shapes.max) == 1",
+    "inputBoundsContract": "shapeContract and present.min and present.max and ranks.min == 0 and numel(shapes.min) == 1 and ranks.max == 0 and numel(shapes.max) == 1",
+    "defaultMin": "-65504 if tensorDtypes.input == \"float16\" else (-340282346638528859811704183484516925440 if tensorDtypes.input == \"float32\" else (-128 if tensorDtypes.input == \"int8\" else (-2147483648 if tensorDtypes.input == \"int32\" else 0)))",
+    "defaultMax": "65504 if tensorDtypes.input == \"float16\" else (340282346638528859811704183484516925440 if tensorDtypes.input == \"float32\" else (127 if tensorDtypes.input == \"int8\" else (2147483647 if tensorDtypes.input == \"int32\" else (255 if tensorDtypes.input == \"uint8\" else 4294967295))))",
+    "wideVec4StorageOk": "dtypes.T != \"f32\" or device.features.has(\"subgroups\") or not (has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 8 and device.adapterInfo.subgroupMaxSize <= 32)",
+    "scalar": "dtypes.T"
+  },
+  "bindings": {
+    "x": { "arg": "input", "elementType": "$vectorScalar" },
+    "y": { "arg": "output", "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output) / 4" }] },
+    "params_main": { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] },
+    "clipMin": { "arg": "min", "elementType": "$scalar" },
+    "clipMax": { "arg": "max", "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "default_bounds_vec4",
+      "priority": 20,
+      "when": ["defaultBoundsContract", "numel(shapes.input) > 0", "numel(shapes.input) % 4 == 0", "wideVec4StorageOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.DefaultBoundsVec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": false,
+            "minValue": "defaultMin",
+            "maxValue": "defaultMax",
+            "vec4PerThread": "4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1"
+          },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "default_bounds",
+      "when": ["defaultBoundsContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.DefaultBounds",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": false,
+            "minValue": "defaultMin",
+            "maxValue": "defaultMax",
+            "itemsPerInvocation": 4
+          },
+          "bindings": ["input", "output", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "input_bounds_vec4",
+      "priority": 40,
+      "when": ["inputBoundsContract", "numel(shapes.input) > 0", "numel(shapes.input) % 4 == 0", "wideVec4StorageOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.InputBoundsVec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "vec4PerThread": "4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1",
+            "clipMinFromInput": true,
+            "clipMaxFromInput": true
+          },
+          "bindings": ["x", "y", "clipMin", "clipMax", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "input_bounds",
+      "when": ["inputBoundsContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.InputBounds",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "itemsPerInvocation": 4,
+            "clipMinFromInput": true,
+            "clipMaxFromInput": true
+          },
+          "bindings": ["input", "output", "clipMin", "clipMax", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "priority": 30
+    },
+    {
+      "id": "min_input_vec4",
+      "priority": 40,
+      "when": ["minInputContract", "numel(shapes.input) > 0", "numel(shapes.input) % 4 == 0", "wideVec4StorageOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.MinInputVec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "vec4PerThread": "4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1",
+            "clipMinFromInput": true,
+            "clipMaxFromInput": false
+          },
+          "bindings": ["x", "y", "clipMin", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "min_input",
+      "when": ["minInputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.MinInput",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "itemsPerInvocation": 4,
+            "clipMinFromInput": true,
+            "clipMaxFromInput": false
+          },
+          "bindings": ["input", "output", "clipMin", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "priority": 30
+    },
+    {
+      "id": "max_input_vec4",
+      "priority": 40,
+      "when": ["maxInputContract", "numel(shapes.input) > 0", "numel(shapes.input) % 4 == 0", "wideVec4StorageOk"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.MaxInputVec4",
+          "shader": "unary-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "vec4PerThread": "4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1",
+            "clipMinFromInput": false,
+            "clipMaxFromInput": true
+          },
+          "bindings": ["x", "y", "clipMax", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output) / 4, 4 if numel(shapes.output) * dtypeBytes(tensorDtypes.output) <= 16777216 else 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "max_input",
+      "when": ["maxInputContract"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Clip.MaxInput",
+          "shader": "unary-scalar.wgsl.jinja",
+          "derive": {
+            "op": "\"clip\"",
+            "boundsFromInput": true,
+            "itemsPerInvocation": 4,
+            "clipMinFromInput": false,
+            "clipMaxFromInput": true
+          },
+          "bindings": ["input", "output", "clipMax", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ],
+      "priority": 30
+    }
+  ]
+}

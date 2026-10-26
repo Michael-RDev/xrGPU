@@ -1,0 +1,268 @@
+{
+  "domain": "ai.onnx",
+  "name": "DynamicQuantizeLinear",
+  "sinceVersion": 11,
+  "inputs": { "x": { "dtype": "T" } },
+  "outputs": {
+    "y": { "dtype": "TQ", "rank": "ranks.x", "shape": "shapes.x" },
+    "y_scale": { "dtype": "T", "rank": 0, "shape": [] },
+    "y_zero_point": { "dtype": "TQ", "rank": 0, "shape": [] }
+  },
+  "typeConstraints": { "T": ["float32"], "TQ": ["uint8"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "ELEMENTS_PER_THREAD": { "default": 4 },
+    "GRID_STRIDE_MIN_ELEMENTS": { "default": 262144 },
+    "MAX_GRID_PARTIALS": { "default": 256 },
+    "SERIAL_MAX_ELEMENTS": { "default": 8192 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "storageBufferLimit": "min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize)",
+    "inputCount": "numel(shapes.x)",
+    "elementsPerBlock": "tunables.WORKGROUP_SIZE * tunables.ELEMENTS_PER_THREAD",
+    "fullPartials": "ceilDiv(inputCount, elementsPerBlock)",
+    "gridPartials": "min(tunables.MAX_GRID_PARTIALS, fullPartials)",
+    "baseContract": "ranks.x >= 1 and ranks.y == ranks.x and inputCount == numel(shapes.y) and ranks.y_scale == 0 and ranks.y_zero_point == 0",
+    "serialContract": "ranks.x >= 0 and ranks.y == ranks.x and inputCount == numel(shapes.y) and ranks.y_scale == 0 and ranks.y_zero_point == 0",
+    "parallelDeviceOk": "tunables.WORKGROUP_SIZE <= deviceWorkgroupCap and 8 * tunables.WORKGROUP_SIZE <= device.limits.maxComputeWorkgroupStorageSize",
+    "fullScratchFits": "4 * fullPartials <= storageBufferLimit",
+    "gridScratchFits": "4 * gridPartials <= storageBufferLimit",
+    "fullDispatchFits": "ceilDiv(fullPartials, min(device.limits.maxComputeWorkgroupsPerDimension, 65535)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "gridDispatchFits": "gridPartials <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "parallelFullFits": "parallelDeviceOk and fullScratchFits and fullDispatchFits",
+    "parallelGridFits": "parallelDeviceOk and gridScratchFits and gridDispatchFits and fullDispatchFits",
+    "serialFallbackNeeded": "inputCount <= tunables.SERIAL_MAX_ELEMENTS or not parallelFullFits"
+  },
+  "bindings": {
+    "y": { "elementType": "u32" },
+    "y_scale": { "elementType": "f32", "length": 1 },
+    "y_zero_point": { "elementType": "u32", "length": 1 },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.x)" }] },
+    "x_reduce": { "name": "x", "elementType": "$inputElement" },
+    "partial_min": { "buffer": "storage", "elementType": "f32" },
+    "partial_max": { "buffer": "storage", "elementType": "f32" },
+    "partial_min_f32": { "name": "partial_min", "buffer": "read-only-storage", "elementType": "f32" },
+    "partial_max_f32": { "name": "partial_max", "buffer": "read-only-storage", "elementType": "f32" },
+    "y_scale_f32": { "name": "y_scale", "buffer": "read-only-storage", "elementType": "f32", "length": 1 },
+    "y_zero_point_u32": { "name": "y_zero_point", "buffer": "read-only-storage", "elementType": "u32", "length": 1 }
+  },
+  "variants": [
+    {
+      "id": "single_invocation",
+      "when": ["serialContract", "serialFallbackNeeded"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "DynamicQuantizeLinear",
+          "shader": "dynamic-quantize-linear.wgsl.jinja",
+          "derive": { "fromPartials": false },
+          "bindings": [{ "arg": "x", "elementType": "f32" }, "y", "y_scale", "y_zero_point", "params"],
+          "dispatch": { "x": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_subgroup_reduce_vec4",
+      "priority": 11,
+      "when": ["baseContract", "inputCount > 0", "inputCount % 4 == 0", "parallelFullFits"],
+      "derive": {
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "elemsPerThread": "tunables.ELEMENTS_PER_THREAD",
+        "vec4": true,
+        "inputElement": "\"vec4<f32>\"",
+        "useSubgroups": "device.features.has(\"subgroups\")"
+      },
+      "intermediates": [
+        { "id": "partial_min", "dtype": "float32", "shape": "[fullPartials]" },
+        { "id": "partial_max", "dtype": "float32", "shape": "[fullPartials]" }
+      ],
+      "passes": [
+        {
+          "id": "reduce",
+          "name": "DynamicQuantizeLinear.ReduceMinMax",
+          "shader": "dynamic-quantize-linear-reduce.wgsl.jinja",
+          "bindings": ["x_reduce", "partial_min", "partial_max", "params"],
+          "dispatch": { "x": "min(fullPartials, 65535)", "y": "ceilDiv(fullPartials, 65535)", "z": 1 }
+        },
+        {
+          "id": "finalize",
+          "name": "DynamicQuantizeLinear.Finalize",
+          "shader": "dynamic-quantize-linear.wgsl.jinja",
+          "derive": { "fromPartials": true },
+          "bindings": [
+            "partial_min_f32",
+            "partial_max_f32",
+            "y_scale",
+            "y_zero_point",
+            { "name": "params", "struct": [{ "name": "numPartials", "type": "u32", "value": "fullPartials" }] }
+          ],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "quantize",
+          "name": "DynamicQuantizeLinear.Quantize",
+          "shader": "dynamic-quantize-linear-quantize.wgsl.jinja",
+          "bindings": ["x_reduce", "y_scale_f32", "y_zero_point_u32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "parallel_subgroup_reduce",
+      "priority": 10,
+      "when": ["baseContract", "inputCount > 0", "true", "parallelFullFits"],
+      "derive": {
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "elemsPerThread": "tunables.ELEMENTS_PER_THREAD",
+        "vec4": false,
+        "inputElement": "\"f32\"",
+        "useSubgroups": "device.features.has(\"subgroups\")"
+      },
+      "intermediates": [
+        { "id": "partial_min", "dtype": "float32", "shape": "[fullPartials]" },
+        { "id": "partial_max", "dtype": "float32", "shape": "[fullPartials]" }
+      ],
+      "passes": [
+        {
+          "id": "reduce",
+          "name": "DynamicQuantizeLinear.ReduceMinMax",
+          "shader": "dynamic-quantize-linear-reduce.wgsl.jinja",
+          "bindings": ["x_reduce", "partial_min", "partial_max", "params"],
+          "dispatch": { "x": "min(fullPartials, 65535)", "y": "ceilDiv(fullPartials, 65535)", "z": 1 }
+        },
+        {
+          "id": "finalize",
+          "name": "DynamicQuantizeLinear.Finalize",
+          "shader": "dynamic-quantize-linear.wgsl.jinja",
+          "derive": { "fromPartials": true },
+          "bindings": [
+            "partial_min_f32",
+            "partial_max_f32",
+            "y_scale",
+            "y_zero_point",
+            { "name": "params", "struct": [{ "name": "numPartials", "type": "u32", "value": "fullPartials" }] }
+          ],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "quantize",
+          "name": "DynamicQuantizeLinear.Quantize",
+          "shader": "dynamic-quantize-linear-quantize.wgsl.jinja",
+          "bindings": ["x_reduce", "y_scale_f32", "y_zero_point_u32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "grid_stride_reduce_vec4",
+      "priority": 12,
+      "when": ["baseContract", "inputCount > 0", "inputCount % 4 == 0", "inputCount >= tunables.GRID_STRIDE_MIN_ELEMENTS", "parallelGridFits"],
+      "derive": {
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "elemsPerThread": "tunables.ELEMENTS_PER_THREAD",
+        "vec4": true,
+        "inputElement": "\"vec4<f32>\"",
+        "useSubgroups": "device.features.has(\"subgroups\")"
+      },
+      "intermediates": [
+        { "id": "partial_min", "dtype": "float32", "shape": "[gridPartials]" },
+        { "id": "partial_max", "dtype": "float32", "shape": "[gridPartials]" }
+      ],
+      "passes": [
+        {
+          "id": "reduce",
+          "name": "DynamicQuantizeLinear.ReduceMinMax",
+          "shader": "dynamic-quantize-linear-reduce.wgsl.jinja",
+          "derive": { "gridStride": true },
+          "bindings": ["x_reduce", "partial_min", "partial_max", "params"],
+          "dispatch": { "x": "gridPartials" }
+        },
+        {
+          "id": "finalize",
+          "name": "DynamicQuantizeLinear.Finalize",
+          "shader": "dynamic-quantize-linear.wgsl.jinja",
+          "derive": { "fromPartials": true },
+          "bindings": [
+            "partial_min_f32",
+            "partial_max_f32",
+            "y_scale",
+            "y_zero_point",
+            { "name": "params", "struct": [{ "name": "numPartials", "type": "u32", "value": "gridPartials" }] }
+          ],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "quantize",
+          "name": "DynamicQuantizeLinear.Quantize",
+          "shader": "dynamic-quantize-linear-quantize.wgsl.jinja",
+          "bindings": ["x_reduce", "y_scale_f32", "y_zero_point_u32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "grid_stride_reduce",
+      "priority": 12,
+      "when": ["baseContract", "inputCount > 0", "inputCount % 4 != 0", "inputCount >= tunables.GRID_STRIDE_MIN_ELEMENTS", "parallelGridFits"],
+      "derive": {
+        "workgroupSize": "tunables.WORKGROUP_SIZE",
+        "elemsPerThread": "tunables.ELEMENTS_PER_THREAD",
+        "vec4": false,
+        "inputElement": "\"f32\"",
+        "useSubgroups": "device.features.has(\"subgroups\")"
+      },
+      "intermediates": [
+        { "id": "partial_min", "dtype": "float32", "shape": "[gridPartials]" },
+        { "id": "partial_max", "dtype": "float32", "shape": "[gridPartials]" }
+      ],
+      "passes": [
+        {
+          "id": "reduce",
+          "name": "DynamicQuantizeLinear.ReduceMinMax",
+          "shader": "dynamic-quantize-linear-reduce.wgsl.jinja",
+          "derive": { "gridStride": true },
+          "bindings": ["x_reduce", "partial_min", "partial_max", "params"],
+          "dispatch": { "x": "gridPartials" }
+        },
+        {
+          "id": "finalize",
+          "name": "DynamicQuantizeLinear.Finalize",
+          "shader": "dynamic-quantize-linear.wgsl.jinja",
+          "derive": { "fromPartials": true },
+          "bindings": [
+            "partial_min_f32",
+            "partial_max_f32",
+            "y_scale",
+            "y_zero_point",
+            { "name": "params", "struct": [{ "name": "numPartials", "type": "u32", "value": "gridPartials" }] }
+          ],
+          "dispatch": { "x": 1 }
+        },
+        {
+          "id": "quantize",
+          "name": "DynamicQuantizeLinear.Quantize",
+          "shader": "dynamic-quantize-linear-quantize.wgsl.jinja",
+          "bindings": ["x_reduce", "y_scale_f32", "y_zero_point_u32", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(inputCount, 4 if vec4 else tunables.ELEMENTS_PER_THREAD)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

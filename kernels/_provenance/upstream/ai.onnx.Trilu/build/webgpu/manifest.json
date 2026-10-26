@@ -1,0 +1,109 @@
+{
+  "domain": "ai.onnx",
+  "name": "Trilu",
+  "sinceVersion": 14,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "k": { "dtype": "I", "rank": 0, "optional": true, "shape": [], "storage": "int32", "narrowing": "checked" }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "upper": { "default": 1 } },
+  "attributeConstraints": { "upper": { "values": [0, 1] } },
+  "typeConstraints": {
+    "T": ["float32", "float16", "int32", "int16", "int8", "uint32", "uint8", "bool"],
+    "I": ["int64"]
+  },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T", "upperSpec": "attrs.upper != 0", "vec4Rows": "numel(shapes.output) % 4 == 0" },
+  "when": ["ranks.input == ranks.output", "ranks.input >= 2", "numel(shapes.input) == numel(shapes.output)", "f16Ok(dtypes.T)"],
+  "bindings": {
+    "input": { "elementType": "$vectorScalar" },
+    "output": { "elementType": "$vectorScalar" },
+    "params": { "struct": [{ "name": "count", "type": "u32", "value": "ceil(numel(shapes.output) / 4)" }] },
+    "params_packed": {
+      "name": "params",
+      "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output) / 8" }]
+    },
+    "kbuf": { "arg": "k", "elementType": "i32", "length": 1 }
+  },
+  "variants": [
+    {
+      "id": "mask_inner_packed_vec8_kinput",
+      "priority": 30,
+      "when": ["present.k", "ranks.k == 0", "numel(shapes.k) == 1", "numel(shapes.output) % 4 == 0", "dtypes.T == \"f16\"", "numel(shapes.output) % 8 == 0"],
+      "derive": { "vectorScalar": "\"vec4<u32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Trilu.PackedF16",
+          "shader": "trilu-packed.wgsl.jinja",
+          "derive": { "shape": "shapes.output", "rank": "ranks.output", "kFromInput": true },
+          "bindings": ["input", "output", "kbuf", "params_packed"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "mask_inner_packed_vec8",
+      "priority": 30,
+      "when": ["not present.k", "numel(shapes.output) % 4 == 0", "dtypes.T == \"f16\"", "numel(shapes.output) % 8 == 0"],
+      "derive": { "vectorScalar": "\"vec4<u32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Trilu.PackedF16",
+          "shader": "trilu-packed.wgsl.jinja",
+          "derive": { "shape": "shapes.output", "rank": "ranks.output", "kFromInput": false },
+          "bindings": ["input", "output", "params_packed"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 8), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank2_to_4",
+      "when": ["not present.k"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if vec4Rows else dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Trilu",
+          "shader": "trilu.wgsl.jinja",
+          "derive": { "shape": "shapes.output", "rank": "ranks.output", "kFromInput": false },
+          "bindings": ["input", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceil(numel(shapes.output) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceil(numel(shapes.output) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank2_to_4_kinput",
+      "when": ["present.k", "ranks.k == 0", "numel(shapes.k) == 1"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\" if vec4Rows else dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Trilu.KInput",
+          "shader": "trilu.wgsl.jinja",
+          "derive": { "shape": "shapes.output", "rank": "ranks.output", "kFromInput": true },
+          "bindings": ["input", "output", "kbuf", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceil(numel(shapes.output) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceil(numel(shapes.output) / 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

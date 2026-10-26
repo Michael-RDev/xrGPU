@@ -1,0 +1,58 @@
+{
+  "domain": "com.microsoft",
+  "name": "Gelu",
+  "sinceVersion": 1,
+  "inputs": { "X": { "dtype": "T" } },
+  "outputs": { "Y": { "dtype": "T", "rank": "ranks.X", "shape": "shapes.X" } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T", "vec4Tail": false },
+  "when": ["numel(shapes.X) == numel(shapes.Y)", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "vec4",
+      "priority": 20,
+      "when": ["numel(shapes.X) > 0", "numel(shapes.X) % 4 == 0"],
+      "derive": { "vec4": true, "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gelu.Vec4",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$vectorScalar" },
+            { "arg": "Y", "name": "y", "elementType": "$vectorScalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X) / 4" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X) / 4), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "scalar",
+      "priority": 0,
+      "derive": { "vec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Gelu.Scalar",
+          "shader": "elementwise-bias-gelu.wgsl.jinja",
+          "bindings": [
+            { "arg": "X", "name": "x", "elementType": "$scalar" },
+            { "arg": "Y", "name": "y", "elementType": "$scalar" },
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.X)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.X)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.X)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

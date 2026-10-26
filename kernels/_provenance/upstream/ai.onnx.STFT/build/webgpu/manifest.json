@@ -1,0 +1,375 @@
+{
+  "domain": "ai.onnx",
+  "name": "STFT",
+  "sinceVersion": 17,
+  "inputs": { "signal": { "dtype": "T", "rank": 3 }, "window": { "dtype": "T", "rank": 1, "optional": true } },
+  "outputs": {
+    "output": {
+      "dtype": "T",
+      "rank": 4,
+      "shape": ["dim(shapes.signal, 0)", "expectedFrames", "floor(frameLength / 2) + 1 if attrs.onesided == 1 else frameLength", 2]
+    }
+  },
+  "args": {
+    "frameStep": { "kind": "i32", "onnx": "frame_step" },
+    "frameLength": { "kind": "i32", "onnx": "frame_length", "required": false }
+  },
+  "attributes": { "onesided": { "default": 1 } },
+  "attributeConstraints": { "onesided": { "values": [0, 1] } },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 128 },
+    "TWIDDLE_TABLE_MIN_TRANSFORMS": { "default": 4096 },
+    "TILED_REAL_MIN_LENGTH": { "default": 512 },
+    "GLOBAL_STAGE_LOCAL_LENGTH": { "default": 256 },
+    "GLOBAL_STAGE_MAX_DEVICE_STORAGE_BYTES": { "default": 16384 }
+  },
+  "derive": {
+    "windowLength": "dim(shapes.window, 0) if (present.window and ranks.window == 1) else 0",
+    "frameLength": "windowLength if (present.window and ranks.window == 1) else (args.frameLength if args.frameLength is defined else 0)",
+    "frameLengthMatchesWindow": "args.frameLength is undefined or not present.window or args.frameLength == windowLength",
+    "frameControlsValid": "args.frameStep > 0 and frameLength > 0 and frameLength <= dim(shapes.signal, 1) and frameLengthMatchesWindow",
+    "expectedFrames": "floor((dim(shapes.signal, 1) - frameLength) / args.frameStep) + 1 if frameControlsValid else 0",
+    "rank3OutputLayout": "ranks.signal == 3 and ranks.output == 4 and dim(shapes.output, 0) == dim(shapes.signal, 0) and dim(shapes.output, 1) == expectedFrames and dim(shapes.signal, 2) >= 1 and dim(shapes.signal, 2) <= 2 and dim(shapes.output, 3) == 2",
+    "rank3WindowLayout": "present.window and ranks.window == 1 and rank3OutputLayout and frameControlsValid",
+    "rank3WindowSpectrum": "false if not present.window else ((attrs.onesided == 0 and dim(shapes.output, 2) == dim(shapes.window, 0)) or (attrs.onesided != 0 and dim(shapes.signal, 2) == 1 and dim(shapes.output, 2) == floor(dim(shapes.window, 0) / 2) + 1))",
+    "transformCount": "dim(shapes.output, 0) * dim(shapes.output, 1)",
+    "rank3WindowDispatchFits": "dim(shapes.output, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.output, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rank3WindowSharedFftFits": "false if not present.window else (rank3WindowDispatchFits and pow2ceil(dim(shapes.window, 0)) == dim(shapes.window, 0) and dim(shapes.window, 0) >= 4 and dim(shapes.window, 0) * 16 <= device.limits.maxComputeWorkgroupStorageSize)",
+    "rank3WindowFftRadix2": "1 if not present.window else pick([[dim(shapes.window, 0) % 256 == 0, 256], [dim(shapes.window, 0) % 128 == 0, 128], [dim(shapes.window, 0) % 64 == 0, 64], [dim(shapes.window, 0) % 32 == 0, 32], [dim(shapes.window, 0) % 16 == 0, 16], [dim(shapes.window, 0) % 8 == 0, 8], [dim(shapes.window, 0) % 4 == 0, 4]], 1)",
+    "rank3WindowFftTailRadix": "1 if not present.window else dim(shapes.window, 0) / rank3WindowFftRadix2",
+    "rank3WindowMixedFftFits": "false if not present.window else (rank3WindowDispatchFits and pow2ceil(dim(shapes.window, 0)) != dim(shapes.window, 0) and rank3WindowFftRadix2 >= 4 and rank3WindowFftTailRadix > 1 and rank3WindowFftTailRadix <= 128 and dim(shapes.window, 0) * 16 <= device.limits.maxComputeWorkgroupStorageSize)",
+    "rank3WindowFftLog2": "0 if not present.window else log2ceil(dim(shapes.window, 0))",
+    "rank3WindowRadix2ScratchFits": "false if not present.window else (rank3WindowDispatchFits and pow2ceil(dim(shapes.window, 0)) == dim(shapes.window, 0) and dim(shapes.window, 0) >= 4 and dim(shapes.window, 0) * 16 > device.limits.maxComputeWorkgroupStorageSize and dim(shapes.output, 0) * dim(shapes.output, 1) > 0 and dim(shapes.output, 0) * dim(shapes.output, 1) * dim(shapes.window, 0) * 2 * 4 <= device.limits.maxStorageBufferBindingSize and dim(shapes.output, 0) * dim(shapes.output, 1) * dim(shapes.window, 0) * 2 * 4 <= device.limits.maxBufferSize)",
+    "rank3WindowInplaceFftFits": "false if not present.window else (rank3WindowDispatchFits and pow2ceil(dim(shapes.window, 0)) == dim(shapes.window, 0) and dim(shapes.window, 0) >= 4 and dim(shapes.window, 0) * 16 > device.limits.maxComputeWorkgroupStorageSize and dim(shapes.window, 0) * 8 <= device.limits.maxComputeWorkgroupStorageSize and dim(shapes.output, 0) * dim(shapes.output, 1) > 0)",
+    "rank3WindowGlobalFftFits": "false if not present.window else (rank3WindowRadix2ScratchFits and dim(shapes.window, 0) >= 2 * tunables.GLOBAL_STAGE_LOCAL_LENGTH and dim(shapes.window, 0) * 8 > device.limits.maxComputeWorkgroupStorageSize)",
+    "rank3WindowTiledRealFits": "false if not present.window else (rank3WindowDispatchFits and ranks.signal == 3 and dim(shapes.signal, 2) == 1 and dim(shapes.window, 0) >= tunables.TILED_REAL_MIN_LENGTH and dim(shapes.window, 0) * 4 <= device.limits.maxComputeWorkgroupStorageSize and dim(shapes.output, 0) > 0 and dim(shapes.output, 1) > 0 and ceilDiv(dim(shapes.output, 2), 256) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+    "packedFourWayFits": "false if not present.window else (device.limits.maxComputeInvocationsPerWorkgroup >= 256 and device.limits.maxComputeWorkgroupSizeX >= 256 and dim(shapes.window, 0) * 32 <= device.limits.maxComputeWorkgroupStorageSize)",
+    "packedTransformsPerWorkgroup": "4 if packedFourWayFits else 1",
+    "rank3NoWindowLayout": "not present.window and args.frameLength is defined and rank3OutputLayout and frameControlsValid",
+    "rank3NoWindowSpectrum": "(attrs.onesided == 0 and dim(shapes.output, 2) == frameLength) or (attrs.onesided != 0 and dim(shapes.signal, 2) == 1 and dim(shapes.output, 2) == floor(frameLength / 2) + 1)",
+    "rank3NoWindowSharedFftFits": "false if ranks.signal != 3 else ((attrs.onesided == 0 or (dim(shapes.signal, 2) == 1 and dim(shapes.output, 2) >= 3)) and pow2ceil(frameLength) == frameLength and frameLength >= 4 and frameLength * 16 <= device.limits.maxComputeWorkgroupStorageSize and dim(shapes.output, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.output, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+  },
+  "bindings": {
+    "signal": { "elementType": "f32" },
+    "output": { "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "signalLength", "type": "u32", "value": "dim(shapes.signal, 1)" },
+        { "name": "numFrames", "type": "u32", "value": "dim(shapes.output, 1)" },
+        { "name": "frameStep", "type": "u32" }
+      ]
+    },
+    "window": { "elementType": "f32" },
+    "scratch": { "scratch": "fft_scratch", "elementType": "f32" },
+    "scratch_in": { "scratch": "fft_scratch", "name": "scratch", "buffer": "read-only-storage", "elementType": "f32" },
+    "twiddles": { "scratch": "fft_twiddles", "elementType": "f32" },
+    "twiddle_in": { "scratch": "fft_twiddles", "name": "twiddles", "buffer": "read-only-storage", "elementType": "f32" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.output) / 2" },
+        { "name": "signalLength", "type": "u32", "value": "dim(shapes.signal, 1)" },
+        { "name": "signalComponents", "type": "u32", "value": "dim(shapes.signal, 2)" },
+        { "name": "frameLength", "type": "u32", "value": "frameLength" },
+        { "name": "frames", "type": "u32", "value": "dim(shapes.output, 1)" },
+        { "name": "bins", "type": "u32", "value": "dim(shapes.output, 2)" },
+        { "name": "frameStep", "type": "u32" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "rank3_no_window_fft",
+      "priority": 20,
+      "when": ["rank3NoWindowLayout", "rank3NoWindowSpectrum", "rank3NoWindowSharedFftFits"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.NoWindowFftShared",
+          "shader": "fft-stockham-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"stft\"",
+            "fftLength": "frameLength",
+            "numBins": "dim(shapes.output, 2)",
+            "inComp": "dim(shapes.signal, 2)",
+            "inverse": false,
+            "hasWindow": false
+          },
+          "bindings": ["signal", "output", "params"],
+          "dispatch": { "x": "dim(shapes.output, 1)", "y": "dim(shapes.output, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_fft_shared_inplace",
+      "priority": 32,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowInplaceFftFits"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 256, "maxComputeWorkgroupSizeX": 256 } },
+      "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.FftSharedInplace",
+          "shader": "fft-radix2-dit-shared-inplace.wgsl.jinja",
+          "derive": {
+            "fftLength": "dim(shapes.window, 0)",
+            "log2Length": "rank3WindowFftLog2",
+            "numBins": "dim(shapes.output, 2)",
+            "inComp": "dim(shapes.signal, 2)"
+          },
+          "bindings": ["signal", "window", "output", "params"],
+          "dispatch": { "x": "dim(shapes.output, 1)", "y": "dim(shapes.output, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_fft_global_stages",
+      "priority": 31,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowGlobalFftFits"],
+      "demoteWhen": ["device.limits.maxComputeWorkgroupStorageSize > tunables.GLOBAL_STAGE_MAX_DEVICE_STORAGE_BYTES"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 256, "maxComputeWorkgroupSizeX": 256 } },
+      "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+      "derive": {
+        "fftLength": "dim(shapes.window, 0)",
+        "log2Length": "rank3WindowFftLog2",
+        "numBins": "dim(shapes.output, 2)",
+        "inComp": "dim(shapes.signal, 2)"
+      },
+      "intermediates": [
+        { "id": "fft_scratch", "dtype": "float32", "shape": "[transformCount * dim(shapes.window, 0) * 2]" }
+      ],
+      "passes": [
+        {
+          "id": "local_prefix",
+          "name": "STFT.FftLocalPrefix",
+          "shader": "fft-radix2-dit-storage-pass.wgsl.jinja",
+          "derive": {
+            "phase": "\"local_prefix\"",
+            "localLength": "tunables.GLOBAL_STAGE_LOCAL_LENGTH",
+            "localLog2Length": "log2ceil(tunables.GLOBAL_STAGE_LOCAL_LENGTH)"
+          },
+          "bindings": ["signal", "window", "scratch", "params"],
+          "dispatch": {
+            "x": "min(transformCount * dim(shapes.window, 0) / tunables.GLOBAL_STAGE_LOCAL_LENGTH, 65535)",
+            "y": "ceilDiv(transformCount * dim(shapes.window, 0) / tunables.GLOBAL_STAGE_LOCAL_LENGTH, 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "stages",
+          "repeat": { "count": "rank3WindowFftLog2 - log2ceil(tunables.GLOBAL_STAGE_LOCAL_LENGTH)", "index": "stage" },
+          "passes": [
+            {
+              "id": "butterflies",
+              "name": "STFT.FftGlobalStage",
+              "shader": "fft-radix2-dit-storage-pass.wgsl.jinja",
+              "derive": {
+                "phase": "\"stage\"",
+                "stage": "repeat.stage + log2ceil(tunables.GLOBAL_STAGE_LOCAL_LENGTH) + 1"
+              },
+              "bindings": ["scratch"],
+              "dispatch": {
+                "x": "min(ceilDiv((transformCount * dim(shapes.window, 0) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+                "y": "ceilDiv(ceilDiv((transformCount * dim(shapes.window, 0) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+                "z": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "finish",
+          "name": "STFT.FftGlobalFinish",
+          "shader": "fft-radix2-dit-storage-pass.wgsl.jinja",
+          "derive": { "phase": "\"finish\"" },
+          "bindings": ["scratch_in", "output"],
+          "dispatch": {
+            "x": "min(ceilDiv((transformCount * dim(shapes.output, 2)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((transformCount * dim(shapes.output, 2)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_fft_storage_inplace",
+      "priority": 30,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowRadix2ScratchFits"],
+      "intermediates": [
+        { "id": "fft_scratch", "dtype": "float32", "shape": "[transformCount * dim(shapes.window, 0) * 2]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.FftStorageInplace",
+          "shader": "fft-radix2-dit-storage.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"stft\"",
+            "fftLength": "dim(shapes.window, 0)",
+            "log2Length": "rank3WindowFftLog2",
+            "numBins": "dim(shapes.output, 2)",
+            "inComp": "dim(shapes.signal, 2)",
+            "inverse": false
+          },
+          "bindings": ["signal", "window", "scratch", "output", "params"],
+          "dispatch": { "x": "dim(shapes.output, 1)", "y": "dim(shapes.output, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_tiled_real",
+      "priority": 19,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowTiledRealFits"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 256, "maxComputeWorkgroupSizeX": 256 } },
+      "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.TiledReal",
+          "shader": "dft-tiled-real.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"stft\"",
+            "transformLength": "dim(shapes.window, 0)",
+            "numBins": "dim(shapes.output, 2)",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE"
+          },
+          "bindings": ["signal", "window", "output", "params"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.output, 2), 256)",
+            "y": "dim(shapes.output, 1)",
+            "z": "dim(shapes.output, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_rfft_packed",
+      "priority": 22,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowSharedFftFits", "attrs.onesided != 0", "dim(shapes.signal, 2) == 1", "dim(shapes.window, 0) >= 64", "transformCount >= tunables.TWIDDLE_TABLE_MIN_TRANSFORMS"],
+      "tunables": { "WORKGROUP_SIZE": { "default": 64 } },
+      "intermediates": [{ "id": "fft_twiddles", "dtype": "float32", "shape": "[2 * dim(shapes.window, 0)]" }],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "STFT.RealPackedTwiddleTable",
+          "shader": "fft-stockham-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.window, 0)", "realPacked": 1 },
+          "bindings": ["twiddles"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.window, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.window, 0)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "STFT.RealPackedFftShared",
+          "shader": "fft-real-packed-stockham-shared.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.window, 0)", "transformsPerWorkgroup": "packedTransformsPerWorkgroup" },
+          "bindings": ["signal", "window", "twiddle_in", "output", "params"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.output, 1), packedTransformsPerWorkgroup)",
+            "y": "dim(shapes.output, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_fft_twiddles",
+      "priority": 21,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowSharedFftFits", "dim(shapes.window, 0) >= 64", "transformCount >= tunables.TWIDDLE_TABLE_MIN_TRANSFORMS"],
+      "intermediates": [{ "id": "fft_twiddles", "dtype": "float32", "shape": "[2 * (dim(shapes.window, 0) - 1)]" }],
+      "passes": [
+        {
+          "id": "twiddles",
+          "name": "STFT.FftTwiddleTable",
+          "shader": "fft-stockham-twiddles.wgsl.jinja",
+          "derive": { "fftLength": "dim(shapes.window, 0)", "realPacked": 0 },
+          "bindings": ["twiddles"],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.window, 0) - 1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.window, 0) - 1), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "main",
+          "name": "STFT.FftSharedTwiddles",
+          "shader": "fft-stockham-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"stft\"",
+            "fftLength": "dim(shapes.window, 0)",
+            "numBins": "dim(shapes.output, 2)",
+            "inComp": "dim(shapes.signal, 2)",
+            "inverse": false,
+            "useTwiddleTable": true
+          },
+          "bindings": ["signal", "window", "twiddle_in", "output", "params"],
+          "dispatch": { "x": "dim(shapes.output, 1)", "y": "dim(shapes.output, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window_fft",
+      "priority": 20,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum", "rank3WindowSharedFftFits or rank3WindowMixedFftFits"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.FftShared",
+          "shader": "fft-residual-shared.wgsl.jinja",
+          "derive": {
+            "modeSpec": "\"stft\"",
+            "fftLength": "dim(shapes.window, 0)",
+            "radix2Length": "rank3WindowFftRadix2 if rank3WindowMixedFftFits else dim(shapes.window, 0)",
+            "mixedRadixTail": "rank3WindowMixedFftFits",
+            "numBins": "dim(shapes.output, 2)",
+            "inComp": "dim(shapes.signal, 2)",
+            "inverse": false
+          },
+          "bindings": ["signal", "window", "output", "params"],
+          "dispatch": { "x": "dim(shapes.output, 1)", "y": "dim(shapes.output, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "rank3_window",
+      "priority": 0,
+      "when": ["rank3WindowLayout", "rank3WindowSpectrum"],
+      "supersededBy": ["rank3_window_fft_shared_inplace", "rank3_window_fft_global_stages", "rank3_window_fft_storage_inplace", "rank3_window_rfft_packed", "rank3_window_fft_twiddles", "rank3_window_fft", "rank3_window_tiled_real"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT",
+          "shader": "stft-general.wgsl.jinja",
+          "derive": { "hasWindowInput": true },
+          "bindings": ["signal", "window", "output", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "rank3_no_window",
+      "priority": 10,
+      "when": ["rank3NoWindowLayout", "rank3NoWindowSpectrum"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "STFT.GeneralNoWindow",
+          "shader": "stft-general.wgsl.jinja",
+          "derive": { "hasWindowInput": false },
+          "bindings": ["signal", "output", "params_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

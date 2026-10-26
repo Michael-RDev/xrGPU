@@ -1,0 +1,401 @@
+{
+  "domain": "ai.onnx",
+  "name": "InstanceNormalization",
+  "sinceVersion": 6,
+  "inputs": {
+    "input": { "dtype": "T" },
+    "scale": { "dtype": "T", "rank": 1 },
+    "b": { "onnx": "B", "dtype": "T", "rank": 1 }
+  },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.input", "shape": "shapes.input" } },
+  "attributes": { "epsilon": { "default": 0.00001 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "MAX_STATS_SPLITS": { "default": 256 },
+    "STATS_VALUES_PER_SPLIT": { "default": 2048 },
+    "SPLIT_STATS_MIN_SPATIAL": { "default": 65536 },
+    "SPLIT_STATS_MAX_PLANES": { "default": 256 },
+    "COMBINE_WORKGROUP_SIZE": { "default": 64 },
+    "BATCHED_MIN_PLANES_PER_WORKGROUP": { "default": 8 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "wave32Adapter": "has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "reportedNonWave32Adapter": "not wave32Adapter and (has(device.adapterInfo, \"subgroupMinSize\") or has(device.adapterInfo, \"subgroupMaxSize\"))",
+    "instanceContractOk": "f16Ok(dtypes.T) and ranks.input >= 3 and ranks.output == ranks.input and sameShape(shapes.output, shapes.input) and ranks.scale == 1 and ranks.b == 1 and dim(shapes.scale, 0) == dim(shapes.input, 1) and dim(shapes.b, 0) == dim(shapes.input, 1)",
+    "instancePlanes": "dim(shapes.input, 0) * dim(shapes.input, 1)",
+    "instanceSpatial": "inner(shapes.input, 1)",
+    "normDeviceWorkgroupCap": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "normWorkgroupCap": "max(1, pow2ceil(normDeviceWorkgroupCap + 1) / 2)",
+    "normSubgroupMin": "device.adapterInfo.subgroupMinSize if has(device.adapterInfo, \"subgroupMinSize\") else 1",
+    "normSubgroupMax": "device.adapterInfo.subgroupMaxSize if has(device.adapterInfo, \"subgroupMaxSize\") else 32",
+    "hasSubgroupId": "device.features.has(\"subgroups\") and device.wgslLanguageFeatures.has(\"subgroup_id\")",
+    "instanceScalarWorkgroup": "min(normWorkgroupCap, pow2ceil(instanceSpatial))",
+    "instanceVec4Workgroup": "min(normWorkgroupCap, pow2ceil(instanceSpatial / 4))",
+    "instanceVec4SubgroupEfficient": "not hasSubgroupId or instanceVec4Workgroup >= normSubgroupMin",
+    "instanceBatchedVec4Lanes": "instanceVec4Workgroup",
+    "instanceBatchedVec4PlanesPerWorkgroup": "max(1, floor(normWorkgroupCap / instanceBatchedVec4Lanes))",
+    "instanceBatchedVec4Workgroups": "ceilDiv(instancePlanes, instanceBatchedVec4PlanesPerWorkgroup)",
+    "instanceBatchedVec4StorageBytes": "normWorkgroupCap * 2 * 4 + instanceBatchedVec4PlanesPerWorkgroup * 4",
+    "instanceRowWorkgroupBytes": "normWorkgroupCap * 2 * 4",
+    "instanceStatsBytes": "instancePlanes * 2 * 4",
+    "instanceStatsFits": "instanceStatsBytes <= device.limits.maxStorageBufferBindingSize and instanceStatsBytes <= device.limits.maxBufferSize",
+    "instanceRowCovered": "instanceContractOk and instanceRowWorkgroupBytes <= device.limits.maxComputeWorkgroupStorageSize",
+    "instanceSplitCount": "min(tunables.MAX_STATS_SPLITS, min(device.limits.maxComputeWorkgroupsPerDimension, 65535), pow2ceil(ceilDiv(instanceSpatial, tunables.STATS_VALUES_PER_SPLIT)))",
+    "instancePartialBytes": "instancePlanes * instanceSplitCount * 2 * 4",
+    "splitStatsCovered": "instanceRowCovered and instanceStatsFits and instancePlanes <= tunables.SPLIT_STATS_MAX_PLANES and instancePlanes <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and instanceSpatial >= tunables.SPLIT_STATS_MIN_SPATIAL and instancePartialBytes <= device.limits.maxStorageBufferBindingSize and instancePartialBytes <= device.limits.maxBufferSize",
+    "splitStatsPreferred": "splitStatsCovered and instancePlanes < normSubgroupMax"
+  },
+  "bindings": {
+    "x": { "arg": "input", "elementType": "$ioElement" },
+    "scale": { "elementType": "$T" },
+    "bias": { "arg": "b", "elementType": "$T" },
+    "y": { "arg": "output", "elementType": "$ioElement" },
+    "input": { "elementType": "$splitInputElement" },
+    "input_apply": { "name": "input", "elementType": "$vectorScalar" },
+    "stats_f32": { "name": "stats", "buffer": "read-only-storage", "elementType": "f32" },
+    "output": { "elementType": "$vectorScalar" },
+    "params_apply": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.output) / 4" },
+        { "name": "channels", "type": "u32", "value": "dim(shapes.input, 1)" },
+        { "name": "spatial", "type": "u32", "value": "instanceSpatial" }
+      ]
+    },
+    "input_t": { "name": "input", "elementType": "$T" },
+    "output_t": { "name": "output", "elementType": "$T" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "count", "type": "u32", "value": "numel(shapes.output)" },
+        { "name": "channels", "type": "u32", "value": "dim(shapes.input, 1)" },
+        { "name": "spatial", "type": "u32", "value": "instanceSpatial" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "plane_batched_vec4",
+      "priority": 115,
+      "when": ["instanceRowCovered", "instanceSpatial % 4 == 0", "instanceSpatial >= 4", "instancePlanes >= normWorkgroupCap", "instanceBatchedVec4PlanesPerWorkgroup >= tunables.BATCHED_MIN_PLANES_PER_WORKGROUP", "instanceBatchedVec4StorageBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "demoteWhen": ["reportedNonWave32Adapter and instancePlanes <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {
+        "ioElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "hidden": "instanceSpatial",
+        "hiddenVec": "instanceSpatial / 4",
+        "channels": "dim(shapes.input, 1) if dim(shapes.input, 1) > 0 else 1",
+        "epsilon": "attrs.epsilon",
+        "workgroupSize": "normWorkgroupCap",
+        "lanesPerPlane": "instanceBatchedVec4Lanes",
+        "planesPerWorkgroup": "instanceBatchedVec4PlanesPerWorkgroup"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "InstanceNormalization.PlaneBatchedVec4",
+          "shader": "instance-normalization-batched-planes-vec4.wgsl.jinja",
+          "bindings": [
+            "x",
+            "scale",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [{ "name": "rows", "type": "u32", "value": "dim(shapes.input, 0) * dim(shapes.input, 1)" }]
+            }
+          ],
+          "dispatch": {
+            "x": "min(instanceBatchedVec4Workgroups, 65535)",
+            "y": "ceilDiv(instanceBatchedVec4Workgroups, 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "plane_subgroup_vec4",
+      "priority": 110,
+      "when": ["instanceRowCovered", "inner(shapes.input, 1) % 4 == 0", "instanceVec4SubgroupEfficient"],
+      "requires": { "features": [] },
+      "derive": { "ioElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "InstanceNormalization.PlaneSubgroupVec4",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "vec4": true,
+            "scalar": "dtypes.T",
+            "hidden": "instanceSpatial",
+            "wg": "instanceVec4Workgroup",
+            "epsilon": "attrs.epsilon",
+            "channels": "dim(shapes.input, 1) if dim(shapes.input, 1) > 0 else 1",
+            "hiddenVec": "instanceSpatial / 4",
+            "vecType": "\"vec4<\" ~ dtypes.T ~ \">\"",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": [
+            "x",
+            "scale",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "dim(shapes.input, 0) * dim(shapes.input, 1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(dim(shapes.input, 0) * dim(shapes.input, 1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(instancePlanes, 65535)", "y": "ceilDiv(instancePlanes, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "plane_subgroup_vec4_scalar_io",
+      "priority": 111,
+      "when": ["dtypes.T == \"f32\"", "wave32Adapter", "device.wgslLanguageFeatures.has(\"subgroup_id\")", "instanceRowCovered", "instanceSpatial % 4 == 0", "instanceVec4SubgroupEfficient"],
+      "requires": { "features": ["subgroups"] },
+      "derive": { "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "InstanceNormalization.PlaneSubgroupVec4ScalarIo",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "vec4": true,
+            "scalarIo": true,
+            "scalar": "dtypes.T",
+            "hidden": "instanceSpatial",
+            "wg": "instanceVec4Workgroup",
+            "epsilon": "attrs.epsilon",
+            "channels": "dim(shapes.input, 1) if dim(shapes.input, 1) > 0 else 1",
+            "hiddenVec": "instanceSpatial / 4",
+            "vecType": "\"vec4<f32>\"",
+            "combineSubgroups": true
+          },
+          "bindings": [
+            "x",
+            "scale",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "dim(shapes.input, 0) * dim(shapes.input, 1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(dim(shapes.input, 0) * dim(shapes.input, 1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(instancePlanes, 65535)", "y": "ceilDiv(instancePlanes, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "plane_subgroup",
+      "priority": 100,
+      "when": ["instanceRowCovered"],
+      "requires": { "features": [] },
+      "derive": { "ioElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "InstanceNormalization.PlaneSubgroup",
+          "shader": "norm-row-stats.wgsl.jinja",
+          "derive": {
+            "vec4": false,
+            "scalar": "dtypes.T",
+            "hidden": "instanceSpatial",
+            "wg": "instanceScalarWorkgroup",
+            "epsilon": "attrs.epsilon",
+            "channels": "dim(shapes.input, 1) if dim(shapes.input, 1) > 0 else 1",
+            "combineSubgroups": "hasSubgroupId"
+          },
+          "bindings": [
+            "x",
+            "scale",
+            "bias",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "dim(shapes.input, 0) * dim(shapes.input, 1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(dim(shapes.input, 0) * dim(shapes.input, 1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": { "x": "min(instancePlanes, 65535)", "y": "ceilDiv(instancePlanes, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "plane_splitk_vec4",
+      "priority": 121,
+      "when": ["splitStatsPreferred", "instanceSpatial % 4 == 0"],
+      "derive": {
+        "vectorized": true,
+        "usesF16": "dtypes.T == \"f16\"",
+        "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "useSubgroups": "hasSubgroupId",
+        "splitInputElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+        "workgroupSize": "normWorkgroupCap",
+        "split": "instanceSplitCount",
+        "combineWorkgroupSize": "min(tunables.COMBINE_WORKGROUP_SIZE, normWorkgroupCap)",
+        "applyWorkgroupSize": "normWorkgroupCap"
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[instancePlanes * instanceSplitCount, 2]" },
+        { "id": "stats", "dtype": "float32", "shape": "[instancePlanes, 2]" }
+      ],
+      "passes": [
+        {
+          "id": "partials",
+          "name": "InstanceNormalization.SplitKPartialsVec4",
+          "shader": "instance-normalization-splitk-partials.wgsl.jinja",
+          "bindings": [
+            "input",
+            { "name": "partials", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "planes", "type": "u32", "value": "instancePlanes" },
+                { "name": "spatial", "type": "u32", "value": "instanceSpatial" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(instancePlanes, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(instancePlanes, DISPATCH_FOLD_WIDTH)",
+            "z": "instanceSplitCount"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "InstanceNormalization.SplitKCombine",
+          "shader": "instance-normalization-splitk-combine.wgsl.jinja",
+          "derive": { "vectorizedSpec": true },
+          "bindings": [
+            "input",
+            { "name": "partials", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "stats", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "planes", "type": "u32", "value": "instancePlanes" },
+                { "name": "spatial", "type": "u32", "value": "instanceSpatial" },
+                { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((instancePlanes), (combineWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((instancePlanes), (combineWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "InstanceNormalization.ApplyVec4",
+          "shader": "instance-normalization-apply.wgsl.jinja",
+          "bindings": ["input_apply", "stats_f32", "scale", "bias", "output", "params_apply"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (applyWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output) / 4), (applyWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "plane_splitk",
+      "priority": 120,
+      "when": ["splitStatsPreferred"],
+      "derive": {
+        "scalar": "dtypes.T",
+        "usesF16": "dtypes.T == \"f16\"",
+        "splitInputElement": "dtypes.T",
+        "workgroupSize": "normWorkgroupCap",
+        "split": "instanceSplitCount",
+        "combineWorkgroupSize": "min(tunables.COMBINE_WORKGROUP_SIZE, normWorkgroupCap)",
+        "applyWorkgroupSize": "normWorkgroupCap"
+      },
+      "intermediates": [
+        { "id": "partials", "dtype": "float32", "shape": "[instancePlanes * instanceSplitCount, 2]" },
+        { "id": "stats", "dtype": "float32", "shape": "[instancePlanes, 2]" }
+      ],
+      "passes": [
+        {
+          "id": "partials",
+          "name": "InstanceNormalization.SplitKPartials",
+          "shader": "instance-normalization-splitk-partials.wgsl.jinja",
+          "bindings": [
+            "input",
+            { "name": "partials", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "planes", "type": "u32", "value": "instancePlanes" },
+                { "name": "spatial", "type": "u32", "value": "instanceSpatial" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(instancePlanes, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(instancePlanes, DISPATCH_FOLD_WIDTH)",
+            "z": "instanceSplitCount"
+          }
+        },
+        {
+          "id": "combine",
+          "name": "InstanceNormalization.SplitKCombine",
+          "shader": "instance-normalization-splitk-combine.wgsl.jinja",
+          "derive": { "vectorizedSpec": false },
+          "bindings": [
+            "input",
+            { "name": "partials", "buffer": "read-only-storage", "elementType": "f32" },
+            { "name": "stats", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "planes", "type": "u32", "value": "instancePlanes" },
+                { "name": "spatial", "type": "u32", "value": "instanceSpatial" },
+                { "name": "epsilon", "type": "f32", "value": "attrs.epsilon" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((instancePlanes), (combineWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((instancePlanes), (combineWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "apply",
+          "name": "InstanceNormalization.Apply",
+          "shader": "instance-normalization-apply.wgsl.jinja",
+          "bindings": ["input_t", "stats_f32", "scale", "bias", "output_t", "params__uniform"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output)), (applyWorkgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.output)), (applyWorkgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

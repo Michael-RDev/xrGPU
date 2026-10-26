@@ -1,0 +1,152 @@
+{
+  "domain": "ai.onnx",
+  "name": "Hardmax",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "input", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "output", "dtype": "T", "rank": "ranks.x", "shape": "shapes.x" } },
+  "attributes": { "axis": { "default": -1 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": { "scalar": "dtypes.T" },
+  "when": ["ranks.x >= 1", "ranks.y == ranks.x", "f16Ok(dtypes.T)"],
+  "variants": [
+    {
+      "id": "last_axis_row",
+      "priority": 20,
+      "when": ["numel(shapes.x) == numel(shapes.y)", "(attrs.axis == -1 or attrs.axis == ranks.x - 1)", "dim(shapes.x, ranks.x - 1) >= 1024"],
+      "derive": {
+        "workgroupSize": "min(tunables.WORKGROUP_SIZE, max(32, pow2ceil(dim(shapes.x, ranks.x - 1))))",
+        "useSubgroups": "device.features.has(\"subgroups\")"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Hardmax.LastAxisRow",
+          "shader": "hardmax-last-axis-subgroup.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "rows", "type": "u32", "value": "numel(shapes.x) / dim(shapes.x, ranks.x - 1)" },
+                { "name": "cols", "type": "u32", "value": "dim(shapes.x, ranks.x - 1)" },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(numel(shapes.x) / dim(shapes.x, ranks.x - 1), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(numel(shapes.x) / dim(shapes.x, ranks.x - 1), 65535)",
+            "y": "ceilDiv(numel(shapes.x) / dim(shapes.x, ranks.x - 1), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "last_axis_vec4",
+      "priority": 30,
+      "when": ["numel(shapes.x) == numel(shapes.y)", "(attrs.axis == -1 or attrs.axis == ranks.x - 1)", "dim(shapes.x, ranks.x - 1) >= 4", "dim(shapes.x, ranks.x - 1) % 4 == 0"],
+      "derive": { "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "colsVec": "dim(shapes.x, ranks.x - 1) / 4" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Hardmax.LastAxisVec4",
+          "shader": "hardmax-last-axis-vec4.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "elementType": "$vectorScalar" },
+            { "arg": "y", "elementType": "$vectorScalar" },
+            {
+              "name": "params",
+              "struct": [{ "name": "rows", "type": "u32", "value": "numel(shapes.x) / dim(shapes.x, ranks.x - 1)" }]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.x) / dim(shapes.x, ranks.x - 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.x) / dim(shapes.x, ranks.x - 1)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis_tree",
+      "priority": 21,
+      "when": ["sameShape(shapes.y, shapes.x)", "attrs.axis + ranks.x >= 0", "attrs.axis < ranks.x", "dim(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x) >= 1024", "rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "demoteWhen": ["device.features.has(\"subgroups\") and (attrs.axis == -1 or attrs.axis == ranks.x - 1)"],
+      "derive": {
+        "axisDim": "dim(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)",
+        "innerSize": "inner(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Hardmax.AxisTree",
+          "shader": "hardmax-axis-tree.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                {
+                  "name": "rows",
+                  "type": "u32",
+                  "value": "rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)"
+                },
+                {
+                  "name": "rowStride",
+                  "type": "u32",
+                  "value": "max(1, min(rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x), min(device.limits.maxComputeWorkgroupsPerDimension, 65535)))"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x), 65535)",
+            "y": "ceilDiv(rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "axis",
+      "when": ["numel(shapes.x) == numel(shapes.y)", "attrs.axis + ranks.x >= 0", "attrs.axis < ranks.x"],
+      "derive": {
+        "axisDim": "dim(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)",
+        "innerSize": "inner(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Hardmax",
+          "shader": "hardmax.wgsl.jinja",
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                {
+                  "name": "rows",
+                  "type": "u32",
+                  "value": "rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((rows(shapes.x, attrs.axis if attrs.axis >= 0 else attrs.axis + ranks.x)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

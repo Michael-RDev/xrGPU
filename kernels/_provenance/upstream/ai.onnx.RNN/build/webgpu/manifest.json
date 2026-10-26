@@ -1,0 +1,645 @@
+{
+  "domain": "ai.onnx",
+  "name": "RNN",
+  "sinceVersion": 22,
+  "inputs": {
+    "x": { "onnx": "X", "dtype": "T", "rank": 3 },
+    "w": { "onnx": "W", "dtype": "T", "rank": 3 },
+    "r": { "onnx": "R", "dtype": "T", "rank": 3 },
+    "b": { "onnx": "B", "dtype": "T", "rank": 2 },
+    "sequence_lens": { "dtype": "int32", "rank": 1, "optional": true },
+    "initial_h": { "dtype": "T", "rank": 3, "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "onnx": "Y",
+      "dtype": "T",
+      "rank": 4,
+      "shape": "[dim(shapes.x, 0), dim(shapes.w, 0), dim(shapes.x, 1), dim(shapes.r, 2)] if attrs.layout == 0 else [dim(shapes.x, 0), dim(shapes.x, 1), dim(shapes.w, 0), dim(shapes.r, 2)]"
+    },
+    "y_h": {
+      "onnx": "Y_h",
+      "dtype": "T",
+      "rank": 3,
+      "shape": "[dim(shapes.w, 0), dim(shapes.x, 1), dim(shapes.r, 2)] if attrs.layout == 0 else [dim(shapes.x, 0), dim(shapes.w, 0), dim(shapes.r, 2)]"
+    }
+  },
+  "attributes": {
+    "layout": { "default": 0 },
+    "direction": { "default": "forward" },
+    "activations": { "default": ["Tanh", "Tanh"] },
+    "activation_alpha": {},
+    "activation_beta": {},
+    "clip": {},
+    "hidden_size": {}
+  },
+  "attributeConstraints": {
+    "layout": { "values": [0, 1] },
+    "direction": { "values": ["forward", "reverse", "bidirectional"] }
+  },
+  "typeConstraints": { "T": ["float32"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "HIDDEN_BLOCK": { "default": 2 },
+    "RECURRENT_WORKGROUP_SIZE": { "default": 2 },
+    "RECURRENT_WORKGROUP_SIZE_MEDIUM_ROWS": { "default": 4 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "layoutBatchMajor": "attrs.layout == 1",
+    "seqLength": "dim(shapes.x, 1) if layoutBatchMajor else dim(shapes.x, 0)",
+    "batchSize": "dim(shapes.x, 0) if layoutBatchMajor else dim(shapes.x, 1)",
+    "ySeqDim": "dim(shapes.y, 1) if layoutBatchMajor else dim(shapes.y, 0)",
+    "yDirDim": "dim(shapes.y, 2) if layoutBatchMajor else dim(shapes.y, 1)",
+    "yBatchDim": "dim(shapes.y, 0) if layoutBatchMajor else dim(shapes.y, 2)",
+    "yhDirDim": "dim(shapes.y_h, 1) if layoutBatchMajor else dim(shapes.y_h, 0)",
+    "yhBatchDim": "dim(shapes.y_h, 0) if layoutBatchMajor else dim(shapes.y_h, 1)",
+    "inputSize": "dim(shapes.x, 2)",
+    "workgroupSize": "min(tunables.WORKGROUP_SIZE, deviceWorkgroupCap)",
+    "inputElements": "numel(shapes.x)",
+    "batchDispatchFits": "batchSize <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "rowStrideB": "seqLength if layoutBatchMajor else 1",
+    "hasClip": "attrs.clip is defined",
+    "clip": "attrs.clip if attrs.clip is defined else 0",
+    "activationAlpha": "attrs.activation_alpha if attrs.activation_alpha else []",
+    "activationBeta": "attrs.activation_beta if attrs.activation_beta else []",
+    "numDir": "dim(shapes.w, 0)",
+    "directionKind": "attrs.direction",
+    "hasSeqLens": "present.sequence_lens == true",
+    "hasInitialH": "present.initial_h == true",
+    "hiddenSize": "dim(shapes.w, 1)",
+    "blockHiddenEnabled": "hiddenSize >= 1024 and hiddenSize % (workgroupSize * tunables.HIDDEN_BLOCK) == 0",
+    "resolvedHiddenBlock": "tunables.HIDDEN_BLOCK if blockHiddenEnabled else 1",
+    "mediumRecurrentRows": "hiddenSize >= 1024 and hiddenSize < 2048",
+    "multiWorkgroupRecurrentPreferred": "hiddenSize >= 2048 or (hiddenSize >= 1024 and seqLength >= 16)",
+    "deviceRecurrentWorkgroupSize": "min(tunables.RECURRENT_WORKGROUP_SIZE_MEDIUM_ROWS if mediumRecurrentRows else tunables.RECURRENT_WORKGROUP_SIZE, device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "xprojElements": "seqLength * batchSize * hiddenSize",
+    "xprojBytes": "xprojElements * 4",
+    "parallelStateBytes": "hiddenSize * 8",
+    "xprojFits": "xprojBytes <= device.limits.maxStorageBufferBindingSize and xprojBytes <= device.limits.maxBufferSize",
+    "shapeContract": "(attrs.hidden_size is undefined or attrs.hidden_size == hiddenSize) and (attrs.clip is undefined or attrs.clip >= 0) and ranks.x == 3 and ranks.w == 3 and ranks.r == 3 and ranks.b == 2 and ranks.y == 4 and ranks.y_h == 3 and dim(shapes.w, 0) <= 2 and dim(shapes.r, 0) == dim(shapes.w, 0) and dim(shapes.b, 0) == dim(shapes.w, 0) and yDirDim == dim(shapes.w, 0) and yhDirDim == dim(shapes.w, 0) and dim(shapes.w, 2) == inputSize and dim(shapes.r, 1) == hiddenSize and dim(shapes.r, 2) == hiddenSize and dim(shapes.b, 1) == 2 * hiddenSize and ySeqDim == seqLength and yBatchDim == batchSize and dim(shapes.y, 3) == hiddenSize and yhBatchDim == batchSize and dim(shapes.y_h, 2) == hiddenSize",
+    "singleDirectionShapeContract": "shapeContract and dim(shapes.w, 0) == 1",
+    "defaultActivations": "sameShape(attrs.activations, [\"Tanh\", \"Tanh\"])",
+    "fastSeqLensContract": "attrs.layout == 0 and attrs.direction == \"forward\" and present.sequence_lens and not present.initial_h and defaultActivations and singleDirectionShapeContract and ranks.sequence_lens == 1 and dim(shapes.sequence_lens, 0) == batchSize",
+    "rowStrideT": "1 if layoutBatchMajor else batchSize",
+    "forwardEitherLayoutContract": "attrs.direction == \"forward\" and not present.sequence_lens and not present.initial_h and defaultActivations and singleDirectionShapeContract",
+    "forwardLayout0Contract": "attrs.layout == 0 and attrs.direction == \"forward\" and not present.sequence_lens and not present.initial_h and defaultActivations and singleDirectionShapeContract",
+    "generalContract": "shapeContract",
+    "nativeSubgroup32": "device.features.has(\"subgroups\") and device.adapterInfo.subgroupMinSize == 32 and device.adapterInfo.subgroupMaxSize == 32",
+    "gates": 1,
+    "useSubgroups": "device.features.has(\"subgroups\")",
+    "subgroupFold": "useSubgroups and not nativeSubgroup32"
+  },
+  "bindings": {
+    "x": { "elementType": "$inputProjScalar" },
+    "w": { "elementType": "$inputProjScalar" },
+    "xproj": { "buffer": "storage", "elementType": "f32" },
+    "params": {
+      "struct": [
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "inputSize", "type": "u32", "value": "inputSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    },
+    "r": { "elementType": "$recurScalar" },
+    "b": { "elementType": "f32" },
+    "xproj_f32": { "name": "xproj", "buffer": "read-only-storage", "elementType": "f32" },
+    "y": { "elementType": "f32" },
+    "y_h": { "elementType": "f32" },
+    "params_recur": {
+      "name": "params",
+      "struct": [
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    },
+    "sequence_lens": { "elementType": "i32" },
+    "r_vec4_f32": { "name": "r", "elementType": "vec4<f32>" },
+    "b_recur": { "name": "b", "elementType": "vec4<f32>" },
+    "xproj_recur": { "name": "xproj", "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "y_recur": { "name": "y", "elementType": "vec4<f32>" },
+    "y_h_recur": { "name": "y_h", "elementType": "vec4<f32>" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "t", "type": "u32", "value": "repeat.t" },
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "tStride", "type": "u32", "value": "rowStrideT" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" },
+        { "name": "bStride", "type": "u32", "value": "rowStrideB" }
+      ]
+    },
+    "src": { "arg": "r", "elementType": "vec4<f32>" },
+    "dst": { "scratch": "rpack", "elementType": "vec4<f32>" },
+    "rpack": { "buffer": "read-only-storage", "elementType": "vec4<f32>" },
+    "x_main": { "name": "x", "elementType": "$set1InputScalar" },
+    "w_main": { "name": "w", "elementType": "$set1InputScalar" },
+    "r_main": { "name": "r", "elementType": "$set1RecurrentScalar" },
+    "x_f32": { "name": "x", "elementType": "f32" },
+    "w_f32": { "name": "w", "elementType": "f32" },
+    "r_f32": { "name": "r", "elementType": "f32" },
+    "prev_h": { "buffer": "storage", "elementType": "f32" },
+    "new_h": { "buffer": "storage", "elementType": "f32" },
+    "initial_h": { "elementType": "f32" },
+    "params_step_recur": {
+      "name": "params",
+      "struct": [
+        { "name": "t", "type": "u32", "value": "repeat.t" },
+        { "name": "seq", "type": "u32", "value": "seqLength" },
+        { "name": "batch", "type": "u32", "value": "batchSize" },
+        { "name": "hidden", "type": "u32", "value": "hiddenSize" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "parallel_input_proj_vector_seqlens",
+      "priority": 34,
+      "when": ["xprojFits", "fastSeqLensContract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputElements > 0", "inputSize % 4 == 0", "hiddenSize % 2 == 0"],
+      "derive": {
+        "useVec4": "hiddenSize % 4 == 0",
+        "useInputVec4": "hiddenSize % 4 != 0",
+        "useRecurrentVec2": "hiddenSize % 4 != 0",
+        "omitInputDot": true,
+        "precomputedInput": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "recurScalar": "\"vec4<f32>\" if hiddenSize % 4 == 0 else \"vec2<f32>\"",
+        "blockHidden": "blockHiddenEnabled",
+        "hiddenBlock": "resolvedHiddenBlock"
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjVector",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recur",
+          "name": "RNN.RecurVector",
+          "shader": "rnn-parallel.wgsl.jinja",
+          "bindings": ["r", "b", "xproj_f32", "y", "y_h", "params_recur"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        },
+        {
+          "id": "sequence_mask",
+          "name": "RNN.SequenceMask",
+          "shader": "rnn-sequence-mask.wgsl.jinja",
+          "bindings": ["sequence_lens", "y", "y_h", "params_recur"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "parallel_tiled_input_proj_recurrent_subgroup_gemv",
+      "priority": 35,
+      "when": ["xprojFits", "forwardEitherLayoutContract", "batchDispatchFits", "inputSize % 32 == 0", "hiddenSize % 4 == 0", "batchSize >= 4", "hiddenSize >= 256", "seqLength >= 4", "hiddenSize / 4 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": {
+        "limits": {
+          "maxComputeInvocationsPerWorkgroup": 128,
+          "maxComputeWorkgroupSizeX": 128,
+          "maxComputeWorkgroupSizeY": 8,
+          "maxComputeWorkgroupStorageSize": 12288
+        }
+      },
+      "derive": {
+        "omitInputDot": true,
+        "tileDtype": "\"f32\"",
+        "inFeatures": "inputSize",
+        "outFeatures": "hiddenSize",
+        "kV4": "inputSize / 4",
+        "mTile": 32,
+        "nTile": 4,
+        "nPerThread": 16,
+        "outTile": 64,
+        "kTile": 32,
+        "kTileV4": 8,
+        "workgroupSize": 128,
+        "aTileElements": 256,
+        "bTileElements": 512
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjTiled",
+          "shader": "dense-tiled-matmul.wgsl.jinja",
+          "bindings": [
+            { "arg": "x", "name": "a", "elementType": "vec4<f32>" },
+            { "arg": "w", "elementType": "vec4<f32>" },
+            { "scratch": "xproj", "name": "y", "elementType": "f32" },
+            { "name": "params", "struct": [{ "name": "M", "type": "u32", "value": "seqLength * batchSize" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceil(outFeatures / outTile), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": "min(ceil((seqLength * batchSize) / mTile), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))"
+          }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "RNN.RecurSubgroupGemvStep",
+              "shader": "rnn-recur-subgroup-step.wgsl.jinja",
+              "bindings": ["r_vec4_f32", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "params__uniform"],
+              "dispatch": { "x": "hiddenSize / 4", "y": "batchSize" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_subgroup_gemv",
+      "priority": 33,
+      "when": ["xprojFits", "forwardEitherLayoutContract", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "multiWorkgroupRecurrentPreferred", "seqLength >= 2", "hiddenSize / 4 <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeInvocationsPerWorkgroup": 32, "maxComputeWorkgroupSizeX": 32 } },
+      "derive": { "useVec4": true, "omitInputDot": true, "inputProjScalar": "\"vec4<f32>\"" },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjVector",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "RNN.RecurSubgroupGemvStep",
+              "shader": "rnn-recur-subgroup-step.wgsl.jinja",
+              "bindings": ["r_vec4_f32", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "params__uniform"],
+              "dispatch": { "x": "hiddenSize / 4", "y": "batchSize" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_packed_multiwg",
+      "priority": 32,
+      "when": ["xprojFits", "forwardLayout0Contract", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "multiWorkgroupRecurrentPreferred", "seqLength >= 2", "ceil(hiddenSize / (4 * deviceRecurrentWorkgroupSize)) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceil(hiddenSize / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeWorkgroupSizeY": 32 } },
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\"",
+        "recurrentWorkgroupSize": "deviceRecurrentWorkgroupSize"
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" },
+        { "id": "rpack", "dtype": "float32", "shape": "[hiddenSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjVectorPackedRecur",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recurrent_transpose",
+          "name": "RNN.RecurrentTranspose",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": { "rowCount": "hiddenSize", "cols": "hiddenSize" },
+          "bindings": ["src", "dst"],
+          "dispatch": { "x": "ceil(hiddenSize / 32)", "y": "ceil(hiddenSize / 32)" }
+        },
+        {
+          "id": "timesteps",
+          "repeat": { "count": "seqLength", "index": "t" },
+          "passes": [
+            {
+              "id": "recur_step",
+              "name": "RNN.RecurPackedMultiWgStep",
+              "shader": "rnn-recur-step.wgsl.jinja",
+              "bindings": ["rpack", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "params_step_recur"],
+              "dispatch": { "x": "ceil(hiddenSize / (4 * recurrentWorkgroupSize))", "y": "batchSize" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_recurrent_packed",
+      "priority": 31,
+      "when": ["xprojFits", "forwardLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputSize % 4 == 0", "hiddenSize % 4 == 0", "hiddenSize >= 512", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384", "ceil(hiddenSize / 32) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "requires": { "limits": { "maxComputeWorkgroupStorageSize": 4224, "maxComputeWorkgroupSizeY": 32 } },
+      "derive": {
+        "useVec4": true,
+        "omitInputDot": true,
+        "packedRecurrent": true,
+        "blockHidden": false,
+        "hiddenBlock": 1,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "scalar": "\"f32\"",
+        "vectorScalar": "\"vec4<f32>\""
+      },
+      "intermediates": [
+        { "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" },
+        { "id": "rpack", "dtype": "float32", "shape": "[hiddenSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjVectorPackedRecur",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recurrent_transpose",
+          "name": "RNN.RecurrentTranspose",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": { "rowCount": "hiddenSize", "cols": "hiddenSize" },
+          "bindings": ["src", "dst"],
+          "dispatch": { "x": "ceil(hiddenSize / 32)", "y": "ceil(hiddenSize / 32)" }
+        },
+        {
+          "id": "recur",
+          "name": "RNN.RecurPacked",
+          "shader": "rnn-parallel.wgsl.jinja",
+          "bindings": ["rpack", "b_recur", "xproj_recur", "y_recur", "y_h_recur", "params_recur"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_input_proj_vector",
+      "priority": 30,
+      "when": ["xprojFits", "forwardLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputElements > 0", "inputSize % 4 == 0", "hiddenSize % 2 == 0", "seqLength >= 8", "seqLength * batchSize * hiddenSize >= 16384"],
+      "derive": {
+        "useVec4": "hiddenSize % 4 == 0",
+        "useInputVec4": "hiddenSize % 4 != 0",
+        "useRecurrentVec2": "hiddenSize % 4 != 0",
+        "omitInputDot": true,
+        "precomputedInput": true,
+        "inputProjScalar": "\"vec4<f32>\"",
+        "recurScalar": "\"vec4<f32>\" if hiddenSize % 4 == 0 else \"vec2<f32>\"",
+        "blockHidden": "blockHiddenEnabled",
+        "hiddenBlock": "resolvedHiddenBlock"
+      },
+      "intermediates": [{ "id": "xproj", "dtype": "float32", "shape": "[seqLength * batchSize * hiddenSize]" }],
+      "passes": [
+        {
+          "id": "input_proj",
+          "name": "RNN.InputProjVector",
+          "shader": "rnn-input-proj.wgsl.jinja",
+          "bindings": ["x", "w", "xproj", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "y": "ceilDiv(ceilDiv((seqLength * batchSize * hiddenSize), (workgroupSize)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "recur",
+          "name": "RNN.RecurVector",
+          "shader": "rnn-parallel.wgsl.jinja",
+          "bindings": ["r", "b", "xproj_f32", "y", "y_h", "params_recur"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_batch_vec4",
+      "priority": 25,
+      "when": ["forwardLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits", "inputElements > 0", "inputSize % 4 == 0", "hiddenSize % 4 == 0"],
+      "supersededBy": ["parallel_input_proj_vector"],
+      "derive": {
+        "useVec4": true,
+        "set1InputScalar": "\"vec4<f32>\"",
+        "set1RecurrentScalar": "\"vec4<f32>\"",
+        "blockHidden": "blockHiddenEnabled",
+        "hiddenBlock": "resolvedHiddenBlock",
+        "omitInputDot": "blockHiddenEnabled"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.ParallelBatchVec4",
+          "shader": "rnn-parallel.wgsl.jinja",
+          "bindings": ["x_main", "w_main", "r_main", "b", "y", "y_h", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "parallel_batch_mixed_vector",
+      "priority": 23,
+      "when": ["forwardLayout0Contract", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize", "batchDispatchFits"],
+      "supersededBy": ["parallel_input_proj_vector", "parallel_batch_vec4"],
+      "derive": {
+        "useVec4": false,
+        "useInputVec4": "inputElements >= 4 and inputSize % 4 == 0",
+        "useRecurrentVec2": "hiddenSize % 4 != 0 and hiddenSize % 2 == 0",
+        "vec4Tail": true,
+        "hiddenBlock": 1,
+        "set1InputScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 else \"f32\"",
+        "set1RecurrentScalar": "\"vec2<f32>\" if hiddenSize % 4 != 0 and hiddenSize % 2 == 0 else \"f32\""
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.ParallelBatchMixedVector",
+          "shader": "rnn-parallel.wgsl.jinja",
+          "bindings": ["x_main", "w_main", "r_main", "b", "y", "y_h", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "forward_layout0",
+      "when": ["forwardLayout0Contract"],
+      "derive": { "useVec4": false },
+      "intermediates": [
+        { "id": "prev_h", "dtype": "float32", "shape": "[batchSize * hiddenSize]" },
+        { "id": "new_h", "dtype": "float32", "shape": "[batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.ForwardGlobal",
+          "shader": "rnn-parallel-global.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "prev_h", "new_h", "y", "y_h", "params"],
+          "dispatch": { "x": "min(batchSize, 65535)", "y": "ceilDiv(batchSize, 65535)", "z": 1 }
+        }
+      ]
+    },
+    {
+      "id": "general_attr",
+      "priority": 16,
+      "when": ["generalContract", "(attrs.direction != \"forward\") or (not defaultActivations) or layoutBatchMajor", "not present.sequence_lens", "not present.initial_h", "batchDispatchFits", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": {
+        "useVec4": "inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0",
+        "useInputVec4": "inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 != 0",
+        "useRecurrentVec2": "not (inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0) and hiddenSize % 2 == 0",
+        "vec4Tail": "not (inputElements >= 4 and inputSize % 4 == 0)",
+        "set1InputScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 else \"f32\"",
+        "set1RecurrentScalar": "\"vec4<f32>\" if inputElements >= 4 and inputSize % 4 == 0 and hiddenSize % 4 == 0 else (\"vec2<f32>\" if hiddenSize % 2 == 0 else \"f32\")"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralAttr",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_main", "w_main", "r_main", "b", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inith",
+      "priority": 18,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "batchDispatchFits", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralSeqLensInitH",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "sequence_lens", "initial_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens",
+      "priority": 17,
+      "when": ["generalContract", "present.sequence_lens", "not present.initial_h", "batchDispatchFits", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralSeqLens",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "sequence_lens", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_inith",
+      "priority": 18,
+      "when": ["generalContract", "not present.sequence_lens", "present.initial_h", "batchDispatchFits", "parallelStateBytes <= device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralInitH",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "initial_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_inith_global",
+      "priority": 10,
+      "when": ["generalContract", "present.sequence_lens", "present.initial_h", "batchDispatchFits", "parallelStateBytes > device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false, "globalState": true },
+      "intermediates": [
+        { "id": "prev_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" },
+        { "id": "new_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralSeqLensInitHGlobal",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "sequence_lens", "initial_h", "prev_h", "new_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_seqlens_global",
+      "priority": 9,
+      "when": ["generalContract", "present.sequence_lens", "not present.initial_h", "batchDispatchFits", "parallelStateBytes > device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false, "globalState": true },
+      "intermediates": [
+        { "id": "prev_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" },
+        { "id": "new_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralSeqLensGlobal",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "sequence_lens", "prev_h", "new_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_inith_global",
+      "priority": 10,
+      "when": ["generalContract", "not present.sequence_lens", "present.initial_h", "batchDispatchFits", "parallelStateBytes > device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false, "globalState": true },
+      "intermediates": [
+        { "id": "prev_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" },
+        { "id": "new_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralInitHGlobal",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "initial_h", "prev_h", "new_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    },
+    {
+      "id": "general_attr_global",
+      "priority": 8,
+      "when": ["generalContract", "not present.sequence_lens", "not present.initial_h", "(attrs.direction != \"forward\") or (not defaultActivations) or layoutBatchMajor", "batchDispatchFits", "parallelStateBytes > device.limits.maxComputeWorkgroupStorageSize"],
+      "derive": { "useVec4": false, "globalState": true },
+      "intermediates": [
+        { "id": "prev_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" },
+        { "id": "new_h", "dtype": "float32", "shape": "[dim(shapes.w, 0) * batchSize * hiddenSize]" }
+      ],
+      "passes": [
+        {
+          "id": "main",
+          "name": "RNN.GeneralAttrGlobal",
+          "shader": "rnn-general.wgsl.jinja",
+          "bindings": ["x_f32", "w_f32", "r_f32", "b", "prev_h", "new_h", "y", "y_h", "params"],
+          "dispatch": { "x": "batchSize", "y": "dim(shapes.w, 0)" }
+        }
+      ]
+    }
+  ]
+}

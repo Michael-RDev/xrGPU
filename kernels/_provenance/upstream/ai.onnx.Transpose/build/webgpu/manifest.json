@@ -1,0 +1,197 @@
+{
+  "domain": "ai.onnx",
+  "name": "Transpose",
+  "sinceVersion": 13,
+  "inputs": { "x": { "onnx": "data", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "transposed", "dtype": "T", "rank": "ranks.x" } },
+  "attributes": { "perm": {} },
+  "typeConstraints": { "T": ["float32", "float16", "int32", "int16", "uint32", "uint8", "int8", "bool", "int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "INNER_VEC4_ITEMS_PER_THREAD": { "default": 4 },
+    "INNER_VEC4_MIN_THREADS": { "default": 65536 }
+  },
+  "derive": {
+    "tileSize": 32,
+    "dtypeSupported": "f16Ok(dtypes.T)",
+    "rank2IO": "ranks.x == 2 and ranks.y == 2",
+    "rank3IO": "ranks.x == 3 and ranks.y == 3",
+    "rank4IO": "ranks.x == 4 and ranks.y == 4",
+    "rank5IO": "ranks.x == 5 and ranks.y == 5",
+    "permPresent": "has(attrs, \"perm\")",
+    "permContract": "not permPresent or ((attrs.perm | length) == ranks.x and isUniqueIntList(attrs.perm, 0, ranks.x))",
+    "explicitRank2": "rank2IO and permContract and permPresent and dim(shapes.y, 0) == dim(shapes.x, attrs.perm[0]) and dim(shapes.y, 1) == dim(shapes.x, attrs.perm[1])",
+    "explicitRank3": "rank3IO and permContract and permPresent and dim(shapes.y, 0) == dim(shapes.x, attrs.perm[0]) and dim(shapes.y, 1) == dim(shapes.x, attrs.perm[1]) and dim(shapes.y, 2) == dim(shapes.x, attrs.perm[2])",
+    "explicitRank4": "rank4IO and permContract and permPresent and dim(shapes.y, 0) == dim(shapes.x, attrs.perm[0]) and dim(shapes.y, 1) == dim(shapes.x, attrs.perm[1]) and dim(shapes.y, 2) == dim(shapes.x, attrs.perm[2]) and dim(shapes.y, 3) == dim(shapes.x, attrs.perm[3])",
+    "explicitRank5": "rank5IO and permContract and permPresent and dim(shapes.y, 0) == dim(shapes.x, attrs.perm[0]) and dim(shapes.y, 1) == dim(shapes.x, attrs.perm[1]) and dim(shapes.y, 2) == dim(shapes.x, attrs.perm[2]) and dim(shapes.y, 3) == dim(shapes.x, attrs.perm[3]) and dim(shapes.y, 4) == dim(shapes.x, attrs.perm[4])",
+    "defaultRank2": "rank2IO and permContract and not permPresent and dim(shapes.y, 0) == dim(shapes.x, 1) and dim(shapes.y, 1) == dim(shapes.x, 0)",
+    "defaultPerm": "reversedAxes(ranks.x)",
+    "genericPerm": "pick([[permPresent, attrs.perm]], defaultPerm)",
+    "genericTransposeOk": "ranks.x == ranks.y and permContract and sameShape(shapes.y, permuteShape(shapes.x, genericPerm))",
+    "innerVec4Rank3Ok": "explicitRank3 and attrs.perm[2] == 2 and dim(shapes.x, 2) % 4 == 0 and numel(shapes.y) > 0 and dtypeSupported",
+    "innerVec4Rank4Ok": "explicitRank4 and attrs.perm[3] == 3 and dim(shapes.x, 3) % 4 == 0 and numel(shapes.y) > 0 and dtypeSupported",
+    "innerVec4Ok": "innerVec4Rank3Ok or innerVec4Rank4Ok",
+    "innerVec4Perm": "attrs.perm",
+    "tiled2dShapeOk": "(defaultRank2 or (explicitRank2 and attrs.perm[0] == 1 and attrs.perm[1] == 0)) and numel(shapes.x) > 0 and ceil(dim(shapes.x, 0) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 1) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled2dOk": "tiled2dShapeOk and dim(shapes.x, 0) % 4 == 0 and dim(shapes.x, 1) % 4 == 0",
+    "tiled3dShapeOk": "explicitRank3 and attrs.perm[0] == 0 and attrs.perm[1] == 2 and attrs.perm[2] == 1 and numel(shapes.x) > 0 and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 1) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 2) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled3dOk": "tiled3dShapeOk and dim(shapes.x, 1) % 4 == 0 and dim(shapes.x, 2) % 4 == 0",
+    "tiled4dShapeOk": "explicitRank4 and attrs.perm[0] == 0 and attrs.perm[1] == 1 and attrs.perm[2] == 3 and attrs.perm[3] == 2 and numel(shapes.x) > 0 and dim(shapes.x, 0) * dim(shapes.x, 1) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 2) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 3) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled4dOk": "tiled4dShapeOk and dim(shapes.x, 2) % 4 == 0 and dim(shapes.x, 3) % 4 == 0",
+    "tiled5dNcdhwToNdhwcShapeOk": "explicitRank5 and attrs.perm[0] == 0 and attrs.perm[1] == 2 and attrs.perm[2] == 3 and attrs.perm[3] == 4 and attrs.perm[4] == 1 and numel(shapes.x) > 0 and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 1) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil((dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4)) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled5dNcdhwToNdhwcOk": "tiled5dNcdhwToNdhwcShapeOk and dim(shapes.x, 1) % 4 == 0 and (dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4)) % 4 == 0",
+    "tiled5dNdhwcToNcdhwShapeOk": "explicitRank5 and attrs.perm[0] == 0 and attrs.perm[1] == 4 and attrs.perm[2] == 1 and attrs.perm[3] == 2 and attrs.perm[4] == 3 and numel(shapes.x) > 0 and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 4) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled5dNdhwcToNcdhwOk": "tiled5dNdhwcToNcdhwShapeOk and dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) % 4 == 0 and dim(shapes.x, 4) % 4 == 0",
+    "memcpyPerm3": "explicitRank3 and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[1]) == 1 or attrs.perm[0] < attrs.perm[1]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[0] < attrs.perm[2]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[1] < attrs.perm[2])",
+    "memcpyPerm4": "explicitRank4 and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[1]) == 1 or attrs.perm[0] < attrs.perm[1]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[0] < attrs.perm[2]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[0] < attrs.perm[3]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[1] < attrs.perm[2]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[1] < attrs.perm[3]) and (dim(shapes.x, attrs.perm[2]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[2] < attrs.perm[3])",
+    "memcpyPerm5": "explicitRank5 and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[1]) == 1 or attrs.perm[0] < attrs.perm[1]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[0] < attrs.perm[2]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[0] < attrs.perm[3]) and (dim(shapes.x, attrs.perm[0]) == 1 or dim(shapes.x, attrs.perm[4]) == 1 or attrs.perm[0] < attrs.perm[4]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[2]) == 1 or attrs.perm[1] < attrs.perm[2]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[1] < attrs.perm[3]) and (dim(shapes.x, attrs.perm[1]) == 1 or dim(shapes.x, attrs.perm[4]) == 1 or attrs.perm[1] < attrs.perm[4]) and (dim(shapes.x, attrs.perm[2]) == 1 or dim(shapes.x, attrs.perm[3]) == 1 or attrs.perm[2] < attrs.perm[3]) and (dim(shapes.x, attrs.perm[2]) == 1 or dim(shapes.x, attrs.perm[4]) == 1 or attrs.perm[2] < attrs.perm[4]) and (dim(shapes.x, attrs.perm[3]) == 1 or dim(shapes.x, attrs.perm[4]) == 1 or attrs.perm[3] < attrs.perm[4])",
+    "memcpyPermOk": "memcpyPerm3 or memcpyPerm4 or memcpyPerm5",
+    "identityPermutation": "genericTransposeOk and sameShape(genericPerm, reversedAxes(ranks.x) | reverse)",
+    "identityCopyOk": "numel(shapes.y) > 0 and numel(shapes.y) % 4 == 0 and (identityPermutation or memcpyPermOk) and dtypeSupported",
+    "tiled4dNchwToNhwcShapeOk": "explicitRank4 and attrs.perm[0] == 0 and attrs.perm[1] == 2 and attrs.perm[2] == 3 and attrs.perm[3] == 1 and numel(shapes.x) > 0 and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 1) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil((dim(shapes.x, 2) * dim(shapes.x, 3)) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled4dNchwToNhwcOk": "tiled4dNchwToNhwcShapeOk and dim(shapes.x, 1) % 4 == 0 and (dim(shapes.x, 2) * dim(shapes.x, 3)) % 4 == 0",
+    "tiled4dNhwcToNchwShapeOk": "explicitRank4 and attrs.perm[0] == 0 and attrs.perm[1] == 3 and attrs.perm[2] == 1 and attrs.perm[3] == 2 and numel(shapes.x) > 0 and dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil((dim(shapes.x, 1) * dim(shapes.x, 2)) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceil(dim(shapes.x, 3) / tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dtypeSupported",
+    "tiled4dNhwcToNchwOk": "tiled4dNhwcToNchwShapeOk and (dim(shapes.x, 1) * dim(shapes.x, 2)) % 4 == 0 and dim(shapes.x, 3) % 4 == 0",
+    "tiledTransposeOk": "tiled2dOk or tiled3dOk or tiled4dOk or tiled5dNcdhwToNdhwcOk or tiled5dNdhwcToNcdhwOk or tiled4dNchwToNhwcOk or tiled4dNhwcToNchwOk",
+    "tiledScalarTransposeOk": "tiled2dShapeOk or tiled3dShapeOk or tiled4dShapeOk or tiled5dNcdhwToNdhwcShapeOk or tiled5dNdhwcToNcdhwShapeOk or tiled4dNchwToNhwcShapeOk or tiled4dNhwcToNchwShapeOk",
+    "tiledRows": "dim(shapes.x, 0) if tiled2dShapeOk else (dim(shapes.x, 1) if tiled3dShapeOk else (dim(shapes.x, 2) if tiled4dShapeOk else (dim(shapes.x, 1) if tiled5dNcdhwToNdhwcShapeOk else (dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.x, 3) if tiled5dNdhwcToNcdhwShapeOk else (dim(shapes.x, 1) if tiled4dNchwToNhwcShapeOk else (dim(shapes.x, 1) * dim(shapes.x, 2) if tiled4dNhwcToNchwShapeOk else 1))))))",
+    "tiledCols": "dim(shapes.x, 1) if tiled2dShapeOk else (dim(shapes.x, 2) if tiled3dShapeOk else (dim(shapes.x, 3) if tiled4dShapeOk else (dim(shapes.x, 2) * dim(shapes.x, 3) * dim(shapes.x, 4) if tiled5dNcdhwToNdhwcShapeOk else (dim(shapes.x, 4) if tiled5dNdhwcToNcdhwShapeOk else (dim(shapes.x, 2) * dim(shapes.x, 3) if tiled4dNchwToNhwcShapeOk else (dim(shapes.x, 3) if tiled4dNhwcToNchwShapeOk else 1))))))",
+    "tiledBatch": "1 if tiled2dShapeOk else (dim(shapes.x, 0) if tiled3dShapeOk else (dim(shapes.x, 0) * dim(shapes.x, 1) if tiled4dShapeOk else (dim(shapes.x, 0) if tiled5dNcdhwToNdhwcShapeOk or tiled5dNdhwcToNcdhwShapeOk or tiled4dNchwToNhwcShapeOk or tiled4dNhwcToNchwShapeOk else 1)))",
+    "stridedPlaneRank3": "rank3IO and genericTransposeOk and genericPerm[0] == 2 and genericPerm[1] == 1 and genericPerm[2] == 0",
+    "stridedPlaneRank4": "rank4IO and genericTransposeOk and genericPerm[0] == 0 and genericPerm[1] == 3 and genericPerm[2] == 2 and genericPerm[3] == 1",
+    "stridedPlaneRows": "dim(shapes.x, 0) if stridedPlaneRank3 else dim(shapes.x, 1) if stridedPlaneRank4 else 1",
+    "stridedPlaneCols": "dim(shapes.x, 2) if stridedPlaneRank3 else dim(shapes.x, 3) if stridedPlaneRank4 else 1",
+    "stridedPlaneMiddle": "dim(shapes.x, 1) if stridedPlaneRank3 else dim(shapes.x, 2) if stridedPlaneRank4 else 1",
+    "stridedPlaneBatch": "1 if stridedPlaneRank3 else dim(shapes.x, 0) if stridedPlaneRank4 else 1",
+    "stridedPlaneGroups": "stridedPlaneBatch * stridedPlaneMiddle",
+    "stridedPlaneOk": "(stridedPlaneRank3 or stridedPlaneRank4) and numel(shapes.x) > 0 and dtypeSupported and ceilDiv(stridedPlaneRows, tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(stridedPlaneCols, tileSize) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and stridedPlaneGroups <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and device.limits.maxComputeInvocationsPerWorkgroup >= tileSize * tileSize / 4 and device.limits.maxComputeWorkgroupStorageSize >= tileSize * (tileSize + 1) * (2 if dtypes.T == \"f16\" else 4)",
+    "stridedPlaneSparseTile": "ceilDiv(stridedPlaneRows, tileSize) * ceilDiv(stridedPlaneCols, tileSize) * tileSize * tileSize > 2 * stridedPlaneRows * stridedPlaneCols",
+    "scalar": "dtypes.T",
+    "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "inputShape": "shapes.x",
+    "outputShape": "shapes.y",
+    "rank": "ranks.x"
+  },
+  "bindings": {
+    "src": { "arg": "x", "elementType": "$vectorScalar" },
+    "dst": { "arg": "y", "elementType": "$vectorScalar" },
+    "x": { "elementType": "$scalar" },
+    "y": { "elementType": "$scalar" }
+  },
+  "variants": [
+    {
+      "id": "strided_planes_vec4",
+      "priority": 22,
+      "when": ["dtypes.T != \"vec2<u32>\"", "stridedPlaneOk", "stridedPlaneRows % 4 == 0 and stridedPlaneCols % 4 == 0", "device.limits.maxComputeWorkgroupSizeX >= tileSize / 4", "device.limits.maxComputeWorkgroupSizeY >= tileSize"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose.Tiled",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": {
+            "rowCount": "stridedPlaneRows",
+            "cols": "stridedPlaneCols",
+            "transposePlaneMiddle": "stridedPlaneMiddle"
+          },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "ceilDiv(stridedPlaneCols, tileSize)",
+            "y": "ceilDiv(stridedPlaneRows, tileSize)",
+            "z": "stridedPlaneGroups"
+          }
+        }
+      ],
+      "demoteWhen": ["stridedPlaneSparseTile"]
+    },
+    {
+      "id": "tiled_vec4",
+      "priority": 22,
+      "when": ["dtypes.T != \"vec2<u32>\"", "tiledTransposeOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose.Tiled",
+          "shader": "datamove-transpose-2d-tiled.wgsl.jinja",
+          "derive": { "rowCount": "tiledRows", "cols": "tiledCols" },
+          "bindings": ["src", "dst"],
+          "dispatch": { "x": "ceil(tiledCols / tileSize)", "y": "ceil(tiledRows / tileSize)", "z": "tiledBatch" }
+        }
+      ]
+    },
+    {
+      "id": "tiled_scalar",
+      "priority": 19,
+      "when": ["dtypes.T != \"vec2<u32>\"", "tiledScalarTransposeOk", "dtypeSupported"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose.TiledScalar",
+          "shader": "datamove-transpose-2d-tiled-scalar.wgsl.jinja",
+          "derive": { "rowCount": "tiledRows", "cols": "tiledCols", "tileRowStep": 8 },
+          "bindings": ["x", "y"],
+          "dispatch": { "x": "ceil(tiledCols / tileSize)", "y": "ceil(tiledRows / tileSize)", "z": "tiledBatch" }
+        }
+      ]
+    },
+    {
+      "id": "identity_vec4",
+      "priority": 21,
+      "when": ["dtypes.T != \"vec2<u32>\"", "identityCopyOk"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose.IdentityVec4",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.y) / 4" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "inner_vec4",
+      "priority": 20,
+      "when": ["dtypes.T != \"vec2<u32>\"", "innerVec4Ok"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose.InnerVec4",
+          "shader": "datamove-transpose-vec4.wgsl.jinja",
+          "derive": { "perm": "innerVec4Perm", "count": "numel(shapes.y) / 4" },
+          "bindings": ["src", "dst"],
+          "dispatch": {
+            "x": "min(ceilDiv((max(min(numel(shapes.y) / 4, tunables.INNER_VEC4_MIN_THREADS), ceilDiv(numel(shapes.y) / 4, tunables.INNER_VEC4_ITEMS_PER_THREAD))), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "when": ["genericTransposeOk", "dtypeSupported"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "Transpose",
+          "shader": "transpose.wgsl.jinja",
+          "derive": { "perm": "genericPerm", "itemsPerInvocation": 4 },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.y), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

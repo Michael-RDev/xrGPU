@@ -1,0 +1,544 @@
+{
+  "domain": "ai.onnx",
+  "name": "LpPool",
+  "sinceVersion": 18,
+  "inputs": { "x": { "onnx": "X", "dtype": "T" } },
+  "outputs": { "y": { "onnx": "Y", "dtype": "T", "rank": "ranks.x", "shape": "poolOutputShape" } },
+  "attributes": {
+    "p": { "default": 2 },
+    "auto_pad": { "default": "NOTSET" },
+    "ceil_mode": { "default": 0 },
+    "kernel_shape": {},
+    "strides": {},
+    "pads": {},
+    "dilations": {}
+  },
+  "attributeConstraints": {
+    "auto_pad": { "values": ["NOTSET", "SAME_UPPER", "SAME_LOWER", "VALID"] },
+    "ceil_mode": { "values": [0, 1] },
+    "kernel_shape": { "required": true }
+  },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "SEPARABLE_MIN_WINDOW": { "default": 25 },
+    "WINDOW_PARALLEL_MIN_TAPS": { "default": 128 },
+    "WINDOW_PARALLEL_MAX_SERIAL_GROUPS": { "default": 64 }
+  },
+  "derive": {
+    "spatialRank": "ranks.x - 2",
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelD": "attrs.kernel_shape[0] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank == 3 else 1",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "explicitOutW": "min(ceil((dim(shapes.x, ranks.x - 1) + padLeft + padRight - ((kernelW - 1) * dilationW + 1)) / strideW) + 1, ceil((dim(shapes.x, ranks.x - 1) + padLeft) / strideW)) if attrs.ceil_mode != 0 else floor((dim(shapes.x, ranks.x - 1) + padLeft + padRight - ((kernelW - 1) * dilationW + 1)) / strideW) + 1",
+    "explicitOutH": "min(ceil((dim(shapes.x, ranks.x - 2) + padTop + padBottom - ((kernelH - 1) * dilationH + 1)) / strideH) + 1, ceil((dim(shapes.x, ranks.x - 2) + padTop) / strideH)) if attrs.ceil_mode != 0 else floor((dim(shapes.x, ranks.x - 2) + padTop + padBottom - ((kernelH - 1) * dilationH + 1)) / strideH) + 1",
+    "explicitOutD": "(min(ceil((dim(shapes.x, 2) + padFront + padBack - ((kernelD - 1) * dilationD + 1)) / strideD) + 1, ceil((dim(shapes.x, 2) + padFront) / strideD)) if attrs.ceil_mode != 0 else floor((dim(shapes.x, 2) + padFront + padBack - ((kernelD - 1) * dilationD + 1)) / strideD) + 1) if ranks.x == 5 else 0",
+    "inferredOutW": "ceil(dim(shapes.x, ranks.x - 1) / strideW) if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else explicitOutW",
+    "inferredOutH": "ceil(dim(shapes.x, ranks.x - 2) / strideH) if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else explicitOutH",
+    "inferredOutD": "ceil(dim(shapes.x, 2) / strideD) if attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\" else explicitOutD",
+    "poolOutputShape": "[dim(shapes.x, 0), dim(shapes.x, 1), inferredOutW] if ranks.x == 3 else ([dim(shapes.x, 0), dim(shapes.x, 1), inferredOutH, inferredOutW] if ranks.x == 4 else [dim(shapes.x, 0), dim(shapes.x, 1), inferredOutD, inferredOutH, inferredOutW])",
+    "autoPadTotalD": "max(0, (dim(shapes.y, 2) - 1) * strideD + ((kernelD - 1) * dilationD + 1) - dim(shapes.x, 2)) if ranks.x == 5 else 0",
+    "autoPadTotalH": "max(0, (dim(shapes.y, ranks.x - 2) - 1) * strideH + ((kernelH - 1) * dilationH + 1) - dim(shapes.x, ranks.x - 2)) if ranks.x >= 4 else 0",
+    "autoPadTotalW": "max(0, (dim(shapes.y, ranks.x - 1) - 1) * strideW + ((kernelW - 1) * dilationW + 1) - dim(shapes.x, ranks.x - 1))",
+    "effectivePadD": "(floor(autoPadTotalD / 2) if attrs.auto_pad == \"SAME_UPPER\" else autoPadTotalD - floor(autoPadTotalD / 2)) if (attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\") else padFront",
+    "effectivePadH": "(floor(autoPadTotalH / 2) if attrs.auto_pad == \"SAME_UPPER\" else autoPadTotalH - floor(autoPadTotalH / 2)) if (attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\") else padTop",
+    "effectivePadW": "(floor(autoPadTotalW / 2) if attrs.auto_pad == \"SAME_UPPER\" else autoPadTotalW - floor(autoPadTotalW / 2)) if (attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\") else padLeft",
+    "windowTaps": "kernelD * kernelH * kernelW",
+    "windowParallelEligible": "numel(shapes.y) > 0 and windowTaps >= tunables.WINDOW_PARALLEL_MIN_TAPS and ceilDiv(numel(shapes.y), tunables.WORKGROUP_SIZE) < tunables.WINDOW_PARALLEL_MAX_SERIAL_GROUPS and numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and numel(shapes.y) <= windowTaps",
+    "separableTmpElements": "dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.y, 3)",
+    "separableFits": "separableTmpElements * 4 <= min(device.limits.maxStorageBufferBindingSize, device.limits.maxBufferSize) and ceilDiv(separableTmpElements, tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "poolBaseOk": "f16Ok(dtypes.T) and attrs.p > 0 and ranks.x >= 3 and ranks.x <= 5 and ranks.y == ranks.x and has(attrs, \"kernel_shape\") and kernelShapeLengthOk and stridesLengthOk and dilationsLengthOk and padsLengthOk and kernelD > 0 and kernelH > 0 and kernelW > 0 and strideD > 0 and strideH > 0 and strideW > 0 and dilationD > 0 and dilationH > 0 and dilationW > 0 and padFront >= 0 and padTop >= 0 and padLeft >= 0 and padBack >= 0 and padBottom >= 0 and padRight >= 0 and (attrs.auto_pad == \"NOTSET\" or not has(attrs, \"pads\")) and dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.x, 1)",
+    "globalWindowParallelCovered": "poolBaseOk and numel(shapes.y) == dim(shapes.x, 0) * dim(shapes.x, 1) and numel(shapes.y) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and attrs.auto_pad == \"NOTSET\" and strideD == 1 and strideH == 1 and strideW == 1 and dilationD == 1 and dilationH == 1 and dilationW == 1 and padFront == 0 and padTop == 0 and padLeft == 0 and padBack == 0 and padBottom == 0 and padRight == 0 and ((ranks.x == 3 and kernelW == dim(shapes.x, 2)) or (ranks.x == 4 and kernelH == dim(shapes.x, 2) and kernelW == dim(shapes.x, 3)) or (ranks.x == 5 and kernelD == dim(shapes.x, 2) and kernelH == dim(shapes.x, 3) and kernelW == dim(shapes.x, 4)))",
+    "scalar": "dtypes.T"
+  },
+  "bindings": {
+    "x_main": { "name": "x", "elementType": "$xVec4" },
+    "params": {
+      "struct": [
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "kernelH", "type": "u32", "value": "kernelH" },
+        { "name": "kernelW", "type": "u32", "value": "kernelW" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadH" },
+        { "name": "padW", "type": "i32", "value": "effectivePadW" },
+        { "name": "p", "type": "f32", "value": "attrs.p" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "params_window_ncl1d": {
+      "name": "params",
+      "struct": [
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padW", "type": "i32", "value": "effectivePadW" }
+      ]
+    },
+    "params_window_nchw2d": {
+      "name": "params",
+      "struct": [
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadH" },
+        { "name": "padW", "type": "i32", "value": "effectivePadW" }
+      ]
+    },
+    "params_window_ncdhw3d": {
+      "name": "params",
+      "struct": [
+        { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadD" },
+        { "name": "padH", "type": "i32", "value": "effectivePadH" },
+        { "name": "padW", "type": "i32", "value": "effectivePadW" }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "global_window_parallel",
+      "priority": 50,
+      "when": ["globalWindowParallelCovered"],
+      "derive": {
+        "xElem": "(\"vec4<f16>\" if dtypes.T == \"f16\" else \"vec4<f32>\") if inner(shapes.x, 1) % 4 == 0 else dtypes.T"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.GlobalWindowParallel",
+          "shader": "pool-global-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "vec4": "inner(shapes.x, 1) % 4 == 0",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")",
+            "p": "attrs.p"
+          },
+          "bindings": [
+            { "arg": "x", "elementType": "$xElem" },
+            "y",
+            { "name": "params", "struct": [{ "name": "spatial", "type": "u32", "value": "inner(shapes.x, 1)" }] }
+          ],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "window_parallel_ncl1d",
+      "priority": 28,
+      "when": ["poolBaseOk", "ranks.x == 3", "dim(shapes.y, 2) == inferredOutW", "windowParallelEligible"],
+      "supersededBy": ["global_window_parallel"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.WindowParallelNcl1d",
+          "shader": "pool-window-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "spatialRankSpec": 1,
+            "kernelDSpec": "kernelD",
+            "kernelHSpec": "kernelH",
+            "kernelWSpec": "kernelW",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")",
+            "p": "attrs.p"
+          },
+          "bindings": ["x", "y", "params_window_ncl1d"],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "window_parallel_nchw2d",
+      "priority": 28,
+      "when": ["poolBaseOk", "ranks.x == 4", "dim(shapes.y, 2) == inferredOutH", "dim(shapes.y, 3) == inferredOutW", "windowParallelEligible"],
+      "supersededBy": ["global_window_parallel"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.WindowParallelNchw2d",
+          "shader": "pool-window-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "spatialRankSpec": 2,
+            "kernelDSpec": "kernelD",
+            "kernelHSpec": "kernelH",
+            "kernelWSpec": "kernelW",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")",
+            "p": "attrs.p"
+          },
+          "bindings": ["x", "y", "params_window_nchw2d"],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "window_parallel_ncdhw3d",
+      "priority": 28,
+      "when": ["poolBaseOk", "ranks.x == 5", "dim(shapes.y, 2) == inferredOutD", "dim(shapes.y, 3) == inferredOutH", "dim(shapes.y, 4) == inferredOutW", "windowParallelEligible"],
+      "supersededBy": ["global_window_parallel"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.WindowParallelNcdhw3d",
+          "shader": "pool-window-reduction.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "spatialRankSpec": 3,
+            "kernelDSpec": "kernelD",
+            "kernelHSpec": "kernelH",
+            "kernelWSpec": "kernelW",
+            "workgroupSizeSpec": "tunables.WORKGROUP_SIZE",
+            "useSubgroups": "device.features.has(\"subgroups\")",
+            "p": "attrs.p"
+          },
+          "bindings": ["x", "y", "params_window_ncdhw3d"],
+          "dispatch": { "x": "numel(shapes.y)" }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_k2s2_vec4",
+      "priority": 30,
+      "when": ["(attrs.auto_pad != \"SAME_UPPER\" and attrs.auto_pad != \"SAME_LOWER\")", "poolBaseOk", "ranks.x == 4", "kernelH == 2", "kernelW == 2", "strideH == 2", "strideW == 2", "dilationH == 1", "dilationW == 1", "padTop == 0", "padLeft == 0", "padBottom == 0", "padRight == 0", "attrs.ceil_mode == 0", "dim(shapes.x, 3) % 4 == 0", "dim(shapes.y, 2) == floor(dim(shapes.x, 2) / 2)", "dim(shapes.y, 3) == floor(dim(shapes.x, 3) / 2)", "dim(shapes.y, 2) > 0", "dim(shapes.y, 3) > 0"],
+      "derive": { "xVec4": "\"vec4<f16>\" if dtypes.T == \"f16\" else \"vec4<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.Nchw2dK2s2Vec4",
+          "shader": "pool2d-nchw-k2s2-vec4.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "outH": "dim(shapes.y, 2)",
+            "outW": "dim(shapes.y, 3)",
+            "outWHalf": "floor(dim(shapes.y, 3) / 2)",
+            "inWVec4": "floor(dim(shapes.x, 3) / 4)",
+            "inPlaneVec4": "floor(dim(shapes.x, 2) * dim(shapes.x, 3) / 4)",
+            "p": "attrs.p"
+          },
+          "bindings": [
+            "x_main",
+            "y",
+            { "name": "params", "struct": [{ "name": "tileCount", "type": "u32", "value": "numel(shapes.y) / 2" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y) / 2), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_unrolled",
+      "priority": 25,
+      "when": ["(attrs.auto_pad != \"SAME_UPPER\" and attrs.auto_pad != \"SAME_LOWER\")", "poolBaseOk", "ranks.x == 4", "kernelH > 0", "kernelW > 0", "strideH > 0", "strideW > 0", "kernelH <= 3", "kernelW <= 3", "dilationH >= 1", "dilationW >= 1", "dim(shapes.y, 2) > 0", "dim(shapes.y, 3) > 0"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.Nchw2dUnrolled",
+          "shader": "pool-window-unroll.wgsl.jinja",
+          "derive": {
+            "op": "\"lp\"",
+            "kernelHSpec": "kernelH",
+            "kernelWSpec": "kernelW",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "padTop",
+            "padLeftSpec": "padLeft",
+            "inH": "dim(shapes.x, 2)",
+            "inW": "dim(shapes.x, 3)",
+            "outH": "dim(shapes.y, 2)",
+            "outW": "dim(shapes.y, 3)",
+            "p": "attrs.p"
+          },
+          "bindings": [
+            "x",
+            "y",
+            { "name": "params", "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.y)" }] }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d_k4s2_p2_x4",
+      "priority": 30,
+      "when": ["poolBaseOk", "ranks.x == 3", "attrs.auto_pad == \"NOTSET\"", "attrs.p == 2", "kernelW == 4", "strideW == 2", "dilationW == 1", "padLeft == 0", "padRight == 0", "attrs.ceil_mode == 0", "dim(shapes.x, 2) % 4 == 0", "dim(shapes.y, 2) == floor((dim(shapes.x, 2) - 4) / 2) + 1"],
+      "derive": { "xVec4": "\"vec4<f16>\" if dtypes.T == \"f16\" else \"vec4<f32>\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.Ncl1dK4s2P2X4",
+          "shader": "pool-ncl1d-x4.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "inW": "dim(shapes.x, 2)", "outW": "dim(shapes.y, 2)" },
+          "bindings": [
+            "x_main",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                {
+                  "name": "blockCount",
+                  "type": "u32",
+                  "value": "dim(shapes.x, 0) * dim(shapes.x, 1) * ceilDiv(dim(shapes.y, 2), 4)"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((dim(shapes.x, 0) * dim(shapes.x, 1) * ceilDiv(dim(shapes.y, 2), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((dim(shapes.x, 0) * dim(shapes.x, 1) * ceilDiv(dim(shapes.y, 2), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncl1d",
+      "priority": 10,
+      "when": ["poolBaseOk", "ranks.x == 3", "kernelW > 0", "strideW > 0"],
+      "derive": { "pIs1": "attrs.p == 1", "pIs2": "attrs.p == 2" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.NCL1d",
+          "shader": "pool-window-nd.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "spatialRankSpec": 1 },
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "kernelW", "type": "u32", "value": "kernelW" },
+                { "name": "strideW", "type": "u32", "value": "strideW" },
+                { "name": "dilationW", "type": "u32", "value": "dilationW" },
+                { "name": "padW", "type": "i32", "value": "effectivePadW" },
+                { "name": "p", "type": "f32", "value": "attrs.p" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_separable",
+      "priority": 22,
+      "when": ["(attrs.auto_pad != \"SAME_UPPER\" and attrs.auto_pad != \"SAME_LOWER\")", "poolBaseOk", "ranks.x == 4", "kernelH > 0", "kernelW > 0", "strideH > 0", "strideW > 0", "kernelH > 1", "kernelW > 1", "kernelH * kernelW >= tunables.SEPARABLE_MIN_WINDOW", "strideH < kernelH", "separableFits"],
+      "derive": { "pIs1": "attrs.p == 1", "pIs2": "attrs.p == 2" },
+      "intermediates": [{ "id": "tmp", "dtype": "float32", "shape": "[separableTmpElements]" }],
+      "passes": [
+        {
+          "id": "reduce_w",
+          "name": "LpPool.SeparableW",
+          "shader": "pool2d-nchw-separable.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "axisSpec": "\"w\"", "windowArea": "kernelH * kernelW" },
+          "bindings": [
+            "x",
+            { "name": "tmp", "elementType": "f32" },
+            {
+              "name": "params",
+              "struct": [
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "kernelW", "type": "u32", "value": "kernelW" },
+                { "name": "strideW", "type": "u32", "value": "strideW" },
+                { "name": "dilationW", "type": "u32", "value": "dilationW" },
+                { "name": "padW", "type": "i32", "value": "effectivePadW" },
+                { "name": "p", "type": "f32", "value": "attrs.p" },
+                {
+                  "name": "tmpCount",
+                  "type": "u32",
+                  "value": "dim(shapes.x, 0) * dim(shapes.x, 1) * dim(shapes.x, 2) * dim(shapes.y, 3)"
+                }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((separableTmpElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((separableTmpElements), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "reduce_h",
+          "name": "LpPool.SeparableH",
+          "shader": "pool2d-nchw-separable.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "axisSpec": "\"h\"", "windowArea": "kernelH * kernelW" },
+          "bindings": [
+            { "name": "tmp", "buffer": "read-only-storage", "elementType": "f32" },
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "outH", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "kernelH", "type": "u32", "value": "kernelH" },
+                { "name": "strideH", "type": "u32", "value": "strideH" },
+                { "name": "dilationH", "type": "u32", "value": "dilationH" },
+                { "name": "padH", "type": "i32", "value": "effectivePadH" },
+                { "name": "p", "type": "f32", "value": "attrs.p" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d",
+      "when": ["(attrs.auto_pad != \"SAME_UPPER\" and attrs.auto_pad != \"SAME_LOWER\")", "poolBaseOk", "ranks.x == 4", "kernelH > 0", "kernelW > 0", "strideH > 0", "strideW > 0"],
+      "derive": { "pIs1": "attrs.p == 1", "pIs2": "attrs.p == 2" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.NCHW2d",
+          "shader": "pool-window-nd.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "spatialRankSpec": 2 },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_autopad",
+      "priority": 15,
+      "when": ["(attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\")", "poolBaseOk", "ranks.x == 4", "kernelH > 0", "kernelW > 0", "strideH > 0", "strideW > 0", "dim(shapes.y, 2) == ceil(dim(shapes.x, 2) / strideH)", "dim(shapes.y, 3) == ceil(dim(shapes.x, 3) / strideW)"],
+      "derive": { "pIs1": "attrs.p == 1", "pIs2": "attrs.p == 2" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.NCHW2dAutoPad",
+          "shader": "pool-window-nd.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "spatialRankSpec": 2 },
+          "bindings": ["x", "y", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d",
+      "priority": 10,
+      "when": ["poolBaseOk", "ranks.x == 5", "kernelD > 0", "kernelH > 0", "kernelW > 0", "strideD > 0", "strideH > 0", "strideW > 0"],
+      "supersededBy": ["global_window_parallel"],
+      "passes": [
+        {
+          "id": "main",
+          "name": "LpPool.NCDHW3d",
+          "shader": "pool-window-nd.wgsl.jinja",
+          "derive": { "op": "\"lp\"", "spatialRankSpec": 3 },
+          "bindings": [
+            "x",
+            "y",
+            {
+              "name": "params",
+              "struct": [
+                { "name": "channels", "type": "u32", "value": "dim(shapes.x, 1)" },
+                { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+                { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+                { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+                { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+                { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+                { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+                { "name": "kernelD", "type": "u32", "value": "kernelD" },
+                { "name": "kernelH", "type": "u32", "value": "kernelH" },
+                { "name": "kernelW", "type": "u32", "value": "kernelW" },
+                { "name": "strideD", "type": "u32", "value": "strideD" },
+                { "name": "strideH", "type": "u32", "value": "strideH" },
+                { "name": "strideW", "type": "u32", "value": "strideW" },
+                { "name": "dilationD", "type": "u32", "value": "dilationD" },
+                { "name": "dilationH", "type": "u32", "value": "dilationH" },
+                { "name": "dilationW", "type": "u32", "value": "dilationW" },
+                { "name": "padD", "type": "i32", "value": "effectivePadD" },
+                { "name": "padH", "type": "i32", "value": "effectivePadH" },
+                { "name": "padW", "type": "i32", "value": "effectivePadW" },
+                { "name": "p", "type": "f32", "value": "attrs.p" },
+                { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+              ]
+            }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

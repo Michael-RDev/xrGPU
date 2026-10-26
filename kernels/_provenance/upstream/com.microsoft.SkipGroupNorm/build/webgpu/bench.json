@@ -1,0 +1,504 @@
+{
+  "tunableSpace": { "WORKGROUP_SIZE": [128, 256] },
+  "cases": [
+    {
+      "name": "flux-vae-mid-1x64x64x512-g32-f16-sum",
+      "preset": "smoke",
+      "provenance": { "note": "Flux.2 VAE decoder resnet: the residual feeds the next block, so S is requested" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 2097152,
+        "channels": 512,
+        "streams": 3,
+        "skipElements": 2097152
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1, "epsilon": 0.000001 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "normal", "seed": 400, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [512], "dist": "uniform", "seed": 401, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [512], "dist": "normal", "seed": 402, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "normal", "seed": 403, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [512], "dist": "normal", "seed": 404, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ],
+        "primary": true
+      }
+    },
+    {
+      "name": "flux-vae-mid-1x64x64x512-g32-f16-nosum",
+      "preset": "smoke",
+      "provenance": {
+        "note": "The same node with S not requested: the sum is round-tripped through Y instead of a second output"
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 2097152,
+        "channels": 512,
+        "streams": 2,
+        "skipElements": 2097152
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1, "epsilon": 0.000001 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "normal", "seed": 410, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [512], "dist": "uniform", "seed": 411, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [512], "dist": "normal", "seed": 412, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "normal", "seed": 413, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [512], "dist": "normal", "seed": 414, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [1, 64, 64, 512], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sd15-unet-2x64x64x320-g32-f16-sum",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Stable-Diffusion-1.5 UNet resnet at the classifier-free-guidance batch; 10 channels per group, no bias"
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 2621440,
+        "channels": 320,
+        "streams": 3,
+        "skipElements": 2621440
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 64, 64, 320], "dist": "normal", "seed": 420, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [320], "dist": "uniform", "seed": 421, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [320], "dist": "normal", "seed": 422, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 64, 64, 320], "dist": "normal", "seed": 423, "scale": 0.5 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 64, 64, 320], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 64, 64, 320], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sd15-unet-2x32x32x640-g32-f16-nosum",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Stable-Diffusion-1.5 UNet mid-resolution resnet without the activation or the second output"
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 1310720,
+        "channels": 640,
+        "streams": 2,
+        "skipElements": 1310720
+      },
+      "attrs": { "groups": 32, "activation": 0, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 32, 32, 640], "dist": "normal", "seed": 430, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [640], "dist": "uniform", "seed": 431, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [640], "dist": "normal", "seed": 432, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 32, 32, 640], "dist": "normal", "seed": 433, "scale": 0.5 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [2, 32, 32, 640], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sdxl-1x144x112x640-g32-f16-sum",
+      "preset": "smoke",
+      "provenance": { "note": "An SDXL non-square aspect grid, where a spatial-divisor block split degenerates" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 10321920,
+        "channels": 640,
+        "streams": 3,
+        "skipElements": 10321920
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 144, 112, 640], "dist": "normal", "seed": 440, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [640], "dist": "uniform", "seed": 441, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [640], "dist": "normal", "seed": 442, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 144, 112, 640], "dist": "normal", "seed": 443, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [640], "dist": "normal", "seed": 444, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [1, 144, 112, 640], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [1, 144, 112, 640], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "broadcast-skip-rank2-1x32x32x320-g32-f16",
+      "preset": "smoke",
+      "provenance": { "note": "Per-channel residual spelled (N, C)" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 327680,
+        "channels": 320,
+        "streams": 3,
+        "skipElements": 320
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "normal", "seed": 450, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [320], "dist": "uniform", "seed": 451, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [320], "dist": "normal", "seed": 452, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 320], "dist": "normal", "seed": 453, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [320], "dist": "normal", "seed": 454, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "broadcast-skip-rank4-1x32x32x320-g32-f16",
+      "preset": "smoke",
+      "provenance": {
+        "note": "The same per-channel residual and the same data spelled (N, 1, 1, C), to measure the two spellings against each other"
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 327680,
+        "channels": 320,
+        "streams": 3,
+        "skipElements": 320
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "normal", "seed": 450, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [320], "dist": "uniform", "seed": 451, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [320], "dist": "normal", "seed": 452, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 1, 1, 320], "dist": "normal", "seed": 453, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [320], "dist": "normal", "seed": 454, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [1, 32, 32, 320], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nchw-2x320x64x64-g32-f16-sum",
+      "preset": "smoke",
+      "provenance": { "note": "Channels-first Stable-Diffusion resnet width with the fused SiLU" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 2621440,
+        "channels": 320,
+        "streams": 3,
+        "skipElements": 2621440
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 0 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 320, 64, 64], "dist": "normal", "seed": 460, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [320], "dist": "uniform", "seed": 461, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [320], "dist": "normal", "seed": 462, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 320, 64, 64], "dist": "normal", "seed": 463, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [320], "dist": "normal", "seed": 464, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 320, 64, 64], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 320, 64, 64], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "micro-2x2x2x16-g4-f16-sum",
+      "preset": "smoke",
+      "provenance": {
+        "note": "ORT: onnxruntime/test/contrib_ops/skip_group_norm_op_test.cc SkipGroupNormTest.SkipGroupNorm_with_bias geometry"
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 128,
+        "channels": 16,
+        "streams": 3,
+        "skipElements": 128
+      },
+      "attrs": { "groups": 4, "activation": 0, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 2, 2, 16], "dist": "normal", "seed": 470, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [16], "dist": "uniform", "seed": 471, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [16], "dist": "normal", "seed": 472, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 2, 2, 16], "dist": "normal", "seed": 473, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [16], "dist": "normal", "seed": 474, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 2, 2, 16], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 2, 2, 16], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "flux-vae-up-1x256x256x256-g32-f16-sum",
+      "preset": "scale",
+      "provenance": { "note": "Flux.2 VAE decoder after the second 2x upsample" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 16777216,
+        "channels": 256,
+        "streams": 3,
+        "skipElements": 16777216
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1, "epsilon": 0.000001 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 256, 256, 256], "dist": "normal", "seed": 480, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [256], "dist": "uniform", "seed": 481, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [256], "dist": "normal", "seed": 482, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 256, 256, 256], "dist": "normal", "seed": 483, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [256], "dist": "normal", "seed": 484, "scale": 0.1 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [1, 256, 256, 256], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [1, 256, 256, 256], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "flux-vae-convout-1x512x512x128-g32-f16-nosum",
+      "preset": "model",
+      "provenance": { "note": "Flux.2 VAE conv_norm_out geometry: the largest single dispatch in the decoder" },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 33554432,
+        "channels": 128,
+        "streams": 2,
+        "skipElements": 33554432
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1, "epsilon": 0.000001 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [1, 512, 512, 128], "dist": "normal", "seed": 490, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [128], "dist": "uniform", "seed": 491, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [128], "dist": "normal", "seed": 492, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [1, 512, 512, 128], "dist": "normal", "seed": 493, "scale": 0.5 },
+        "bias": { "dtype": "float16", "shape": [128], "dist": "normal", "seed": 494, "scale": 0.1 }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [1, 512, 512, 128], "dist": "empty" } },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nhwc-even-groups-2x64x64x320-g32-f32",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Even channel-group widths spanning one, multiple, and capacity-limited channel rows per workgroup, including float32 activations. Same distributions as the authored large NHWC case."
+      },
+      "vars": {
+        "dtype": "float32",
+        "weightDtype": "float32",
+        "count": 2621440,
+        "channels": 320,
+        "streams": 3,
+        "skipElements": 2621440
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [2, 64, 64, 320], "dist": "normal", "seed": 420, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [320], "dist": "uniform", "seed": 421, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [320], "dist": "normal", "seed": 422, "scale": 0.1 },
+        "skip": { "dtype": "float32", "shape": [2, 64, 64, 320], "dist": "normal", "seed": 423, "scale": 0.5 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float32", "shape": [2, 64, 64, 320], "dist": "empty" },
+        "S": { "dtype": "float32", "shape": [2, 64, 64, 320], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nhwc-even-groups-2x64x64x64-g32-f16",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Even channel-group widths spanning one, multiple, and capacity-limited channel rows per workgroup, including float32 activations. Same distributions as the authored large NHWC case."
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 524288,
+        "channels": 64,
+        "streams": 3,
+        "skipElements": 524288
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 64, 64, 64], "dist": "normal", "seed": 420, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [64], "dist": "uniform", "seed": 421, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [64], "dist": "normal", "seed": 422, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 64, 64, 64], "dist": "normal", "seed": 423, "scale": 0.5 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 64, 64, 64], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 64, 64, 64], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nhwc-even-groups-2x64x64x192-g32-f16",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Even channel-group widths spanning one, multiple, and capacity-limited channel rows per workgroup, including float32 activations. Same distributions as the authored large NHWC case."
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 1572864,
+        "channels": 192,
+        "streams": 3,
+        "skipElements": 1572864
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 64, 64, 192], "dist": "normal", "seed": 420, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [192], "dist": "uniform", "seed": 421, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [192], "dist": "normal", "seed": 422, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 64, 64, 192], "dist": "normal", "seed": 423, "scale": 0.5 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 64, 64, 192], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 64, 64, 192], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nhwc-even-groups-2x64x64x448-g32-f16",
+      "preset": "smoke",
+      "provenance": {
+        "note": "Even channel-group widths spanning one, multiple, and capacity-limited channel rows per workgroup, including float32 activations. Same distributions as the authored large NHWC case."
+      },
+      "vars": {
+        "dtype": "float16",
+        "weightDtype": "float32",
+        "count": 3670016,
+        "channels": 448,
+        "streams": 3,
+        "skipElements": 3670016
+      },
+      "attrs": { "groups": 32, "activation": 1, "channels_last": 1 },
+      "inputs": {
+        "X": { "dtype": "float16", "shape": [2, 64, 64, 448], "dist": "normal", "seed": 420, "scale": 0.5 },
+        "gamma": { "dtype": "float32", "shape": [448], "dist": "uniform", "seed": 421, "scale": 0.25, "offset": 1 },
+        "beta": { "dtype": "float32", "shape": [448], "dist": "normal", "seed": 422, "scale": 0.1 },
+        "skip": { "dtype": "float16", "shape": [2, 64, 64, 448], "dist": "normal", "seed": 423, "scale": 0.5 }
+      },
+      "outputs": {
+        "Y": { "dtype": "float16", "shape": [2, 64, 64, 448], "dist": "empty" },
+        "S": { "dtype": "float16", "shape": [2, 64, 64, 448], "dist": "empty" }
+      },
+      "bench": {
+        "metrics": [
+          {
+            "type": "bandwidth",
+            "value": "(args.count * args.streams + args.skipElements) * dtypeBytes(args.dtype) + args.channels * 2 * dtypeBytes(args.weightDtype)"
+          }
+        ]
+      }
+    }
+  ]
+}

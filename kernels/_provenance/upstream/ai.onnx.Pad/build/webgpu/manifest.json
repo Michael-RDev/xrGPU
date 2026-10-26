@@ -1,0 +1,92 @@
+{
+  "domain": "ai.onnx",
+  "name": "Pad",
+  "sinceVersion": 19,
+  "inputs": { "data": { "dtype": "T" }, "constant_value": { "dtype": "T", "rank": 0, "optional": true } },
+  "outputs": { "output": { "dtype": "T", "rank": "ranks.data" } },
+  "attributes": { "mode": { "default": "constant" }, "pads": {} },
+  "attributeConstraints": {
+    "pads": { "required": true },
+    "mode": { "values": ["constant", "reflect", "edge", "wrap"] }
+  },
+  "typeConstraints": { "T": ["float32", "float16", "uint32", "int32", "uint8", "int8", "bool", "int64"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "shapeContract": "ranks.data == ranks.output and ranks.output >= 1",
+    "defaultValueContract": "not present.constant_value and shapeContract and f16Ok(dtypes.T)",
+    "vec4Contract": "defaultValueContract and numel(shapes.output) > 0 and dim(shapes.output, ranks.output - 1) % 4 == 0",
+    "scalar": "dtypes.T",
+    "mode": "attrs.mode",
+    "dataShape": "shapes.data",
+    "outputShape": "shapes.output",
+    "rank": "ranks.output",
+    "pads": "attrs.pads",
+    "itemsPerInvocation": 4
+  },
+  "bindings": { "params": { "struct": [{ "name": "count", "type": "u32", "value": "numel(shapes.output)" }] } },
+  "variants": [
+    {
+      "id": "constant_value_input",
+      "priority": 30,
+      "when": ["present.constant_value", "numel(shapes.constant_value) == 1", "shapeContract", "f16Ok(dtypes.T)"],
+      "derive": { "valueFromInput": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pad",
+          "shader": "pad.wgsl.jinja",
+          "bindings": [
+            "data",
+            { "arg": "constant_value", "name": "padValue", "elementType": "$scalar", "length": 1 },
+            "output",
+            "params"
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "quad_vec4",
+      "priority": 11,
+      "when": ["dtypes.T != \"vec2<u32>\"", "vec4Contract"],
+      "derive": { "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"", "vectorScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pad.QuadVec4",
+          "shader": "pad-quad-vec4.wgsl.jinja",
+          "derive": { "value": 0 },
+          "bindings": ["data", { "arg": "output", "elementType": "$outputElement" }],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.output) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "constant_rank1_to_4",
+      "when": ["defaultValueContract"],
+      "derive": { "valueFromInput": false },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Pad",
+          "shader": "pad.wgsl.jinja",
+          "derive": { "value": 0 },
+          "bindings": ["data", "output", "params"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.output), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

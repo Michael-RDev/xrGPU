@@ -1,0 +1,238 @@
+{
+  "domain": "com.microsoft",
+  "name": "GatedRMSNorm",
+  "sinceVersion": 1,
+  "inputs": {
+    "xT": { "onnx": "X", "dtype": "T" },
+    "scaleT": { "onnx": "scale", "dtype": "T" },
+    "gateT": { "onnx": "gate", "dtype": "T" }
+  },
+  "outputs": { "yT": { "onnx": "Y", "dtype": "T", "rank": "ranks.xT", "shape": "shapes.xT" } },
+  "attributes": { "epsilon": { "default": 0.00001 } },
+  "typeConstraints": { "T": ["float32", "float16"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 }, "LANE_WORDS": { "default": 2 } },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "foldedDispatchCapacity": "min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "normSize": "numel(shapes.scaleT)",
+    "lastDim": "dim(shapes.xT, ranks.xT - 1)",
+    "elementCount": "numel(shapes.xT)",
+    "rowCount": "elementCount / max(1, normSize)",
+    "dtypeOk": "tensorDtypes.xT == tensorDtypes.scaleT and tensorDtypes.xT == tensorDtypes.gateT and tensorDtypes.xT == tensorDtypes.yT and f16Ok(dtypes.T)",
+    "shapeOk": "ranks.xT >= 1 and ranks.scaleT >= 1 and normSize > 0 and lastDim % normSize == 0 and sameShape(shapes.gateT, shapes.xT) and sameShape(shapes.yT, shapes.xT)",
+    "contractOk": "dtypeOk and shapeOk",
+    "workgroupOk": "tunables.WORKGROUP_SIZE > 0 and tunables.WORKGROUP_SIZE <= deviceWorkgroupCap and pow2ceil(tunables.WORKGROUP_SIZE) == tunables.WORKGROUP_SIZE and tunables.WORKGROUP_SIZE * 4 <= device.limits.maxComputeWorkgroupStorageSize and tunables.LANE_WORDS > 0",
+    "vec4Ok": "normSize % 4 == 0",
+    "vecWords": "normSize / 4",
+    "vecPreferredLanes": "max(1, min(tunables.WORKGROUP_SIZE / 2, pow2ceil(max(1, ceilDiv(vecWords, max(1, tunables.LANE_WORDS))))))",
+    "vecWideLanes": "max(1, min(tunables.WORKGROUP_SIZE, pow2ceil(max(1, ceilDiv(vecWords, max(1, tunables.LANE_WORDS))))))",
+    "vecLanesPerRow": "pick([[ceilDiv(vecWords, vecPreferredLanes) <= 8, vecPreferredLanes]], vecWideLanes)",
+    "vecRowsPerGroup": "tunables.WORKGROUP_SIZE / max(1, vecLanesPerRow)",
+    "vecWordsPerLane": "ceilDiv(vecWords, max(1, vecLanesPerRow))",
+    "vecRowGroups": "ceilDiv(rowCount, max(1, vecRowsPerGroup))",
+    "scalarPreferredLanes": "1 if normSize <= 8 else (max(1, min(tunables.WORKGROUP_SIZE / 2, pow2ceil(max(1, ceilDiv(normSize, max(1, tunables.LANE_WORDS)))))))",
+    "scalarWideLanes": "max(1, min(tunables.WORKGROUP_SIZE, pow2ceil(max(1, ceilDiv(normSize, max(1, tunables.LANE_WORDS))))))",
+    "scalarLanesPerRow": "pick([[ceilDiv(normSize, scalarPreferredLanes) <= 8, scalarPreferredLanes]], scalarWideLanes)",
+    "scalarRowsPerGroup": "tunables.WORKGROUP_SIZE / max(1, scalarLanesPerRow)",
+    "scalarWordsPerLane": "ceilDiv(normSize, max(1, scalarLanesPerRow))",
+    "scalarRowGroups": "ceilDiv(rowCount, max(1, scalarRowsPerGroup))",
+    "subgroupShapeKnown": "device.features.has(\"subgroups\") and has(device.adapterInfo, \"subgroupMinSize\") and has(device.adapterInfo, \"subgroupMaxSize\") and device.adapterInfo.subgroupMinSize > 0 and device.adapterInfo.subgroupMinSize <= device.adapterInfo.subgroupMaxSize and device.adapterInfo.subgroupMaxSize <= tunables.WORKGROUP_SIZE and tunables.WORKGROUP_SIZE % device.adapterInfo.subgroupMaxSize == 0",
+    "sgMin": "device.adapterInfo.subgroupMinSize if subgroupShapeKnown else 0",
+    "sgFullWidth": "subgroupShapeKnown and device.adapterInfo.subgroupMinSize == device.adapterInfo.subgroupMaxSize",
+    "sgVecLanesPerRow": "min(sgMin, vecLanesPerRow) if subgroupShapeKnown else 1",
+    "sgVecRowsPerGroup": "tunables.WORKGROUP_SIZE / max(1, sgVecLanesPerRow)",
+    "sgVecWordsPerLane": "ceilDiv(vecWords, max(1, sgVecLanesPerRow))",
+    "sgVecRowGroups": "ceilDiv(rowCount, max(1, sgVecRowsPerGroup))",
+    "sgScalarLanesPerRow": "min(sgMin, scalarLanesPerRow) if subgroupShapeKnown else 1",
+    "sgScalarRowsPerGroup": "tunables.WORKGROUP_SIZE / max(1, sgScalarLanesPerRow)",
+    "sgScalarWordsPerLane": "ceilDiv(normSize, max(1, sgScalarLanesPerRow))",
+    "sgScalarRowGroups": "ceilDiv(rowCount, max(1, sgScalarRowsPerGroup))",
+    "vectorElement": "\"vec4<\" ~ dtypes.T ~ \">\"",
+    "workgroupSize": "tunables.WORKGROUP_SIZE",
+    "epsilon": "attrs.epsilon",
+    "scalar": "dtypes.T",
+    "vectorScalar": "vectorElement"
+  },
+  "when": ["contractOk", "workgroupOk"],
+  "bindings": {
+    "x": { "arg": "xT", "elementType": "$vectorElement" },
+    "scale": { "arg": "scaleT", "elementType": "$vectorElement" },
+    "gate": { "arg": "gateT", "elementType": "$vectorElement" },
+    "y": { "arg": "yT", "elementType": "$vectorElement" },
+    "x_x_t": { "arg": "xT", "name": "x", "elementType": "$scalar" },
+    "scale_main": { "arg": "scaleT", "name": "scale", "elementType": "$scalar" },
+    "gate_main": { "arg": "gateT", "name": "gate", "elementType": "$scalar" },
+    "y_y_t": { "arg": "yT", "name": "y", "elementType": "$scalar" },
+    "params": { "struct": [{ "name": "rows", "type": "u32", "value": "rowCount" }] }
+  },
+  "variants": [
+    {
+      "id": "subgroup_rows_vec4",
+      "priority": 30,
+      "when": ["vec4Ok", "subgroupShapeKnown", "sgVecWordsPerLane >= 1", "sgVecWordsPerLane <= 8", "sgVecRowGroups <= foldedDispatchCapacity"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "foldKind": "\"none\" if sgVecLanesPerRow <= 1 else (\"subgroup_full\" if (sgFullWidth and sgVecLanesPerRow == sgMin) else \"subgroup_butterfly\")",
+        "foldSteps": "log2ceil(sgVecLanesPerRow)",
+        "useVec4": "true",
+        "stageRow": "true",
+        "rowWords": "vecWords",
+        "wordsPerLane": "sgVecWordsPerLane",
+        "lanesPerRow": "sgVecLanesPerRow",
+        "rowsPerGroup": "sgVecRowsPerGroup"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.SubgroupRowsVec4",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x", "scale", "gate", "y", "params"],
+          "dispatch": {
+            "x": "min(sgVecRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(sgVecRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_rows_vec4",
+      "priority": 20,
+      "when": ["vec4Ok", "vecRowGroups <= foldedDispatchCapacity"],
+      "derive": {
+        "foldKind": "\"none\" if vecLanesPerRow <= 1 else \"workgroup_tree\"",
+        "foldSteps": "log2ceil(vecLanesPerRow)",
+        "useVec4": "true",
+        "stageRow": "vecWordsPerLane <= 8",
+        "rowWords": "vecWords",
+        "wordsPerLane": "vecWordsPerLane",
+        "lanesPerRow": "vecLanesPerRow",
+        "rowsPerGroup": "vecRowsPerGroup"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.PackedRowsVec4",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x", "scale", "gate", "y", "params"],
+          "dispatch": {
+            "x": "min(vecRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(vecRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_rows_scalar",
+      "priority": 10,
+      "when": ["subgroupShapeKnown", "sgScalarWordsPerLane >= 1", "sgScalarWordsPerLane <= 8", "sgScalarRowGroups <= foldedDispatchCapacity"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "foldKind": "\"none\" if sgScalarLanesPerRow <= 1 else (\"subgroup_full\" if (sgFullWidth and sgScalarLanesPerRow == sgMin) else \"subgroup_butterfly\")",
+        "foldSteps": "log2ceil(sgScalarLanesPerRow)",
+        "useVec4": "false",
+        "stageRow": "true",
+        "rowWords": "normSize",
+        "wordsPerLane": "sgScalarWordsPerLane",
+        "lanesPerRow": "sgScalarLanesPerRow",
+        "rowsPerGroup": "sgScalarRowsPerGroup"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.SubgroupRowsScalar",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x_x_t", "scale_main", "gate_main", "y_y_t", "params"],
+          "dispatch": {
+            "x": "min(sgScalarRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(sgScalarRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "packed_rows_scalar",
+      "priority": 0,
+      "when": ["scalarRowGroups <= foldedDispatchCapacity"],
+      "derive": {
+        "foldKind": "\"none\" if scalarLanesPerRow <= 1 else \"workgroup_tree\"",
+        "foldSteps": "log2ceil(scalarLanesPerRow)",
+        "useVec4": "false",
+        "stageRow": "scalarWordsPerLane <= 8",
+        "rowWords": "normSize",
+        "wordsPerLane": "scalarWordsPerLane",
+        "lanesPerRow": "scalarLanesPerRow",
+        "rowsPerGroup": "scalarRowsPerGroup"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.PackedRowsScalar",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x_x_t", "scale_main", "gate_main", "y_y_t", "params"],
+          "dispatch": {
+            "x": "min(scalarRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(scalarRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_wide_rows_vec4",
+      "priority": 25,
+      "when": ["vec4Ok", "vecRowGroups <= foldedDispatchCapacity", "dtypes.T == \"f32\"", "sgFullWidth", "device.wgslLanguageFeatures.has(\"subgroup_id\")", "vecLanesPerRow > sgMin", "vecLanesPerRow % max(1, sgMin) == 0"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "foldKind": "\"subgroup_tree\"",
+        "useVec4": "true",
+        "stageRow": "vecWordsPerLane <= 8",
+        "rowWords": "vecWords",
+        "wordsPerLane": "vecWordsPerLane",
+        "lanesPerRow": "vecLanesPerRow",
+        "rowsPerGroup": "vecRowsPerGroup",
+        "subgroupWidth": "sgMin",
+        "subgroupsPerRow": "vecLanesPerRow / max(1, sgMin)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.SubgroupWideRowsVec4",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x", "scale", "gate", "y", "params"],
+          "dispatch": {
+            "x": "min(vecRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(vecRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "subgroup_wide_rows_scalar",
+      "priority": 5,
+      "when": ["scalarRowGroups <= foldedDispatchCapacity", "dtypes.T == \"f32\"", "sgFullWidth", "device.wgslLanguageFeatures.has(\"subgroup_id\")", "scalarLanesPerRow > sgMin", "scalarLanesPerRow % max(1, sgMin) == 0"],
+      "requires": { "features": ["subgroups"] },
+      "derive": {
+        "foldKind": "\"subgroup_tree\"",
+        "useVec4": "false",
+        "stageRow": "scalarWordsPerLane <= 8",
+        "rowWords": "normSize",
+        "wordsPerLane": "scalarWordsPerLane",
+        "lanesPerRow": "scalarLanesPerRow",
+        "rowsPerGroup": "scalarRowsPerGroup",
+        "subgroupWidth": "sgMin",
+        "subgroupsPerRow": "scalarLanesPerRow / max(1, sgMin)"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "GatedRMSNorm.SubgroupWideRowsScalar",
+          "shader": "gated-rms-norm-rows.wgsl.jinja",
+          "bindings": ["x_x_t", "scale_main", "gate_main", "y_y_t", "params"],
+          "dispatch": {
+            "x": "min(scalarRowGroups, DISPATCH_FOLD_WIDTH)",
+            "y": "ceilDiv(scalarRowGroups, DISPATCH_FOLD_WIDTH)"
+          }
+        }
+      ]
+    }
+  ]
+}

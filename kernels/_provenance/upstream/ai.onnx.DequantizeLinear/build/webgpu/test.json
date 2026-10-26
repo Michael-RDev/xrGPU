@@ -1,0 +1,1019 @@
+{
+  "fixtureArrays": {
+    "uint8_axis1_rank4_onnx_backend_input_x": [3, 89, 34, 200, 74, 59, 5, 24, 24, 87, 32, 13, 245, 99, 4, 142, 121, 102],
+    "blocked_no_zero_point_rank4_axis1_symmetric_input_x": [-8, -4, -2, -1, 0, 1, 2, 4, 8, 16, 32, 48, -16, -32, -48, -64]
+  },
+  "cases": [
+    {
+      "name": "int16_per_axis_vec4_boundaries",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "int16",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-32768, -1, 0, 32767, 32767, 0, -1, -32768] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.5, 1.0, 2.0, 0.25] } },
+        "x_zero_point": {
+          "dtype": "int16",
+          "shape": [4],
+          "data": { "kind": "values", "values": [-32768, -2, 1, 32767] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0.000001,
+          "data": { "kind": "values", "values": [0.0, 1.0, -2.0, 0.0, 32767.5, 2.0, -4.0, -16383.75] }
+        }
+      }
+    },
+    {
+      "name": "dispatch_cliff_scalar_scale_67M",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [67108864], "data": { "kind": "cycle", "values": [0, 1, 2, 3, 4, 5, 6, 7] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "constant", "value": 0.5 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [67108864], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "uint8_scalar_zero",
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 3], "data": { "kind": "values", "values": [0, 127, 128, 129, 255, 4] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3] } }
+    },
+    {
+      "name": "uint8_subnormal_scale_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8",
+        "notes": "Valid positive subnormal scale: dequantized tiny values should not be flushed to zero."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 1, 2, 3] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "uint8_subnormal_scale_nonzero_zero_point_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8",
+        "notes": "Subnormal scale with a nonzero zero point should preserve tiny signed dequantized offsets around zero."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [126, 127, 128, 129] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_subnormal_scale_preserves_signed_steps_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8",
+        "notes": "A subnormal scale must preserve tiny signed dequantized offsets around zero."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [5], "data": { "kind": "values", "values": [-2, -1, 0, 1, 2] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_subnormal_scale_vec4_preserves_signed_steps_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8",
+        "notes": "The vec4 signed-output path must preserve values produced with a subnormal scale."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-1, 0, 1, 2] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "uint8_axis1_per_channel_subnormal_scale_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_Default",
+        "notes": "Per-axis dequantization gives each channel a valid subnormal scale and nonzero zero point."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [10, 21, 29, 42, 12, 18, 30, 41] }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, 1e-40, 1e-40, 1e-40] }
+        },
+        "x_zero_point": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [10, 20, 30, 40] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 1e-40, -1e-40, 2e-40, 2e-40, -2e-40, 0.0, 1e-40] }
+        }
+      }
+    },
+    {
+      "name": "uint8_axis0_per_channel_subnormal_scale_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_0",
+        "notes": "With axis 0 and inner size four, vectorized per-axis dequantization must preserve tiny one-LSB steps from subnormal scales."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [10, 11, 12, 13, 22, 18, 20, 21] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1e-40, 1e-40] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [2], "data": { "kind": "values", "values": [10, 20] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 1e-40, 2e-40, 3e-40, 2e-40, -2e-40, 0.0, 1e-40] }
+        }
+      }
+    },
+    {
+      "name": "uint8_axis1_per_channel_subnormal_scale_no_zero_point_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Without_Zero_Point",
+        "notes": "Per-axis extension of omitted-zero-point coverage: default uint8 zero point is zero, but each channel still uses a valid subnormal scale."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 4], "data": { "kind": "values", "values": [0, 1, 2, 3, 2, 0, 1, 0] } },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, 1e-40, 1e-40, 1e-40] }
+        }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 1e-40, 2e-40, 3e-40, 2e-40, 0.0, 1e-40, 0.0] }
+        }
+      }
+    },
+    {
+      "name": "uint8_axis0_per_channel_subnormal_scale_no_zero_point_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Without_Zero_Point",
+        "notes": "Vec4 per-axis extension of omitted-zero-point coverage with valid subnormal scales."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 4], "data": { "kind": "values", "values": [0, 1, 2, 3, 2, 0, 0, 1] } },
+        "x_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [1e-40, 1e-40] } }
+      },
+      "outputs": {
+        "y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0.0, 1e-40, 2e-40, 3e-40, 2e-40, 0.0, 0.0, 1e-40] }
+        }
+      }
+    },
+    {
+      "name": "int32_subnormal_scale_no_zero_point_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: Metal flushes denormal results of floating-point multiplication (e.g. 2 * 1e-40 -> 0); ORT computes (x - zp) * subnormal_scale on CPU with denormal support, so subnormal x_scale cases remain CPU-reference-only."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int32",
+        "notes": "Valid int32 dequantization with a subnormal scale and omitted zero point; outputs should remain finite subnormal values."
+      },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-2, -1, 0, 1] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1e-40] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_axis1_f16",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [2, 3], "data": { "kind": "values", "values": [-128, -1, 0, 1, 2, 127] } },
+        "x_scale": { "dtype": "float16", "shape": [3], "data": { "kind": "values", "values": [0.25, 0.5, 2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [0, -1, 1] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 3] } },
+      "tolerance": 0.002
+    },
+    {
+      "name": "uint8_no_zero_negative_axis",
+      "attrs": { "axis": -1 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 2], "data": { "kind": "values", "values": [10, 20, 30, 40] } },
+        "x_scale": { "dtype": "float32", "shape": [2], "data": { "kind": "values", "values": [0.1, 0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2] } }
+    },
+    {
+      "name": "ort_int16_negative_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int16"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int16", "shape": [4], "data": { "kind": "values", "values": [-300, -30, -1025, 1270] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int16", "shape": [], "data": { "kind": "values", "values": [-1024] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "uint8_scalar_onnx_backend",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 3, 128, 255] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_rank0_scale_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 3, 128, 255] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "uint8_axis1_rank4_onnx_backend",
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 3, 3, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/uint8_axis1_rank4_onnx_backend_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.0, 4.0, 5.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [84, 24, 196] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int8_scalar_zero_point_ort",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-30, -3, 100, 127] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_rank0_scale_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-30, -3, 100, 127] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_large_tail_1039",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8_Large"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1, 1039], "data": { "kind": "constant", "value": 1 } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1039], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_large_tail_1039",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8_Large"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [1, 1039], "data": { "kind": "constant", "value": 1 } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 1039], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_2d_scalar_scale_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.2D"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_scalar_input_rank0_with_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Scalar"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [100] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_scalar_input_rank0_no_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Without_Zero_Point"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [100] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_scalar_input_rank0_f16_with_zero_point",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpMLFloat16Test.Scalar"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [100] } },
+        "x_scale": { "dtype": "float16", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [], "tolerance": 0.002 } }
+    },
+    {
+      "name": "ort_opset25_f16_int8_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpMLFloat16Test.Opset25_PerAxisInt8_Cuda"
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [2, 4], "data": { "kind": "values", "values": [-2, -1, 0, 1, 2, 3, 4, 5] } },
+        "x_scale": { "dtype": "float16", "shape": [4], "data": { "kind": "values", "values": [2.0, 2.0, 4.0, 4.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [0, 0, 0, 0] } }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [2, 4], "tolerance": 0.002 } }
+    },
+    {
+      "name": "ort_no_zero_point_int8_1x8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.No_Zero_Point_int8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [-10, 50, 100, 120, -9, 49, 99, 119] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_no_zero_point_uint8_1x8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.No_Zero_Point_uint8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [10, 50, 100, 180, 9, 49, 99, 179] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_point_int8_1x8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Zero_Point_int8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [-10, 50, 100, 120, -9, 49, 99, 119] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [], "data": { "kind": "values", "values": [-10] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_zero_point_uint8_1x8",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Zero_Point_uint8"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 8],
+          "data": { "kind": "values", "values": [10, 50, 100, 180, 9, 49, 99, 119] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [10] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 8], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int8_no_zero_scalar_explicit_float32_output_dtype",
+      "provenance": {
+        "notes": "Explicit output_dtype=FLOAT matches the float32 output inferred from x_scale when the attribute is omitted."
+      },
+      "attrs": { "axis": 0, "output_dtype": 1 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [5], "data": { "kind": "values", "values": [-128, -1, 0, 1, 127] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "scalar_x4_int8_no_zero_tail",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [17],
+          "data": { "kind": "values", "values": [-64, -32, -16, -8, -4, -2, -1, 0, 1, 2, 4, 8, 16, 32, 48, 64, 96] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.125] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [17], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vec4_tail_int8_no_zero_4097",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4097], "data": { "kind": "constant", "value": -4 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.5] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4097], "tolerance": 0.000001 } },
+      "provenance": { "notes": "Covers the packed bulk plus scalar tail without a zero point." }
+    },
+    {
+      "name": "scalar_x4_uint8_with_zero_point_tail",
+      "attrs": { "axis": 0 },
+      "provenance": {
+        "notes": "A scalar scale and uint8 zero point with an element count not divisible by four exercises scalar tail handling."
+      },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [17],
+          "data": {
+            "kind": "values",
+            "values": [0, 3, 7, 11, 15, 31, 63, 95, 127, 128, 129, 160, 192, 224, 240, 252, 255]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.125] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [17], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vec4_tail_uint8_with_zero_point_4097",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4097], "data": { "kind": "constant", "value": 7 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4097], "tolerance": 0.000001 } },
+      "provenance": { "notes": "Covers the packed bulk plus scalar tail with a scalar zero point." }
+    },
+    {
+      "name": "uint8_axis0_rank2_per_row",
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [3, 2], "data": { "kind": "values", "values": [6, 14, 40, 42, 20, 130] } },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [0.5, 1.0, 2.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [10, 20, 30] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_per_channel_axis0",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_0"
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 4.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [0, 0, 0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_per_channel_axis1_nonzero_zero_points",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_1_int8"
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 2, 4, 6, 0, 10, 20, 30] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [0, -10, -20, -30] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int32_scalar_ort",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int32",
+        "notes": "The fixture format represents the scalar scale as a length-one tensor."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-30, -3, 100, 127] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "int32_nonzero_zero_point_ort",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int32_Non_Zero_Zero_Point",
+        "notes": "The fixture format represents scalar scale and zero point as length-one tensors."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [-30, -3, 100, 127] } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "int32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_per_channel_default_axis_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_Default"
+      },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [2, 3, 2, 4],
+          "data": {
+            "kind": "values",
+            "values": [7, 9, 10, 10, 5, 8, 9, 1, 8, 6, 7, 9, 10, 0, 7, 10, 8, 2, 6, 0, 5, 9, 8, 1, 2, 7, 5, 3, 2, 4, 1, 3, 8, 7, 4, 8, 10, 1, 5, 5, 7, 7, 0, 2, 4, 4, 0, 5]
+          }
+        },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 10.0, 7.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [3], "data": { "kind": "values", "values": [10, 2, 1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 3, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int32_per_channel_axis1",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Axis_1_int32"
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "int32",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 2, 4, 6, 0, 10, 20, 30] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [1.0, 2.0, 4.0, 8.0] } },
+        "x_zero_point": { "dtype": "int32", "shape": [4], "data": { "kind": "values", "values": [0, 0, 0, 0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_per_channel_negative_axis_minus2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Per_Channel_Neg_2"
+      },
+      "attrs": { "axis": -2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [3, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 0, 1, 2, 3, 0, 10, 20, 30] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1.0, 2.0, 4.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [0, 0, 0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [3, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_uint8_large_vectorized_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Uint8_Large",
+        "notes": "Same non-vector-aligned element count as ORT, flattened from [1, 1039] to [1039]."
+      },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [1039], "data": { "kind": "constant", "value": 1 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1039], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_large_vectorized_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8_Large",
+        "notes": "Same non-vector-aligned element count as ORT, flattened from [1, 1039] to [1039]."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [1039], "data": { "kind": "constant", "value": 1 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [1.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1039], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_int8_non_aligned_size_135",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOpTest.Int8_NonAlignedSize_Initializer",
+        "notes": "Same non-aligned length; constant data keeps the fixture compact."
+      },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [135], "data": { "kind": "constant", "value": 7 } },
+        "x_scale": { "dtype": "float32", "shape": [1], "data": { "kind": "values", "values": [0.25] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1], "data": { "kind": "values", "values": [0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [135], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_dequantizelinear",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_dequantizelinear" },
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [4], "data": { "kind": "values", "values": [0, 3, 128, 255] } },
+        "x_scale": { "dtype": "float32", "shape": [], "data": { "kind": "values", "values": [2.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [], "data": { "kind": "values", "values": [128] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_dequantizelinear_axis",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_dequantizelinear_axis" },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 3, 3, 2],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/uint8_axis1_rank4_onnx_backend_input_x" } }
+        },
+        "x_scale": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [2.0, 4.0, 5.0] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [3], "data": { "kind": "values", "values": [84, 24, 196] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 3, 3, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "onnx_backend_dequantizelinear_blocked",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_dequantizelinear_blocked" },
+      "attrs": { "axis": 1, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [1, 4, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": [3, 89, 34, 200, 74, 59, 5, 24, 24, 87, 32, 13, 5, 12, 12, 33, 65, 42, 245, 99, 4, 142, 121, 102]
+          }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 2],
+          "data": { "kind": "values", "values": [3.0, 2.0, 4.0, 1.0, 2.0, 2.0, 5.0, 2.0, 4.0, 3.0, 5.0, 2.0] }
+        },
+        "x_zero_point": {
+          "dtype": "uint8",
+          "shape": [1, 2, 3, 2],
+          "data": { "kind": "values", "values": [1, 0, 0, 1, 2, 20, 3, 2, 4, 3, 15, 2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 3, 2], "tolerance": 0.00001 } }
+    },
+    {
+      "name": "ort_blocked_uint8_with_zero_point_rank3_axis2",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOp21BlockedTest.UnsignedInt_UseZeroPoint_LastAxis",
+        "notes": "Valid blocked dequantization with per-block zero-points on the last axis."
+      },
+      "attrs": { "axis": 2, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [2, 2, 4],
+          "data": { "kind": "values", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [-2.0, -4.0, 3.5, 1.0, 2.0, 4.0, -3.5, -1.0] }
+        },
+        "x_zero_point": {
+          "dtype": "uint8",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [2, 0, 1, 9, 13, 5, 11, 6] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_blocked_uint8_no_zero_point_rank3_axis0",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/tensor/quantize_linear_test.cc",
+        "test": "DequantizeLinearOp21BlockedTest.UnsignedInt_NoZeroPoint_FirstAxis"
+      },
+      "attrs": { "axis": 0, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [4, 2, 2],
+          "data": { "kind": "values", "values": [1, 2, 3, 4, 5, 6, 7, 8, 20, 22, 24, 26, 40, 42, 44, 46] }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [2, 2, 2],
+          "data": { "kind": "values", "values": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "inputs": {
+        "x": { "dtype": "uint8", "shape": [2, 0], "data": { "kind": "values", "values": [] } },
+        "x_scale": { "dtype": "float32", "shape": [0], "data": { "kind": "values", "values": [] } },
+        "x_zero_point": { "dtype": "uint8", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 0], "tolerance": 0 } }
+    },
+    {
+      "name": "int8_blocked_rank4_axis1_nonzero_zp",
+      "attrs": { "axis": 1, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 4, 3, 2],
+          "data": {
+            "kind": "values",
+            "values": [-50, 12, -7, 88, 30, -41, 5, -24, 24, 87, -32, 13, 5, -12, 12, -33, 65, 42, -120, 99, 4, -100, 121, -102]
+          }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [1, 2, 3, 2],
+          "data": { "kind": "values", "values": [3.0, 2.0, 4.0, 1.0, 2.0, 2.0, 5.0, 2.0, 4.0, 3.0, 5.0, 2.0] }
+        },
+        "x_zero_point": {
+          "dtype": "int8",
+          "shape": [1, 2, 3, 2],
+          "data": { "kind": "values", "values": [1, 0, -2, 1, 2, -20, 3, 2, -4, 3, 15, 2] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "blocked_no_zero_point_rank4_axis1_symmetric",
+      "attrs": { "axis": 1, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 4, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/blocked_no_zero_point_rank4_axis1_symmetric_input_x" }
+          }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [0.5, 1.0, 1.5, 2.0, 0.25, 0.75, 1.25, 1.75] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 4, 2, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "empty_blocked_rank4_axis1_zero_channel",
+      "attrs": { "axis": 1, "block_size": 2 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [1, 0, 2, 2], "data": { "kind": "values", "values": [] } },
+        "x_scale": { "dtype": "float32", "shape": [1, 0, 2, 2], "data": { "kind": "values", "values": [] } },
+        "x_zero_point": { "dtype": "int8", "shape": [1, 0, 2, 2], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [1, 0, 2, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "per_axis0_dispatch_fold_17M_last_rows",
+      "requires": { "limits": { "maxBufferSize": 281018368, "maxStorageBufferBindingSize": 281018368 } },
+      "provenance": {
+        "notes": "Its largest tensor is 281018368 bytes, so the case needs an adapter whose maxBufferSize and maxStorageBufferBindingSize both reach it — declared, because the WebGPU guaranteed minimums (256 MiB / 128 MiB) do not, and a device at them must report the case inapplicable rather than fail allocating it."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": {
+          "dtype": "uint8",
+          "shape": [67, 1048576],
+          "data": { "kind": "cycle", "values": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+        },
+        "x_scale": {
+          "dtype": "float32",
+          "shape": [67],
+          "data": { "kind": "fillFloat32", "sinStep": 0.07, "cosStep": 0.05, "scale": 0.01, "offset": 0.02 }
+        },
+        "x_zero_point": { "dtype": "uint8", "shape": [67], "data": { "kind": "constant", "value": 5 } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [67, 1048576], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "innermost_axis_vec4_no_zero_two_rows",
+      "provenance": {
+        "notes": "Two rows exercise vec4-bound innermost per-axis scales with the omitted zero point defaulting to zero."
+      },
+      "attrs": { "axis": 1 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-8, -4, 2, 7, 10, -12, 20, -24] }
+        },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.25, 0.5, 1.5, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [2, 4], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vec4_cross_axis_rows_width6_with_zero_point",
+      "provenance": {
+        "notes": "Four consecutive values cross a six-element row boundary, so they can require different per-axis scales and zero points."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4, 6], "data": { "kind": "cycle", "values": [-42, -8, 0, 7, 31, 63] } },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.25, 0.5, 1.0, 2.0] } },
+        "x_zero_point": { "dtype": "int8", "shape": [4], "data": { "kind": "values", "values": [-3, 2, 5, -7] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "vec4_cross_axis_rows_width6_no_zero_point",
+      "provenance": {
+        "notes": "Per-channel dequantization over six-element rows omits x_zero_point, so ONNX defaults it to zero. Four-lane vectors cross row boundaries and may use two scale entries; a seven-value cycle coprime with the row width makes each lane pattern distinct."
+      },
+      "attrs": { "axis": 0 },
+      "inputs": {
+        "x": { "dtype": "int8", "shape": [4, 6], "data": { "kind": "cycle", "values": [-42, -8, 0, 7, 31, 63, -19] } },
+        "x_scale": { "dtype": "float32", "shape": [4], "data": { "kind": "values", "values": [0.25, 0.5, 1.0, 2.0] } }
+      },
+      "outputs": { "y": { "dtype": "float32", "shape": [4, 6], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "blocked_no_zero_point_rank4_axis1_symmetric_f16",
+      "provenance": {
+        "notes": "float16 output exercises half-precision storage on the blocked-axis route without a zero point."
+      },
+      "attrs": { "axis": 1, "block_size": 2 },
+      "inputs": {
+        "x": {
+          "dtype": "int8",
+          "shape": [1, 4, 2, 2],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/blocked_no_zero_point_rank4_axis1_symmetric_input_x" }
+          }
+        },
+        "x_scale": {
+          "dtype": "float16",
+          "shape": [1, 2, 2, 2],
+          "data": { "kind": "values", "values": [0.5, 1.0, 1.5, 2.0, 0.25, 0.75, 1.25, 1.75] }
+        }
+      },
+      "outputs": { "y": { "dtype": "float16", "shape": [1, 4, 2, 2], "tolerance": 0 } }
+    }
+  ]
+}

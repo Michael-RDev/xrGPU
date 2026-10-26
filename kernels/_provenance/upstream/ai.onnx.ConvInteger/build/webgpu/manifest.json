@@ -1,0 +1,882 @@
+{
+  "domain": "ai.onnx",
+  "name": "ConvInteger",
+  "sinceVersion": 10,
+  "inputs": {
+    "x": { "dtype": "TX" },
+    "w": { "dtype": "TW" },
+    "x_zero_point": { "dtype": "TX", "optional": true },
+    "w_zero_point": { "dtype": "TW", "optional": true }
+  },
+  "outputs": {
+    "y": {
+      "dtype": "TY",
+      "rank": "ranks.x",
+      "shape": "[dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputWidth] if ranks.x == 3 else ([dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputHeight, expectedOutputWidth] if ranks.x == 4 else [dim(shapes.x, 0), dim(shapes.w, 0), expectedOutputDepth, expectedOutputHeight, expectedOutputWidth])"
+    }
+  },
+  "attributes": {
+    "auto_pad": { "default": "NOTSET" },
+    "group": { "default": 1 },
+    "dilations": {},
+    "kernel_shape": {},
+    "pads": {},
+    "strides": {}
+  },
+  "attributeConstraints": { "auto_pad": { "values": ["NOTSET", "SAME_UPPER", "SAME_LOWER", "VALID"] } },
+  "typeConstraints": { "TX": ["uint8", "int8"], "TW": ["uint8", "int8"], "TY": ["int32"] },
+  "tunables": { "WORKGROUP_SIZE": { "default": 256 } },
+  "derive": {
+    "inputDepth": "dim(shapes.x, 2) if ranks.x == 5 else 1",
+    "inputHeight": "dim(shapes.x, 3) if ranks.x == 5 else (dim(shapes.x, 2) if ranks.x == 4 else 1)",
+    "inputWidth": "dim(shapes.x, ranks.x - 1) if ranks.x >= 3 else 1",
+    "outputDepth": "dim(shapes.y, 2) if ranks.y == 5 else 1",
+    "outputHeight": "dim(shapes.y, 3) if ranks.y == 5 else (dim(shapes.y, 2) if ranks.y == 4 else 1)",
+    "outputWidth": "dim(shapes.y, ranks.y - 1) if ranks.y >= 3 else 1",
+    "kernelDepth": "dim(shapes.w, 2) if ranks.w == 5 else 1",
+    "kernelHeight": "dim(shapes.w, 3) if ranks.w == 5 else (dim(shapes.w, 2) if ranks.w == 4 else 1)",
+    "kernelWidth": "dim(shapes.w, ranks.w - 1) if ranks.w >= 3 else 1",
+    "spatialRank": "ranks.w - 2",
+    "kernelShapeLengthOk": "not has(attrs, \"kernel_shape\") or (attrs.kernel_shape | length) == spatialRank",
+    "stridesLengthOk": "not has(attrs, \"strides\") or (attrs.strides | length) == spatialRank",
+    "dilationsLengthOk": "not has(attrs, \"dilations\") or (attrs.dilations | length) == spatialRank",
+    "padsLengthOk": "not has(attrs, \"pads\") or (attrs.pads | length) == 2 * spatialRank",
+    "kernelD": "attrs.kernel_shape[0] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank == 3 else 1",
+    "kernelH": "attrs.kernel_shape[spatialRank - 2] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 2 else 1",
+    "kernelW": "attrs.kernel_shape[spatialRank - 1] if kernelShapeLengthOk and has(attrs, \"kernel_shape\") and spatialRank >= 1 else 1",
+    "strideD": "attrs.strides[0] if stridesLengthOk and has(attrs, \"strides\") and spatialRank == 3 else 1",
+    "strideH": "attrs.strides[spatialRank - 2] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 2 else 1",
+    "strideW": "attrs.strides[spatialRank - 1] if stridesLengthOk and has(attrs, \"strides\") and spatialRank >= 1 else 1",
+    "dilationD": "attrs.dilations[0] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank == 3 else 1",
+    "dilationH": "attrs.dilations[spatialRank - 2] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 2 else 1",
+    "dilationW": "attrs.dilations[spatialRank - 1] if dilationsLengthOk and has(attrs, \"dilations\") and spatialRank >= 1 else 1",
+    "padFront": "attrs.pads[0] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padTop": "attrs.pads[spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padLeft": "attrs.pads[spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "padBack": "attrs.pads[spatialRank] if padsLengthOk and has(attrs, \"pads\") and spatialRank == 3 else 0",
+    "padBottom": "attrs.pads[2 * spatialRank - 2] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 2 else 0",
+    "padRight": "attrs.pads[2 * spatialRank - 1] if padsLengthOk and has(attrs, \"pads\") and spatialRank >= 1 else 0",
+    "autoPadSame": "attrs.auto_pad == \"SAME_UPPER\" or attrs.auto_pad == \"SAME_LOWER\"",
+    "autoPadValid": "attrs.auto_pad == \"VALID\"",
+    "samePadDepth": "max(0, (outputDepth - 1) * strideD + (kernelDepth - 1) * dilationD + 1 - inputDepth)",
+    "samePadHeight": "max(0, (outputHeight - 1) * strideH + (kernelHeight - 1) * dilationH + 1 - inputHeight)",
+    "samePadWidth": "max(0, (outputWidth - 1) * strideW + (kernelWidth - 1) * dilationW + 1 - inputWidth)",
+    "samePadFront": "floor(samePadDepth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadDepth - floor(samePadDepth / 2)",
+    "samePadTop": "floor(samePadHeight / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadHeight - floor(samePadHeight / 2)",
+    "samePadLeft": "floor(samePadWidth / 2) if attrs.auto_pad == \"SAME_UPPER\" else samePadWidth - floor(samePadWidth / 2)",
+    "effectivePadFront": "samePadFront if autoPadSame else (0 if autoPadValid else padFront)",
+    "effectivePadTop": "samePadTop if autoPadSame else (0 if autoPadValid else padTop)",
+    "effectivePadLeft": "samePadLeft if autoPadSame else (0 if autoPadValid else padLeft)",
+    "expectedOutputDepth": "ceil(inputDepth / strideD) if autoPadSame else floor((inputDepth + (0 if autoPadValid else padFront + padBack) - ((kernelDepth - 1) * dilationD + 1)) / strideD) + 1",
+    "expectedOutputHeight": "ceil(inputHeight / strideH) if autoPadSame else floor((inputHeight + (0 if autoPadValid else padTop + padBottom) - ((kernelHeight - 1) * dilationH + 1)) / strideH) + 1",
+    "expectedOutputWidth": "ceil(inputWidth / strideW) if autoPadSame else floor((inputWidth + (0 if autoPadValid else padLeft + padRight) - ((kernelWidth - 1) * dilationW + 1)) / strideW) + 1",
+    "spatialAttributeLengthsOk": "kernelShapeLengthOk and stridesLengthOk and dilationsLengthOk and padsLengthOk",
+    "kernelShapeMatchesWeights": "not has(attrs, \"kernel_shape\") or (kernelW == kernelWidth and (spatialRank < 2 or kernelH == kernelHeight) and (spatialRank < 3 or kernelD == kernelDepth))",
+    "kernelExtentsOk": "kernelWidth >= 1 and (spatialRank < 2 or kernelHeight >= 1) and (spatialRank < 3 or kernelDepth >= 1)",
+    "stridesValuesOk": "not has(attrs, \"strides\") or (strideD >= 1 and floor(strideD) == strideD and strideH >= 1 and floor(strideH) == strideH and strideW >= 1 and floor(strideW) == strideW)",
+    "dilationsValuesOk": "not has(attrs, \"dilations\") or (dilationD >= 1 and floor(dilationD) == dilationD and dilationH >= 1 and floor(dilationH) == dilationH and dilationW >= 1 and floor(dilationW) == dilationW)",
+    "padsValuesOk": "padFront >= 0 and floor(padFront) == padFront and padTop >= 0 and floor(padTop) == padTop and padLeft >= 0 and floor(padLeft) == padLeft and padBack >= 0 and floor(padBack) == padBack and padBottom >= 0 and floor(padBottom) == padBottom and padRight >= 0 and floor(padRight) == padRight",
+    "explicitPadsOk": "attrs.auto_pad == \"NOTSET\" or not has(attrs, \"pads\")",
+    "spatialAttributesOk": "spatialRank >= 1 and spatialRank <= 3 and spatialAttributeLengthsOk and kernelShapeMatchesWeights and kernelExtentsOk and stridesValuesOk and dilationsValuesOk and padsValuesOk and explicitPadsOk",
+    "packedFeature": "device.wgslLanguageFeatures.has(\"packed_4x8_integer_dot_product\")",
+    "rank4TensorOk": "spatialAttributesOk and (ranks.x == 4 and ranks.w == 4 and ranks.y == 4)",
+    "outputBatchChannelsOk": "dim(shapes.y, 0) == dim(shapes.x, 0) and dim(shapes.y, 1) == dim(shapes.w, 0)",
+    "groupChannelsOk": "attrs.group >= 1 and dim(shapes.w, 1) * attrs.group == dim(shapes.x, 1) and dim(shapes.w, 0) % attrs.group == 0",
+    "output2dShapeOk": "dim(shapes.y, 2) == expectedOutputHeight and dim(shapes.y, 3) == expectedOutputWidth",
+    "aScalar": "\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\"",
+    "bScalar": "\"u32\" if tensorDtypes.x == \"uint8\" else \"i32\"",
+    "wScalar": "\"u32\" if tensorDtypes.w == \"uint8\" else \"i32\"",
+    "xScalar": "\"u32\" if tensorDtypes.x == \"uint8\" else \"i32\"",
+    "aUnsigned": "tensorDtypes.w == \"uint8\"",
+    "bUnsigned": "tensorDtypes.x == \"uint8\"",
+    "wUnsigned": "tensorDtypes.w == \"uint8\"",
+    "xUnsigned": "tensorDtypes.x == \"uint8\"",
+    "bZeroPerColumn": false,
+    "rank5TensorOk": "spatialAttributesOk and (ranks.x == 5 and ranks.w == 5 and ranks.y == 5)",
+    "scalarXZeroOk": "ranks.x_zero_point == 0 or (ranks.x_zero_point == 1 and dim(shapes.x_zero_point, 0) == 1)",
+    "scalarWZeroOk": "ranks.w_zero_point == 0 or (ranks.w_zero_point == 1 and dim(shapes.w_zero_point, 0) == 1)",
+    "scalarXZeroRequiredOk": "present.x_zero_point and scalarXZeroOk",
+    "scalarWZeroRequiredOk": "present.w_zero_point and scalarWZeroOk",
+    "ungroupedChannelsOk": "attrs.group == 1 and dim(shapes.w, 1) == dim(shapes.x, 1)",
+    "output3dShapeOk": "dim(shapes.y, 2) == expectedOutputDepth and dim(shapes.y, 3) == expectedOutputHeight and dim(shapes.y, 4) == expectedOutputWidth",
+    "rank3TensorOk": "spatialAttributesOk and (ranks.x == 3 and ranks.w == 3 and ranks.y == 3)",
+    "nchwTensorOk": "rank4TensorOk or rank3TensorOk",
+    "output1dShapeOk": "dim(shapes.y, 2) == expectedOutputWidth",
+    "outputSpatialShapeOk": "output2dShapeOk if rank4TensorOk else output1dShapeOk",
+    "zeroPointsOmitted": "not present.x_zero_point and not present.w_zero_point",
+    "pointwiseTileM": 8,
+    "pointwiseTileN": 64,
+    "pointwiseKtWords": 32,
+    "pointwiseResourcesOk": "pointwiseTileN <= min(device.limits.maxComputeWorkgroupSizeX, device.limits.maxComputeInvocationsPerWorkgroup) and 4 * pointwiseTileM * (pointwiseKtWords + 1) <= device.limits.maxComputeWorkgroupStorageSize",
+    "pointwiseDispatchOk": "ceilDiv(outputHeight * outputWidth, pointwiseTileN) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.w, 0), pointwiseTileM) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and dim(shapes.y, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\""
+  },
+  "when": ["outputBatchChannelsOk"],
+  "bindings": {
+    "x": { "elementType": "$bScalar" },
+    "x_zero_point": { "elementType": "$bScalar", "length": 1 },
+    "cols": { "scratch": "cols3d", "elementType": "$bScalar" },
+    "params": {
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        {
+          "name": "kRows",
+          "type": "u32",
+          "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)"
+        },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" }
+      ]
+    },
+    "cols_im2col": { "name": "cols", "buffer": "storage", "elementType": "$bScalar" },
+    "params_im2col": {
+      "name": "params",
+      "struct": [
+        { "name": "outCount", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3)" },
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "kRows", "type": "u32", "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 3)" }
+      ]
+    },
+    "a": { "arg": "w", "elementType": "$aVec4" },
+    "b": { "scratch": "cols3d", "buffer": "read-only-storage", "elementType": "$bScalar" },
+    "a_zero_point": { "arg": "w_zero_point", "elementType": "$aScalar", "length": 1 },
+    "b_zero_point": { "arg": "x_zero_point", "elementType": "$bScalar", "length": 1 },
+    "y": { "elementType": "i32" },
+    "params_main": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)" },
+        {
+          "name": "K",
+          "type": "u32",
+          "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)"
+        },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        {
+          "name": "bBatchStride",
+          "type": "u32",
+          "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) * dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)"
+        },
+        {
+          "name": "yBatchStride",
+          "type": "u32",
+          "value": "dim(shapes.w, 0) * dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)"
+        }
+      ]
+    },
+    "b_main": { "scratch": "cols", "name": "b", "buffer": "read-only-storage", "elementType": "$bScalar" },
+    "params__uniform": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "N", "type": "u32", "value": "dim(shapes.y, 2) * dim(shapes.y, 3)" },
+        { "name": "K", "type": "u32", "value": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)" },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        {
+          "name": "bBatchStride",
+          "type": "u32",
+          "value": "(dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.y, 2) * dim(shapes.y, 3))"
+        },
+        { "name": "yBatchStride", "type": "u32", "value": "dim(shapes.w, 0) * dim(shapes.y, 2) * dim(shapes.y, 3)" }
+      ]
+    },
+    "a_w": { "arg": "w", "name": "a", "elementType": "$aScalar" },
+    "b_x": { "arg": "x", "name": "b", "elementType": "$bScalar" },
+    "params_quant_dp4a_matmul": {
+      "name": "params",
+      "struct": [
+        { "name": "M", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "N", "type": "u32", "value": "outputHeight * outputWidth" },
+        { "name": "K", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "aBatchStride4", "type": "u32", "value": 0 },
+        { "name": "bBatchStride", "type": "u32", "value": "dim(shapes.x, 1) * inputHeight * inputWidth" },
+        { "name": "yBatchStride", "type": "u32", "value": "dim(shapes.w, 0) * outputHeight * outputWidth" }
+      ]
+    },
+    "x_main": { "name": "x", "elementType": "$xScalar" },
+    "w": { "elementType": "$wScalar" },
+    "x_zero_point_main": { "name": "x_zero_point", "elementType": "$xScalar", "length": 1 },
+    "w_zero_point": { "elementType": "$wScalar" },
+    "params_nchw2d_x_zero_point_only": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inH", "type": "u32", "value": "inputHeight" },
+        { "name": "inW", "type": "u32", "value": "inputWidth" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "kernelH", "type": "u32", "value": "kernelHeight" },
+        { "name": "kernelW", "type": "u32", "value": "kernelWidth" },
+        { "name": "outH", "type": "u32", "value": "outputHeight" },
+        { "name": "outW", "type": "u32", "value": "outputWidth" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "w_zero_point_main": { "name": "w_zero_point", "elementType": "$wScalar", "length": 1 },
+    "params_ncdhw3d_x_zero_point_only": {
+      "name": "params",
+      "struct": [
+        { "name": "inChannels", "type": "u32", "value": "dim(shapes.x, 1)" },
+        { "name": "inD", "type": "u32", "value": "dim(shapes.x, 2)" },
+        { "name": "inH", "type": "u32", "value": "dim(shapes.x, 3)" },
+        { "name": "inW", "type": "u32", "value": "dim(shapes.x, 4)" },
+        { "name": "outChannels", "type": "u32", "value": "dim(shapes.w, 0)" },
+        { "name": "weightInChannels", "type": "u32", "value": "dim(shapes.w, 1)" },
+        { "name": "inChannelsPerGroup", "type": "u32", "value": "dim(shapes.x, 1) / attrs.group" },
+        { "name": "outChannelsPerGroup", "type": "u32", "value": "dim(shapes.w, 0) / attrs.group" },
+        { "name": "kernelD", "type": "u32", "value": "dim(shapes.w, 2)" },
+        { "name": "kernelH", "type": "u32", "value": "dim(shapes.w, 3)" },
+        { "name": "kernelW", "type": "u32", "value": "dim(shapes.w, 4)" },
+        { "name": "outD", "type": "u32", "value": "dim(shapes.y, 2)" },
+        { "name": "outH", "type": "u32", "value": "dim(shapes.y, 3)" },
+        { "name": "outW", "type": "u32", "value": "dim(shapes.y, 4)" },
+        { "name": "strideD", "type": "u32", "value": "strideD" },
+        { "name": "strideH", "type": "u32", "value": "strideH" },
+        { "name": "strideW", "type": "u32", "value": "strideW" },
+        { "name": "dilationD", "type": "u32", "value": "dilationD" },
+        { "name": "dilationH", "type": "u32", "value": "dilationH" },
+        { "name": "dilationW", "type": "u32", "value": "dilationW" },
+        { "name": "padD", "type": "i32", "value": "effectivePadFront" },
+        { "name": "padH", "type": "i32", "value": "effectivePadTop" },
+        { "name": "padW", "type": "i32", "value": "effectivePadLeft" },
+        { "name": "count", "type": "u32", "value": "numel(shapes.y)" }
+      ]
+    },
+    "a_zero_point_per_row": { "arg": "w_zero_point", "name": "a_zero_point", "elementType": "$aScalar" }
+  },
+  "variants": [
+    {
+      "id": "dp4a_im2col_ncdhw3d_scalar_zero_points",
+      "priority": 20,
+      "when": ["packedFeature", "rank5TensorOk", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "ungroupedChannelsOk", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) % 4 == 0", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) >= 32", "dim(shapes.w, 0) >= 8", "dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) >= 256", "output3dShapeOk", "dim(shapes.x, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) * dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) * 4 <= device.limits.maxStorageBufferBindingSize", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4), tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4), 64) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "ceilDiv(dim(shapes.w, 0), 8) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)", "dim(shapes.x, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": {
+        "hasAZero": true,
+        "hasBZero": true,
+        "aPacked": true,
+        "aZeroPerRow": false,
+        "tileM": 8,
+        "tileN": 64,
+        "ktWords": 32,
+        "hasBias": false
+      },
+      "intermediates": [
+        {
+          "id": "cols3d",
+          "dtype": "int32",
+          "shape": "[dim(shapes.x, 0) * dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4) * dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4)]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "ConvInteger.Im2Col3d",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 3,
+            "kernelDSpec": "dim(shapes.w, 2)",
+            "kernelHSpec": "dim(shapes.w, 3)",
+            "kernelWSpec": "dim(shapes.w, 4)",
+            "strideDSpec": "strideD",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationDSpec": "dilationD",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padFrontSpec": "effectivePadFront",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "x_zero_point", "cols", "params"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) / tunables.WORKGROUP_SIZE)",
+            "y": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) * dim(shapes.w, 4)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "main",
+          "name": "ConvInteger.Im2Col3dDp4a",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b", "a_zero_point", "b_zero_point", "y", "params_main"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) * dim(shapes.y, 4) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_im2col_nchw_scalar_zero_points",
+      "priority": 20,
+      "when": ["packedFeature", "rank4TensorOk", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "ungroupedChannelsOk", "(dim(shapes.w, 2) > 1 or dim(shapes.w, 3) > 1)", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) % 4 == 0", "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3) >= 64", "numel(shapes.y) >= 8192", "dim(shapes.y, 2) * dim(shapes.y, 3) <= 4194240", "dim(shapes.w, 0) <= 524280", "dim(shapes.y, 0) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)"],
+      "derive": { "hasAZero": true, "hasBZero": true, "tileM": 8, "tileN": 64, "ktWords": 32 },
+      "intermediates": [
+        {
+          "id": "cols",
+          "dtype": "int32",
+          "shape": "[dim(shapes.x, 0) * (dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)) * (dim(shapes.y, 2) * dim(shapes.y, 3))]"
+        }
+      ],
+      "passes": [
+        {
+          "id": "im2col",
+          "name": "ConvInteger.Im2Col",
+          "shader": "conv-int-im2col-spatial.wgsl.jinja",
+          "derive": {
+            "spatialRankSpec": 2,
+            "kernelHSpec": "dim(shapes.w, 2)",
+            "kernelWSpec": "dim(shapes.w, 3)",
+            "strideHSpec": "strideH",
+            "strideWSpec": "strideW",
+            "dilationHSpec": "dilationH",
+            "dilationWSpec": "dilationW",
+            "padTopSpec": "effectivePadTop",
+            "padLeftSpec": "effectivePadLeft"
+          },
+          "bindings": ["x", "x_zero_point", "cols_im2col", "params_im2col"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / tunables.WORKGROUP_SIZE)",
+            "y": "dim(shapes.w, 1) * dim(shapes.w, 2) * dim(shapes.w, 3)",
+            "z": "dim(shapes.x, 0)"
+          }
+        },
+        {
+          "id": "main",
+          "name": "ConvInteger.Im2ColDp4a",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_main", "a_zero_point", "b_zero_point", "y", "params__uniform"],
+          "dispatch": {
+            "x": "ceil(dim(shapes.y, 2) * dim(shapes.y, 3) / 64)",
+            "y": "ceil(dim(shapes.w, 0) / 8)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": true,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "a_zero_point", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail_x_zero_point_only",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "not present.w_zero_point", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": false,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail_w_zero_point_only",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "scalarWZeroRequiredOk", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": true,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "a_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail_no_zero_points",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "not present.w_zero_point", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": false,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": true,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "a_zero_point", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_x_zero_point_only",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "not present.w_zero_point", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": false,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_w_zero_point_only",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "scalarWZeroRequiredOk", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": true,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "a_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_no_zero_points",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "not present.w_zero_point", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": false,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords"
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail_per_channel",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "present.w_zero_point", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": true,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false,
+        "aZeroPerRow": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "a_zero_point_per_row", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_tail_per_channel_w_zero_point_only",
+      "priority": 21,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "present.w_zero_point", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "dim(shapes.x, 1) >= 32", "dim(shapes.x, 1) % 4 != 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "hasAZero": true,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aPacked": false,
+        "aZeroPerRow": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwiseTail",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a_w", "b_x", "a_zero_point_per_row", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_per_channel",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "scalarXZeroRequiredOk", "present.w_zero_point", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": true,
+        "hasBZero": true,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aZeroPerRow": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "a_zero_point_per_row", "b_zero_point", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dp4a_pointwise_1x1_per_channel_w_zero_point_only",
+      "priority": 20,
+      "when": ["nchwTensorOk", "ungroupedChannelsOk", "kernelHeight == 1", "kernelWidth == 1", "strideH == 1", "strideW == 1", "padTop == 0 and padBottom == 0", "padLeft == 0 and padRight == 0", "outputHeight == inputHeight", "outputWidth == inputWidth", "not present.x_zero_point", "present.w_zero_point", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "dim(shapes.x, 1) % 4 == 0", "pointwiseResourcesOk", "pointwiseDispatchOk"],
+      "derive": {
+        "aVec4": "\"vec4<u32>\" if tensorDtypes.w == \"uint8\" else \"vec4<i32>\"",
+        "hasAZero": true,
+        "hasBZero": false,
+        "tileM": "pointwiseTileM",
+        "tileN": "pointwiseTileN",
+        "ktWords": "pointwiseKtWords",
+        "aZeroPerRow": true
+      },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger.Dp4aPointwise",
+          "shader": "quant-dp4a-matmul.wgsl.jinja",
+          "bindings": ["a", "b_x", "a_zero_point_per_row", "y", "params_quant_dp4a_matmul"],
+          "dispatch": {
+            "x": "ceilDiv(outputHeight * outputWidth, pointwiseTileN)",
+            "y": "ceilDiv(dim(shapes.w, 0), pointwiseTileM)",
+            "z": "dim(shapes.y, 0)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_per_channel_zero_point",
+      "priority": 5,
+      "when": ["nchwTensorOk", "scalarXZeroRequiredOk", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": { "wZeroPerChannel": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvIntegerPerChannel",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "false", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "x_zero_point_main", "w_zero_point", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_per_channel_w_zero_point_only",
+      "priority": 5,
+      "when": ["nchwTensorOk", "not present.x_zero_point", "present.w_zero_point", "ranks.w_zero_point == 1", "dim(shapes.w_zero_point, 0) == dim(shapes.w, 0)", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": { "wZeroPerChannel": true },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvIntegerPerChannel",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "true", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "w_zero_point", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_scalar_zero_points",
+      "when": ["nchwTensorOk", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "false", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "x_zero_point_main", "w_zero_point_main", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_x_zero_point_only",
+      "when": ["nchwTensorOk", "present.x_zero_point", "not present.w_zero_point", "scalarXZeroRequiredOk", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "false", "wZeroOmitted": "true" },
+          "bindings": ["x_main", "w", "x_zero_point_main", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw2d_w_zero_point_only",
+      "when": ["nchwTensorOk", "not present.x_zero_point", "present.w_zero_point", "scalarWZeroRequiredOk", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "true", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "w_zero_point_main", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_scalar_zero_points",
+      "when": ["rank5TensorOk", "scalarXZeroRequiredOk", "scalarWZeroRequiredOk", "groupChannelsOk", "output3dShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3, "xZeroOmitted": "false", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "x_zero_point_main", "w_zero_point_main", "y", "params_ncdhw3d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_x_zero_point_only",
+      "when": ["rank5TensorOk", "scalarXZeroRequiredOk", "not present.w_zero_point", "groupChannelsOk", "output3dShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3, "xZeroOmitted": "false", "wZeroOmitted": "true" },
+          "bindings": ["x_main", "w", "x_zero_point_main", "y", "params_ncdhw3d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_w_zero_point_only",
+      "when": ["rank5TensorOk", "not present.x_zero_point", "scalarWZeroRequiredOk", "groupChannelsOk", "output3dShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3, "xZeroOmitted": "true", "wZeroOmitted": "false" },
+          "bindings": ["x_main", "w", "w_zero_point_main", "y", "params_ncdhw3d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ncdhw3d_implicit_zero_points",
+      "when": ["rank5TensorOk", "zeroPointsOmitted", "groupChannelsOk", "output3dShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger3d",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 3, "xZeroOmitted": "true", "wZeroOmitted": "true" },
+          "bindings": ["x_main", "w", "y", "params_ncdhw3d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nchw_implicit_zero_points",
+      "when": ["nchwTensorOk", "zeroPointsOmitted", "groupChannelsOk", "outputSpatialShapeOk"],
+      "derive": {},
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConvInteger",
+          "shader": "conv-int-accumulate-spatial.wgsl.jinja",
+          "derive": { "spatialRankSpec": 2, "xZeroOmitted": "true", "wZeroOmitted": "true" },
+          "bindings": ["x_main", "w", "y", "params_nchw2d_x_zero_point_only"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((numel(shapes.y)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

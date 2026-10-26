@@ -1,0 +1,494 @@
+{
+  "domain": "ai.onnx",
+  "name": "Concat",
+  "sinceVersion": 13,
+  "inputs": {
+    "a": { "onnx": "A", "dtype": "T" },
+    "b": { "onnx": "B", "dtype": "T", "optional": true },
+    "d": { "onnx": "D", "dtype": "T", "optional": true },
+    "e": { "onnx": "E", "dtype": "T", "optional": true },
+    "f": { "onnx": "F", "dtype": "T", "optional": true },
+    "g": { "onnx": "G", "dtype": "T", "optional": true },
+    "h": { "onnx": "H", "dtype": "T", "optional": true },
+    "i": { "onnx": "I", "dtype": "T", "optional": true },
+    "j": { "onnx": "J", "dtype": "T", "optional": true }
+  },
+  "outputs": {
+    "c": {
+      "onnx": "concat_result",
+      "dtype": "T",
+      "rank": "ranks.a",
+      "shape": "prefix(shapes.a, concatAxis) + [concatExtent] + suffix(shapes.a, concatAxis + 1)"
+    }
+  },
+  "attributes": { "axis": {} },
+  "attributeConstraints": { "axis": { "required": true } },
+  "typeConstraints": { "T": ["float32", "float16", "uint32", "int32", "int16", "uint8", "int8", "bool", "int64"] },
+  "tunables": {
+    "WORKGROUP_SIZE": { "default": 256 },
+    "LAST_AXIS_COOPERATIVE_WORKGROUP_SIZE": { "default": 64 },
+    "LAST_AXIS_COOPERATIVE_MIN_WIDTH": { "default": 256 }
+  },
+  "derive": {
+    "deviceWorkgroupCap": "min(device.limits.maxComputeInvocationsPerWorkgroup, device.limits.maxComputeWorkgroupSizeX)",
+    "concatAxis": "attrs.axis + ranks.a if attrs.axis < 0 else attrs.axis",
+    "concatExtent": "dim(shapes.a, concatAxis) + (dim(shapes.b, concatAxis) if present.b else 0) + (dim(shapes.d, concatAxis) if present.d else 0) + (dim(shapes.e, concatAxis) if present.e else 0) + (dim(shapes.f, concatAxis) if present.f else 0) + (dim(shapes.g, concatAxis) if present.g else 0) + (dim(shapes.h, concatAxis) if present.h else 0) + (dim(shapes.i, concatAxis) if present.i else 0) + (dim(shapes.j, concatAxis) if present.j else 0)",
+    "baseContract": "ranks.c >= 1 and attrs.axis + ranks.c >= 0 and attrs.axis < ranks.c and f16Ok(dtypes.T)",
+    "oneInputContract": "baseContract and not present.b and not present.d and not present.e and not present.f and not present.g and not present.h and not present.i and not present.j and sameShape(shapes.a, shapes.c)",
+    "twoInputContract": "baseContract and present.b and not present.d and ranks.a == ranks.c and ranks.b == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b)",
+    "threeInputContract": "baseContract and present.b and present.d and not present.e and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d)",
+    "fourInputContract": "baseContract and present.d and present.e and not present.f and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e)",
+    "fiveInputContract": "baseContract and present.d and present.e and present.f and not present.g and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and ranks.f == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e) + numel(shapes.f)",
+    "sixInputContract": "baseContract and present.d and present.e and present.f and present.g and not present.h and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and ranks.f == ranks.c and ranks.g == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e) + numel(shapes.f) + numel(shapes.g)",
+    "sevenInputContract": "baseContract and present.d and present.e and present.f and present.g and present.h and not present.i and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and ranks.f == ranks.c and ranks.g == ranks.c and ranks.h == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e) + numel(shapes.f) + numel(shapes.g) + numel(shapes.h)",
+    "eightInputContract": "baseContract and present.d and present.e and present.f and present.g and present.h and present.i and not present.j and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and ranks.f == ranks.c and ranks.g == ranks.c and ranks.h == ranks.c and ranks.i == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e) + numel(shapes.f) + numel(shapes.g) + numel(shapes.h) + numel(shapes.i)",
+    "nineInputContract": "baseContract and present.d and present.e and present.f and present.g and present.h and present.i and present.j and ranks.a == ranks.c and ranks.b == ranks.c and ranks.d == ranks.c and ranks.e == ranks.c and ranks.f == ranks.c and ranks.g == ranks.c and ranks.h == ranks.c and ranks.i == ranks.c and ranks.j == ranks.c and numel(shapes.c) == numel(shapes.a) + numel(shapes.b) + numel(shapes.d) + numel(shapes.e) + numel(shapes.f) + numel(shapes.g) + numel(shapes.h) + numel(shapes.i) + numel(shapes.j)",
+    "nineBlockContract": "nineInputContract and numel(shapes.a) > 0 and numel(shapes.b) > 0 and numel(shapes.d) > 0 and numel(shapes.e) > 0 and numel(shapes.f) > 0 and numel(shapes.g) > 0 and numel(shapes.h) > 0 and numel(shapes.i) > 0 and numel(shapes.j) > 0 and outer(shapes.a, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.b, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.d, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.e, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.f, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.g, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.h, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.i, attrs.axis) == outer(shapes.c, attrs.axis) and outer(shapes.j, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.a, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.b, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.d, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.e, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.f, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.g, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.h, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.i, attrs.axis) == inner(shapes.c, attrs.axis) and inner(shapes.j, attrs.axis) == inner(shapes.c, attrs.axis)",
+    "twoBlockContract": "twoInputContract and numel(shapes.c) > 0 and numel(shapes.a) > 0 and numel(shapes.b) > 0 and outer(shapes.a, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.a, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.b, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.b, attrs.axis) == inner(shapes.c, attrs.axis)",
+    "threeBlockContract": "threeInputContract and numel(shapes.c) > 0 and numel(shapes.a) > 0 and numel(shapes.b) > 0 and numel(shapes.d) > 0 and outer(shapes.a, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.a, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.b, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.b, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.d, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.d, attrs.axis) == inner(shapes.c, attrs.axis)",
+    "fourBlockContract": "fourInputContract and numel(shapes.c) > 0 and numel(shapes.a) > 0 and numel(shapes.b) > 0 and numel(shapes.d) > 0 and numel(shapes.e) > 0 and outer(shapes.a, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.a, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.b, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.b, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.d, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.d, attrs.axis) == inner(shapes.c, attrs.axis) and outer(shapes.e, attrs.axis) == outer(shapes.c, attrs.axis) and inner(shapes.e, attrs.axis) == inner(shapes.c, attrs.axis)",
+    "twoLastAxisVec4TailContract": "twoBlockContract and (attrs.axis == -1 or attrs.axis == ranks.c - 1) and dtypes.T == \"f32\" and dim(shapes.c, attrs.axis) % 4 == 0 and (dim(shapes.a, attrs.axis) % 4 != 0 or dim(shapes.b, attrs.axis) % 4 != 0) and outer(shapes.c, attrs.axis) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) and ceilDiv(dim(shapes.c, attrs.axis), 4 * tunables.WORKGROUP_SIZE) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "twoLastAxisCooperativeContract": "twoBlockContract and (attrs.axis == -1 or attrs.axis == ranks.c - 1) and dim(shapes.a, attrs.axis) % 4 == 0 and dim(shapes.b, attrs.axis) % 4 == 0 and dim(shapes.c, attrs.axis) >= tunables.LAST_AXIS_COOPERATIVE_MIN_WIDTH and tunables.LAST_AXIS_COOPERATIVE_WORKGROUP_SIZE > 0 and tunables.LAST_AXIS_COOPERATIVE_WORKGROUP_SIZE <= deviceWorkgroupCap and outer(shapes.c, attrs.axis) <= min(device.limits.maxComputeWorkgroupsPerDimension, 65535) * min(device.limits.maxComputeWorkgroupsPerDimension, 65535)",
+    "cShape": "shapes.c",
+    "rank": "ranks.c",
+    "axisSpec": "concatAxis"
+  },
+  "bindings": {
+    "a": { "elementType": "$scalar" },
+    "b": { "elementType": "$scalar" },
+    "d": { "elementType": "$scalar" },
+    "e": { "elementType": "$scalar" },
+    "f": { "elementType": "$scalar" },
+    "c": { "elementType": "$scalar" },
+    "g": { "elementType": "$scalar" },
+    "h": { "elementType": "$scalar" },
+    "i": { "elementType": "$scalar" },
+    "j": { "elementType": "$scalar" },
+    "a_main": { "name": "a", "elementType": "$ioScalar" },
+    "b_main": { "name": "b", "elementType": "$ioScalar" },
+    "c_main": { "name": "c", "elementType": "$outputElement" },
+    "d_main": { "name": "d", "elementType": "$ioScalar" },
+    "c_concat_n": { "name": "c", "elementType": "$ioScalar" },
+    "e_main": { "name": "e", "elementType": "$ioScalar" }
+  },
+  "variants": [
+    {
+      "id": "one_input_copy",
+      "priority": 30,
+      "when": ["oneInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat.Copy",
+          "shader": "datamove-flat-copy.wgsl.jinja",
+          "derive": { "count": "numel(shapes.c)" },
+          "bindings": [
+            { "arg": "a", "name": "src", "elementType": "$scalar" },
+            { "arg": "c", "name": "dst", "elementType": "$scalar" }
+          ],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c)), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          },
+          "viewAlias": [{ "input": "src", "output": "dst" }]
+        }
+      ]
+    },
+    {
+      "id": "eight_input_split",
+      "priority": 1,
+      "when": ["eightInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "head",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f} ]",
+            "partialTail": "true"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h}, {\"name\": \"i\", \"shape\": shapes.i} ]",
+            "axisBase": "dim(shapes.a, concatAxis) + dim(shapes.b, concatAxis) + dim(shapes.d, concatAxis) + dim(shapes.e, concatAxis) + dim(shapes.f, concatAxis)"
+          },
+          "bindings": ["g", "h", "i", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nine_input_split",
+      "priority": 2,
+      "when": ["nineInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "head",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f} ]",
+            "partialTail": "true"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        },
+        {
+          "id": "tail",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h}, {\"name\": \"i\", \"shape\": shapes.i}, {\"name\": \"j\", \"shape\": shapes.j} ]",
+            "axisBase": "dim(shapes.a, concatAxis) + dim(shapes.b, concatAxis) + dim(shapes.d, concatAxis) + dim(shapes.e, concatAxis) + dim(shapes.f, concatAxis)"
+          },
+          "bindings": ["g", "h", "i", "j", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "two_input_last_axis_vec4_tail",
+      "priority": 14,
+      "when": ["dtypes.T != \"vec2<u32>\"", "twoLastAxisVec4TailContract"],
+      "derive": { "scalar": "dtypes.T", "ioScalar": "dtypes.T", "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat.LastAxisVec4Tail",
+          "shader": "concat-last-axis-vec4-tail.wgsl.jinja",
+          "derive": {
+            "aWidth": "dim(shapes.a, attrs.axis)",
+            "bWidth": "dim(shapes.b, attrs.axis)",
+            "cWidth": "dim(shapes.c, attrs.axis)"
+          },
+          "bindings": ["a_main", "b_main", "c_main"],
+          "dispatch": {
+            "x": "ceilDiv(dim(shapes.c, attrs.axis), 4 * tunables.WORKGROUP_SIZE)",
+            "y": "outer(shapes.c, attrs.axis)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "two_input_last_axis_cooperative_vec4",
+      "priority": 16,
+      "when": ["dtypes.T != \"vec2<u32>\"", "twoLastAxisCooperativeContract"],
+      "demoteWhen": ["has(device.adapterInfo, \"architecture\") and device.adapterInfo.architecture == \"maxwell\""],
+      "derive": { "ioScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat.LastAxisCooperativeVec4",
+          "shader": "datamove-concat-last-axis-cooperative.wgsl.jinja",
+          "derive": {
+            "rowCount": "outer(shapes.c, attrs.axis)",
+            "aWidth": "dim(shapes.a, attrs.axis) / 4",
+            "bWidth": "dim(shapes.b, attrs.axis) / 4",
+            "workgroupSizeSpec": "tunables.LAST_AXIS_COOPERATIVE_WORKGROUP_SIZE"
+          },
+          "bindings": ["a_main", "b_main", "c_main"],
+          "dispatch": {
+            "x": "min(outer(shapes.c, attrs.axis), 65535)",
+            "y": "ceilDiv(outer(shapes.c, attrs.axis), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "two_input_block_vec4",
+      "priority": 15,
+      "when": ["dtypes.T != \"vec2<u32>\"", "twoBlockContract", "(dim(shapes.a, attrs.axis) * inner(shapes.a, attrs.axis)) % 4 == 0", "(dim(shapes.b, attrs.axis) * inner(shapes.b, attrs.axis)) % 4 == 0"],
+      "derive": { "ioScalar": "\"vec4<\" ~ dtypes.T ~ \">\"", "outputElement": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat.BlockVec4",
+          "shader": "datamove-concat-block.wgsl.jinja",
+          "derive": { "aShape": "shapes.a", "bShape": "shapes.b", "inputCount": 2, "count": "numel(shapes.c) / 4" },
+          "bindings": ["a_main", "b_main", "c_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_input_block_vec4",
+      "priority": 15,
+      "when": ["dtypes.T != \"vec2<u32>\"", "threeBlockContract", "(dim(shapes.a, attrs.axis) * inner(shapes.a, attrs.axis)) % 4 == 0", "(dim(shapes.b, attrs.axis) * inner(shapes.b, attrs.axis)) % 4 == 0", "(dim(shapes.d, attrs.axis) * inner(shapes.d, attrs.axis)) % 4 == 0"],
+      "derive": { "ioScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat3.BlockVec4",
+          "shader": "datamove-concat-block.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "dShape": "shapes.d",
+            "inputCount": 3,
+            "count": "numel(shapes.c) / 4"
+          },
+          "bindings": ["a_main", "b_main", "d_main", "c_concat_n"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "four_input_block_vec4",
+      "priority": 25,
+      "when": ["dtypes.T != \"vec2<u32>\"", "fourBlockContract", "(dim(shapes.a, attrs.axis) * inner(shapes.a, attrs.axis)) % 4 == 0", "(dim(shapes.b, attrs.axis) * inner(shapes.b, attrs.axis)) % 4 == 0", "(dim(shapes.d, attrs.axis) * inner(shapes.d, attrs.axis)) % 4 == 0", "(dim(shapes.e, attrs.axis) * inner(shapes.e, attrs.axis)) % 4 == 0"],
+      "derive": { "ioScalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat4.BlockVec4",
+          "shader": "datamove-concat-block.wgsl.jinja",
+          "derive": {
+            "aShape": "shapes.a",
+            "bShape": "shapes.b",
+            "dShape": "shapes.d",
+            "eShape": "shapes.e",
+            "inputCount": 4,
+            "count": "numel(shapes.c) / 4"
+          },
+          "bindings": ["a_main", "b_main", "d_main", "e_main", "c_concat_n"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "two_input",
+      "when": ["twoInputContract"],
+      "derive": { "ioScalar": "dtypes.T", "outputElement": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": { "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b} ]" },
+          "bindings": ["a_main", "b_main", "c_main"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "four_input",
+      "priority": 20,
+      "when": ["fourInputContract"],
+      "derive": { "ioScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat4",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e} ]"
+          },
+          "bindings": ["a_main", "b_main", "d_main", "e_main", "c_concat_n"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "five_input",
+      "priority": 21,
+      "when": ["fiveInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f} ]"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "six_input",
+      "priority": 22,
+      "when": ["sixInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f}, {\"name\": \"g\", \"shape\": shapes.g} ]"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "g", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "seven_input",
+      "priority": 23,
+      "when": ["sevenInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f}, {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h} ]"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "g", "h", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "eight_input",
+      "priority": 24,
+      "when": ["eightInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f}, {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h}, {\"name\": \"i\", \"shape\": shapes.i} ]"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "g", "h", "i", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nine_input_block_vec4",
+      "priority": 26,
+      "when": ["dtypes.T != \"vec2<u32>\"", "nineBlockContract", "dtypes.T == \"f32\" or dtypes.T == \"f16\" or dtypes.T == \"i32\" or dtypes.T == \"u32\"", "(dim(shapes.a, attrs.axis) * inner(shapes.a, attrs.axis)) % 4 == 0", "(dim(shapes.b, attrs.axis) * inner(shapes.b, attrs.axis)) % 4 == 0", "(dim(shapes.d, attrs.axis) * inner(shapes.d, attrs.axis)) % 4 == 0", "(dim(shapes.e, attrs.axis) * inner(shapes.e, attrs.axis)) % 4 == 0", "(dim(shapes.f, attrs.axis) * inner(shapes.f, attrs.axis)) % 4 == 0", "(dim(shapes.g, attrs.axis) * inner(shapes.g, attrs.axis)) % 4 == 0", "(dim(shapes.h, attrs.axis) * inner(shapes.h, attrs.axis)) % 4 == 0", "(dim(shapes.i, attrs.axis) * inner(shapes.i, attrs.axis)) % 4 == 0", "(dim(shapes.j, attrs.axis) * inner(shapes.j, attrs.axis)) % 4 == 0"],
+      "derive": { "scalar": "\"vec4<\" ~ dtypes.T ~ \">\"" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat9.BlockVec4",
+          "shader": "datamove-concat-block.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f}, {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h}, {\"name\": \"i\", \"shape\": shapes.i}, {\"name\": \"j\", \"shape\": shapes.j} ]",
+            "count": "numel(shapes.c) / 4"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "g", "h", "i", "j", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((numel(shapes.c) / 4), (tunables.WORKGROUP_SIZE)), min(device.limits.maxComputeWorkgroupsPerDimension, 65535))",
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nine_input",
+      "priority": 25,
+      "when": ["nineInputContract"],
+      "derive": { "scalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "ConcatN",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d}, {\"name\": \"e\", \"shape\": shapes.e}, {\"name\": \"f\", \"shape\": shapes.f}, {\"name\": \"g\", \"shape\": shapes.g}, {\"name\": \"h\", \"shape\": shapes.h}, {\"name\": \"i\", \"shape\": shapes.i}, {\"name\": \"j\", \"shape\": shapes.j} ]"
+          },
+          "bindings": ["a", "b", "d", "e", "f", "g", "h", "i", "j", "c"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "three_input",
+      "priority": 10,
+      "when": ["threeInputContract"],
+      "derive": { "ioScalar": "dtypes.T" },
+      "passes": [
+        {
+          "id": "main",
+          "name": "Concat3",
+          "shader": "concat-n.wgsl.jinja",
+          "derive": {
+            "inputs": "[ {\"name\": \"a\", \"shape\": shapes.a}, {\"name\": \"b\", \"shape\": shapes.b}, {\"name\": \"d\", \"shape\": shapes.d} ]"
+          },
+          "bindings": ["a_main", "b_main", "d_main", "c_concat_n"],
+          "dispatch": {
+            "x": "min(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "y": "ceilDiv(ceilDiv((ceilDiv(numel(shapes.c), 4)), (tunables.WORKGROUP_SIZE)), 65535)",
+            "z": 1
+          }
+        }
+      ]
+    }
+  ]
+}

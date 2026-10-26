@@ -1,0 +1,247 @@
+{
+  "cases": [
+    {
+      "name": "dispatch_cliff_scalar_over_16M",
+      "attrs": { "alpha": 1.702 },
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [16776961], "data": { "kind": "linspace", "start": -4.0, "end": 4.0 } }
+      },
+      "outputs": { "Y": { "dtype": "float32", "shape": [16776961], "tolerance": 0.0001 } }
+    },
+    {
+      "name": "ort_default_alpha_extreme_safe_sigmoid",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "Default alpha path over very large magnitudes; the safe sigmoid should not overflow."
+      },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [1, 9],
+          "data": { "kind": "values", "values": [-1000.0, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1000.0] }
+        }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [1, 9],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [0.0, 0.0, -2.980232238769531e-7, -0.15420421957969666, 0.0, 0.845795750617981, 10.0, 100.0, 1000.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_alpha_one_matches_silu_edges",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu"
+      },
+      "attrs": { "alpha": 1 },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [7],
+          "data": { "kind": "values", "values": [-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0] }
+        }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [7],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [0.0, -0.0004538893699645996, -0.2689414322376251, 0.0, 0.7310585975646973, 9.99954605102539, 100.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_negative_alpha_flips_gate",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu"
+      },
+      "attrs": { "alpha": -1.702 },
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-3.0, -1.0, 0.0, 1.0, 3.0] } }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [5],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [-2.981928825378418, -0.845795750617981, 0.0, 0.15420421957969666, 0.018071293830871582]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_negative_alpha_extreme_safe_sigmoid",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "Upstream negative-alpha branch extended over the same large magnitudes as the positive-alpha ORT vector to guard the stable sigmoid reformulation."
+      },
+      "attrs": { "alpha": -1.702 },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [1, 9],
+          "data": { "kind": "values", "values": [-1000.0, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1000.0] }
+        }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [1, 9],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [-1000.0, -100.0, -10.0, -0.845795750617981, 0.0, 0.15420423448085785, 4.0579612914370955e-7, 0.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "ort_empty_rank4",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "notes": "Empty tensors should preserve shape and produce no values."
+      },
+      "inputs": { "X": { "dtype": "float32", "shape": [1, 0, 2, 3], "data": { "kind": "values", "values": [] } } },
+      "outputs": { "Y": { "dtype": "float32", "shape": [1, 0, 2, 3], "data": { "kind": "values", "values": [] } } }
+    },
+    {
+      "name": "vec4_default_alpha_mixed_magnitudes",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "numel divisible by 4 so the vec4 variant is exercised; default alpha over a spread of signs/magnitudes."
+      },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "data": { "kind": "values", "values": [-2.0, -0.5, 0.0, 0.5, 2.0, 1.0, -1.0, 4.0] }
+        }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [2, 4],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [-0.06434137374162674, -0.14961156249046326, 0.0, 0.35038843750953674, 1.935658574104309, 0.845795750617981, -0.15420423448085785, 3.9955852031707764]
+          }
+        }
+      }
+    },
+    {
+      "name": "alpha_zero_halves_input",
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "Additional edge: alpha=0 makes sigmoid(alpha*x)=0.5 for every finite x."
+      },
+      "attrs": { "alpha": 0 },
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [5], "data": { "kind": "values", "values": [-3.0, -1.0, 0.0, 1.0, 3.0] } }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [5],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-1.5, -0.5, 0.0, 0.5, 1.5] }
+        }
+      }
+    },
+    {
+      "name": "alpha_zero_subnormal_half_input_vec4_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "With alpha=0, QuickGelu is exactly x/2, so signed subnormal inputs should not flush to zero in the vec4 path."
+      },
+      "attrs": { "alpha": 0 },
+      "inputs": {
+        "X": {
+          "dtype": "float32",
+          "shape": [4],
+          "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-38, -1e-38] }
+        }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [4],
+          "tolerance": 2e-45,
+          "data": {
+            "kind": "values",
+            "values": [4.99997305055738e-41, -4.99997305055738e-41, 4.999999675228202e-39, -4.999999675228202e-39]
+          }
+        }
+      }
+    },
+    {
+      "name": "alpha_zero_subnormal_half_input_scalar_gpu_gap",
+      "skipGpu": {
+        "category": "permanent",
+        "reason": "Portable WGSL floating-point semantics do not guarantee preservation of the subnormal values required by this fixture. Backend evidence: WebGPU/Metal flushes subnormals to zero (f32 and f16); the kernel cannot preserve denormal inputs/outputs bit-exactly."
+      },
+      "provenance": {
+        "source": "onnxruntime/test/contrib_ops/activation_op_test.cc",
+        "test": "ActivationOpTest.QuickGelu",
+        "notes": "With `alpha = 0`, subnormal inputs exercise exact half-input behavior on the scalar path."
+      },
+      "attrs": { "alpha": 0 },
+      "inputs": {
+        "X": { "dtype": "float32", "shape": [3], "data": { "kind": "values", "values": [1e-40, -1e-40, 1e-38] } }
+      },
+      "outputs": {
+        "Y": {
+          "dtype": "float32",
+          "shape": [3],
+          "tolerance": 2e-45,
+          "data": { "kind": "values", "values": [4.99997305055738e-41, -4.99997305055738e-41, 4.999999675228202e-39] }
+        }
+      }
+    },
+    {
+      "name": "f16_values",
+      "attrs": { "alpha": 1.702 },
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-4.0, -2.0, -0.5, 0.0, 0.5, 1.0, 2.0, 4.0] }
+        }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8], "tolerance": 0.005 } }
+    },
+    {
+      "name": "f16_default_alpha_extreme_stable_sigmoid",
+      "attrs": { "alpha": 1.702 },
+      "inputs": {
+        "X": {
+          "dtype": "float16",
+          "shape": [8],
+          "data": { "kind": "values", "values": [-1000.0, -100.0, -10.0, -1.0, 1.0, 10.0, 100.0, 1000.0] }
+        }
+      },
+      "outputs": { "Y": { "dtype": "float16", "shape": [8], "tolerance": 0.02 } }
+    }
+  ]
+}

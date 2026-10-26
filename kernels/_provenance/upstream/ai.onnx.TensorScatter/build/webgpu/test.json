@@ -1,0 +1,636 @@
+{
+  "fixtureArrays": {
+    "ort_linear_4d_spec_example_input_past": [1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 4, 3, 2, 1, 0],
+    "ort_linear_3d_default_axis_input_past": [1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 8, 7, 6, 5, 4, 5, 4, 3, 2, 1],
+    "ort_linear_3d_default_axis_input_update": [4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3],
+    "ort_circular_4d_wrap_second_batch_input_update": [5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+  },
+  "cases": [
+    {
+      "name": "dispatch_cliff_no_write_indices",
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 1, 65537, 256], "data": { "kind": "constant", "value": 0.0 } },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 1, 65537, 256],
+          "data": { "kind": "cycle", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }
+        }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 1, 65537, 256], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_linear_4d_spec_example",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_4D"
+      },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_4d_spec_example_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 5],
+          "data": { "kind": "values", "values": [5.0, 5.0, 5.0, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [1, 2] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [2, 1, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "decode_kv_update_f32_axis_minus2_compact",
+      "provenance": {
+        "notes": "A compact decode-style TensorScatter uses axis=-2, per-batch write indices, a full-cache copy, and one-token update rows."
+      },
+      "attrs": { "mode": "linear", "axis": -2 },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [4, 2, 128, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.011, "cosStep": 0.017, "scale": 0.5 }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [4, 2, 1, 64],
+          "data": { "kind": "fillFloat32", "sinStep": 0.019, "cosStep": 0.029, "scale": 0.5 }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [4], "data": { "kind": "values", "values": [3, 17, 64, 127] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [4, 2, 128, 64], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_linear_3d_default_axis",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_3D"
+      },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_3d_default_axis_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_3d_default_axis_input_update" } }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 2, 0] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [3, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_circular_4d_wrap_second_batch",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Circular_4D"
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_4d_spec_example_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 5],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_circular_4d_wrap_second_batch_input_update" }
+          }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [1, 3] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [2, 1, 4, 5], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_linear_no_write_indices_defaults_zero",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_NoWriteIndices"
+      },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 1, 4, 3], "data": { "kind": "constant", "value": 0.0 } },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 1, 2, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 1, 4, 3], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "linear_zero_length_update_is_copy",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_NoWriteIndices",
+        "notes": "Valid zero-length update along the cache axis: scatter has no elements and the output should be an exact copy of past_cache."
+      },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 4, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0] }
+        },
+        "update": { "dtype": "float32", "shape": [1, 0, 2], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "float32",
+          "shape": [1, 4, 2],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0] }
+        }
+      }
+    },
+    {
+      "name": "ort_linear_float16_default_axis",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_Float16"
+      },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "float16",
+          "shape": [1, 4, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0] }
+        },
+        "update": { "dtype": "float16", "shape": [1, 1, 3], "data": { "kind": "values", "values": [99.0, 98.0, 97.0] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "present": { "dtype": "float16", "shape": [1, 4, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "ort_linear_explicit_axis1_batch_indices",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_ExplicitAxis"
+      },
+      "attrs": { "mode": "linear", "axis": 1 },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [2, 3, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [0, 2] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [2, 3, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "ort_circular_wraparound_rank3",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Circular_WrapAround"
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 4, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0] }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [2] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 4, 2], "tolerance": 0.000001 } }
+    },
+    {
+      "name": "onnx_backend_tensorscatter",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tensorscatter" },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_4d_spec_example_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 5],
+          "data": { "kind": "values", "values": [5.0, 5.0, 5.0, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [1, 2] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 8.0, 7.0, 6.0, 5.0, 4.0, 4.0, 3.0, 2.0, 1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 6.0, 7.0, 8.0, 9.0, 1.0, 1.0, 1.0, 1.0, 1.0, 4.0, 3.0, 2.0, 1.0, 0.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_tensorscatter_3d",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tensorscatter_3d" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_3d_default_axis_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [3, 2, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_3d_default_axis_input_update" } }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [3], "data": { "kind": "values", "values": [1, 2, 0] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "float32",
+          "shape": [3, 4, 5],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 4.0, 3.0, 2.0, 1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 6.0, 7.0, 8.0, 9.0, 6.0, 6.0, 6.0, 6.0, 6.0, 7.0, 7.0, 7.0, 7.0, 7.0, 2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0, 8.0, 7.0, 6.0, 5.0, 4.0, 5.0, 4.0, 3.0, 2.0, 1.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "onnx_backend_tensorscatter_circular",
+      "provenance": { "source": "cmake/external/onnx/onnx/backend/test/data/node/test_tensorscatter_circular" },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "data": { "kind": "values", "values": { "$ref": "#/fixtureArrays/ort_linear_4d_spec_example_input_past" } }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 2, 5],
+          "data": {
+            "kind": "values",
+            "values": { "$ref": "#/fixtureArrays/ort_circular_4d_wrap_second_batch_input_update" }
+          }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [1, 3] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "float32",
+          "shape": [2, 1, 4, 5],
+          "tolerance": 0.000001,
+          "data": {
+            "kind": "values",
+            "values": [1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 6.0, 6.0, 6.0, 6.0, 6.0, 4.0, 3.0, 2.0, 1.0, 0.0, 2.0, 2.0, 2.0, 2.0, 2.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+          }
+        }
+      }
+    },
+    {
+      "name": "empty_input_zero_dim",
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [0, 1, 4, 5], "data": { "kind": "values", "values": [] } },
+        "update": { "dtype": "float32", "shape": [0, 1, 1, 5], "data": { "kind": "values", "values": [] } },
+        "writeIndices": { "dtype": "uint32", "shape": [0], "data": { "kind": "values", "values": [] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [0, 1, 4, 5], "tolerance": 0 } }
+    },
+    {
+      "name": "scalar_copy_path_odd_numel_with_write_indices_f32",
+      "attrs": { "mode": "linear", "axis": -2 },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [2, 1, 5, 7],
+          "data": { "kind": "fillFloat32", "sinStep": 0.7, "scale": 3.0, "offset": 1.0 }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [2, 1, 1, 7],
+          "data": {
+            "kind": "values",
+            "values": [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 200.0, 201.0, 202.0, 203.0, 204.0, 205.0, 206.0]
+          }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [2], "data": { "kind": "values", "values": [2, 4] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [2, 1, 5, 7], "tolerance": 0 } }
+    },
+    {
+      "name": "circular_wrap_multi_position_split_across_boundary_f32",
+      "attrs": { "mode": "circular", "axis": -2 },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 5, 3],
+          "data": {
+            "kind": "values",
+            "values": [10.0, 11.0, 12.0, 20.0, 21.0, 22.0, 30.0, 31.0, 32.0, 40.0, 41.0, 42.0, 50.0, 51.0, 52.0]
+          }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 4, 3],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 13.0, 14.0, 15.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 5, 3], "tolerance": 0 } }
+    },
+    {
+      "name": "linear_write_offset_overflows_max_seq_guard_drops_tail_f32",
+      "attrs": { "mode": "linear", "axis": -2 },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 4, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0] }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 4, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "explicit_axis1_rank4_nonaxis_stride_tail_mapping_f16",
+      "attrs": { "mode": "linear", "axis": 1 },
+      "inputs": {
+        "past": {
+          "dtype": "float16",
+          "shape": [1, 5, 1, 3],
+          "data": { "kind": "fillFloat32", "sinStep": 0.37, "scale": 4.0, "offset": 2.0 }
+        },
+        "update": {
+          "dtype": "float16",
+          "shape": [1, 2, 1, 3],
+          "data": { "kind": "cycle", "values": [70.0, 71.0, 72.0, 80.0, 81.0, 82.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [2] } }
+      },
+      "outputs": { "present": { "dtype": "float16", "shape": [1, 5, 1, 3], "tolerance": 0.001 } }
+    },
+    {
+      "name": "rank8_linear_cache_axis_write",
+      "attrs": { "mode": "linear", "axis": 6 },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 4, 2],
+          "data": { "kind": "linspace", "start": 1.0, "end": 64.0 }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 2, 1, 2, 1, 2, 2, 2],
+          "data": { "kind": "fillFloat32", "sinStep": 0.17, "cosStep": 0.29 }
+        }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 2, 1, 2, 1, 2, 4, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_standard_int32_linear_extremes",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "Int32 extrema and values beyond float32 exactness check that scatter preserves payload values without numeric conversion."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "int32",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [-2147483648, 17, 2147483647, -17] }
+        },
+        "update": {
+          "dtype": "int32",
+          "shape": [1, 1, 2],
+          "data": { "kind": "values", "values": [16777217, -16777217] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "int32",
+          "shape": [1, 1, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [-2147483648, 16777217, -16777217, -17] }
+        }
+      }
+    },
+    {
+      "name": "ort_standard_int16_linear_extremes",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "ONNX TensorScatter-24 permits int16; both signed extrema verify logical int16 values stored in i32 slots during copy and overwrite."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "int16",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [-32768, -1, 32767, 42] }
+        },
+        "update": { "dtype": "int16", "shape": [1, 1, 2], "data": { "kind": "values", "values": [12345, -12345] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "present": { "dtype": "int16", "shape": [1, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_standard_int8_linear_extremes",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "ONNX TensorScatter-24 permits int8; signed extrema distinguish the widened i32 storage route from a lossy conversion."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "int8", "shape": [1, 1, 4], "data": { "kind": "values", "values": [-128, -1, 127, 42] } },
+        "update": { "dtype": "int8", "shape": [1, 1, 2], "data": { "kind": "values", "values": [64, -64] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "present": { "dtype": "int8", "shape": [1, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_standard_uint32_linear_extremes",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "TensorScatter-24 with uint32: update values include 16,777,217 (one past float32's exact-integer limit) and 4,000,000,000 (above int32 range); linear mode writes them at indices 1-2, leaving 0 and 2,147,483,648 (the int32/uint32 sign boundary) untouched."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": {
+          "dtype": "uint32",
+          "shape": [1, 1, 4],
+          "data": { "kind": "values", "values": [0, 17, 4294967295, 2147483648] }
+        },
+        "update": {
+          "dtype": "uint32",
+          "shape": [1, 1, 2],
+          "data": { "kind": "values", "values": [16777217, 4000000000] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "uint32",
+          "shape": [1, 1, 4],
+          "tolerance": 0,
+          "data": { "kind": "values", "values": [0, 16777217, 4000000000, 2147483648] }
+        }
+      }
+    },
+    {
+      "name": "ort_standard_uint8_linear_extremes",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "ONNX TensorScatter-24 permits uint8; UINT8_MAX and the signed boundary guard widened u32 storage."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "uint8", "shape": [1, 1, 4], "data": { "kind": "values", "values": [0, 127, 255, 128] } },
+        "update": { "dtype": "uint8", "shape": [1, 1, 2], "data": { "kind": "values", "values": [254, 1] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "present": { "dtype": "uint8", "shape": [1, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_standard_bool_linear_pattern",
+      "provenance": {
+        "source": "onnxruntime/core/providers/cpu/llm/tensorscatter.cc",
+        "notes": "ONNX TensorScatter-24 permits bool; an asymmetric overwrite checks the widened u32 boolean payload route."
+      },
+      "attrs": { "axis": 2, "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "bool", "shape": [1, 1, 4], "data": { "kind": "values", "values": [0, 0, 1, 1] } },
+        "update": { "dtype": "bool", "shape": [1, 1, 2], "data": { "kind": "values", "values": [1, 0] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [1] } }
+      },
+      "outputs": { "present": { "dtype": "bool", "shape": [1, 1, 4], "tolerance": 0 } }
+    },
+    {
+      "name": "circular_update_longer_than_capacity_last_write_wins",
+      "provenance": {
+        "notes": "Six update rows enter a four-slot circular cache from write index 3: rows 0 and 4 both land on slot 3, while rows 1 and 5 land on slot 0. Sequence order makes the later row determine each collision, producing [[60,61],[30,31],[40,41],[50,51]] regardless of GPU scheduling."
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 4, 2], "data": { "kind": "constant", "value": 0.0 } },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 6, 2],
+          "data": {
+            "kind": "values",
+            "values": [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0, 50.0, 51.0, 60.0, 61.0]
+          }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [3] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 4, 2], "tolerance": 0 } }
+    },
+    {
+      "name": "circular_write_index_at_u32_ceiling",
+      "provenance": {
+        "notes": "A circular cache reduces the write index modulo the capacity, and the sum of index and offset was formed before the reduction. At a write index near the u32 ceiling that sum wraps, so the second update lands on the slot the first one already took instead of the next one, and the two race. Slots 0 and 1 here are what int64 arithmetic names."
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0] }
+        },
+        "update": {
+          "dtype": "float32",
+          "shape": [1, 2, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [4294967295] } }
+      },
+      "outputs": {
+        "present": {
+          "dtype": "float32",
+          "shape": [1, 3, 2],
+          "data": { "kind": "values", "values": [10.0, 11.0, 20.0, 21.0, -5.0, -6.0] },
+          "tolerance": 0
+        }
+      }
+    },
+    {
+      "name": "ort_circular_batch_larger_than_max_sequence_length",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Circular_BatchLargerThanMaxSequenceLength",
+        "notes": "batch_size 5 exceeds max_sequence_length 4, so a modulo applied to the whole index tuple (instead of only the sequence coordinate) would fold batch 4 into batch 0. Sequence positions wrap 3 -> 0 within every batch."
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [5, 4, 1], "data": { "kind": "constant", "value": -1.0 } },
+        "update": {
+          "dtype": "float32",
+          "shape": [5, 2, 1],
+          "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0] }
+        },
+        "writeIndices": { "dtype": "uint32", "shape": [5], "data": { "kind": "values", "values": [3, 3, 3, 3, 3] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [5, 4, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_circular_zero_sequence_length_is_no_op",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Circular_ZeroSequenceLengthIsNoOp",
+        "notes": "A zero-length cache axis in circular mode: the operator must be a no-op. write_indices is INT64_MAX upstream; writeIndices storage here is uint32, so the u32 ceiling stands in for it."
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 0, 1], "data": { "kind": "values", "values": [] } },
+        "update": { "dtype": "float32", "shape": [1, 0, 1], "data": { "kind": "values", "values": [] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [4294967295] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 0, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_circular_zero_sequence_length_preserves_cache",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Circular_ZeroSequenceLengthPreservesCache",
+        "notes": "Zero-length update in circular mode with a huge write index must leave the cache untouched. Upstream uses INT64_MAX; writeIndices storage here is uint32, so the u32 ceiling stands in."
+      },
+      "attrs": { "mode": "circular" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 4, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "update": { "dtype": "float32", "shape": [1, 0, 1], "data": { "kind": "values", "values": [] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [4294967295] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 4, 1], "tolerance": 0 } }
+    },
+    {
+      "name": "ort_linear_zero_sequence_length_write_index_at_capacity",
+      "provenance": {
+        "source": "onnxruntime/test/providers/cpu/llm/tensorscatter_op_test.cc",
+        "test": "TensorScatterTest.Linear_ZeroSequenceLengthPreservesCache",
+        "notes": "write_indices == max_sequence_length is legal in linear mode only because sequence_length is 0; the result must be an exact copy of past_cache."
+      },
+      "attrs": { "mode": "linear" },
+      "inputs": {
+        "past": { "dtype": "float32", "shape": [1, 4, 1], "data": { "kind": "values", "values": [1.0, 2.0, 3.0, 4.0] } },
+        "update": { "dtype": "float32", "shape": [1, 0, 1], "data": { "kind": "values", "values": [] } },
+        "writeIndices": { "dtype": "uint32", "shape": [1], "data": { "kind": "values", "values": [4] } }
+      },
+      "outputs": { "present": { "dtype": "float32", "shape": [1, 4, 1], "tolerance": 0 } }
+    }
+  ]
+}
