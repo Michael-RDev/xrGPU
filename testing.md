@@ -7,6 +7,11 @@ inference, xrBench qualification, automatic xrGPU kernel selection, and sustaine
 XR behavior. All items are pending until actual device results are recorded.
 Commands below run from the connected computer to drive tests on the headset.
 
+Section 11 separately records the native catalog software baseline and the
+remaining conformance/API/xrBench integration checks. These local checks can
+continue while hardware is unavailable; software passes do not check off any
+physical-device gate. This documentation update did not rerun tests.
+
 Use the [xrBench qualification runbook](../xrBench/docs/model-qualification.md)
 for campaign preparation and the [integration workflow](docs/automatic-integration.md)
 for building the final qualified library. The current frozen release is
@@ -246,8 +251,9 @@ as eligible; pending evidence grants no selection.
 These are separate validation tracks from the model-inference package above.
 Mark an unavailable test as blocked with its missing integration/runner identified.
 
-- [ ] **Standalone native operators:** execute every compiled operation/type
-  variant and applicable frozen upstream fixture on the Quest's native Vulkan
+- [ ] **Standalone native operators (detailed gates in section 11):** execute
+  every compiled operation/type variant and applicable frozen upstream fixture
+  on the Quest's native Vulkan
   backend. Record actual coverage, failures, unsupported cases, and oracle conflicts.
 - [ ] Exercise broadcasting, scalar/empty/rank-one/batched tensors, zero-length
   contraction, dtype boundaries, FP16 rounding/subnormals/NaN/Inf/signed zero,
@@ -263,6 +269,193 @@ Mark an unavailable test as blocked with its missing integration/runner identifi
 - [ ] Keep physical correctness, performance, and sustained-XR results distinct
   for each package; a pass in one track does not qualify another.
 
+## 11. Standalone native catalog: remaining test gates
+
+See [native operators](operators/README.md) and the
+[extended typed API](operators/extended/README.md). This library executes C++ and
+Vulkan/SPIR-V without a browser runtime. Unsupported standalone operator requests
+must fail explicitly without numerical CPU fallback; the model Session fallback
+policy above is a different validation track.
+
+### Recorded native baseline — 2026-10-26
+
+The immutable local package is
+[`native-operators-all-v3`](artifacts/packages/native-operators-all-v3/manifest.json),
+SHA-256 `f929c8ddf3aa440ed6610db96a79b1d1a0edce8c892793ae98153d08e4502bbb`.
+It contains 38 legacy and 183 extended operator identities, 315 validated SPIR-V
+binaries, both Android arm64 operator libraries, and 1,716 inventoried files.
+Its qualification status remains **unqualified**.
+
+| Direct v3 check | Saved result | Coverage boundary |
+| --- | --- | --- |
+| Legacy native API | 117/117 operator/type cases passed | 38 operator identities |
+| Extended tensor operators | 90/90 representatives passed | One representative per identity |
+| Extended spatial operators | 57/57 representatives passed | One representative per identity |
+| Extended attention/recurrent/quantized operators | 36/36 representatives passed | One representative per identity |
+| Tensor edge-case suite | 54/54 passed | Selected integer, precision, shape, control-flow and sorting cases |
+| Core/API suite | 12/12 passed | Includes optional Unique output capacities and undersized-bound rejection |
+| Empty Pad regression | Passed | Shape `[0,1048594,3]`, zero output bytes |
+| Frozen NMS/QuantizeLinear subset | 156 passed, 1 failed, 18 unsupported | 175 cases; the failed Int16 quantization route is outside the frozen declared `uint8`/`int8` output mask and remains a non-pass |
+| Compilation and package integrity | Passed | 315 SPIR-V validations, host build checks, Android libraries and file digests |
+
+The representative runs cover **all 221 identities in 300 legacy-type/extended
+smoke cases**. They do not establish all dtype/attribute/shape combinations or
+completion of the **13,919 frozen correctness cases**. Android compilation is not
+Android execution. No physical XR-device or performance qualification exists.
+These are saved results; this checklist update did not rerun them.
+
+Evidence:
+
+- [Final evidence ledger](artifacts/conformance/native-operators-all-v3/v2-to-v3-transfer.json)
+- [Legacy](artifacts/conformance/native-operators-all-v3/legacy-variants.json),
+  [tensor](artifacts/conformance/native-operators-all-v3/tensor-representatives.json),
+  [spatial](artifacts/conformance/native-operators-all-v3/spatial-representatives.json),
+  [complex](artifacts/conformance/native-operators-all-v3/complex-representatives.json)
+- [Tensor edge cases](artifacts/conformance/native-operators-all-v3/tensor-features.json),
+  [core/dynamic capacities](artifacts/conformance/native-operators-all-v3/core-dynamic-capacity.json),
+  [empty Pad](artifacts/conformance/native-operators-all-v3/empty-pad/report.json)
+- [Frozen NMS/quantization results](artifacts/conformance/native-operators-all-v3/nms-quantize-frozen.json)
+- [Unique gap analysis](artifacts/conformance/native-operators-all-v2/unique-gap-analysis.json)
+
+The ledger separately transfers 104 spatial, four complex quantization/recurrent,
+six GQA and four SparseAttention feature checks from v2 by verified component
+identity. Those are **v2 executions**, not 118 additional direct v3 runs. The
+104-case spatial suite includes its 57 representatives. Of 315 v2/v3 shader
+binaries, 225 are byte-identical and 90 tensor binaries changed and were rerun.
+The older 29 rotary development goldens are not transferable to the final
+shader inventory. Preserve original report/package bindings and v1/v2 packages.
+
+### Remaining contract conformance — priority 1
+
+- [ ] Build a per-contract/per-case ledger for all 13,919 frozen cases, preserving
+  source revisions, fixture hashes and original `skipGpu` annotations. Reassess
+  each skip; unexecuted, unsupported, timed-out and reference-blocked cases do
+  not count as parity passes.
+- [ ] Implement the exact published fixture generators still unsupported by the
+  harness, including `fillFloat32`; add independent references where expected
+  outputs are absent. Use ONNX Runtime CPU where compatible and independent
+  NumPy/PyTorch references otherwise. Do not guess generator semantics.
+- [ ] Cover declared types, attributes/defaults and argument precedence,
+  broadcasting, optional inputs/outputs, scalar versus empty shapes, irregular
+  dimensions, zero-length contractions, overflow, signed zero, NaN/Inf and
+  subnormal behavior. Check typed FP16 intermediate stages and quantization
+  precision, not only final storage conversion.
+- [ ] Resolve Unique's frozen NaN/provider behavior and rerun its full suite.
+  The earlier 307-case audit recorded 242 passes, 60 failures, four reference
+  conflicts and one resource gap. Its detailed analysis separates **35 observed
+  native NaN/provider mismatches**, **23 oracle shape failures before GPU
+  execution**, **two logical-shape versus padded-capacity differences**, and
+  **four conflicts where native Y matches the published result but NumPy axis
+  semantics differ**. These are different failure classes, not 60 proven shader
+  errors or 60 bad goldens; they are not a fresh full v3 Unique run.
+- [ ] Resolve the Int16 QuantizeLinear route explicitly: implement and test a
+  documented native extension if required, or retain its unsupported status.
+  Preserve the original failed fixture status; do not silently cast to an
+  implemented output type or edit the frozen type mask.
+- [ ] Resolve missing tolerance/accumulation-policy questions, including older
+  strict-exact Gemm/MatMul comparisons, using independent evidence. Investigate
+  published-reference conflicts separately. Compare integer/bool outputs
+  exactly and floats with the original contract-specific policy; never loosen
+  global tolerances to turn failures into passes.
+- [ ] Add a dedicated negative-invocation suite. The current frozen harness
+  leaves `expectError`/`expect_error` fixtures unsupported. Exercise invalid
+  types/ranks/attributes, non-broadcastable shapes, bad controls, allocation and
+  dispatch limits, and documented index behavior: Gather zero-fill differs from
+  Scatter's explicit error contract.
+- [ ] Expand resource-boundary cases beyond the configured fixture element cap;
+  retain bounded preparation/execution timeouts and separate timeout from a
+  numerical mismatch. Record every remaining limit and untested combination.
+
+### Remaining API, state and failure checks — priority 2
+
+- [ ] Expand optional-output combinations and dynamic-count tests: zero actual
+  count, exact capacity, spare capacity, insufficient capacity, static-dimension
+  rejection, and large counts. Read back actual GPU shapes and bytes without a
+  CPU-computed result length. The general capacity-bound fix already passes.
+- [ ] Cover logical Int64/physical UInt32 controls and outputs, full-width signed
+  values, narrowing overflow rejection, raw copy/bitcast fidelity, all half
+  encodings and concurrent byte/half stores. No silent type conversion.
+- [ ] Verify prepare/run/read_outputs/info/close ownership, repeated execution,
+  synchronization, cancellation, timeout/device-loss cleanup, use after close,
+  multiple independent operators and concurrent preparation. Check resources
+  and output validity after failures; no stale successful result may escape.
+- [ ] Test multi-step attention, recurrent and causal-convolution state feedback:
+  request changed outputs, read them, and supply them to a **new prepare**.
+  Repeated `run()` uses the original prepared inputs and is not state feedback.
+  Compare ragged lengths, growth/eviction, paging/CSR layouts, quantized caches,
+  rotary/normalization options and retained padding against independent oracles.
+- [ ] Verify the documented native cache ownership policy. Returned cache/state
+  tensors are owned copies; caller host tensors are not mutated, and no aliased
+  GPU-buffer ABI is exposed. Preserve this difference from published in-place
+  cache contracts in compatibility reports.
+- [ ] Recheck all pass dependencies and the actual loaded shader hashes after
+  source/compiler/runtime changes. Rebuild the runner from the same package's
+  source and generated hash headers; a live-checkout runner is not equivalent.
+
+### Android/Quest 3 execution and performance — priority 3
+
+- [ ] Connect an authorized Quest 3, record its actual Android/GPU/driver/Vulkan
+  identities, and execute a production Android runner built against this exact
+  native package. Include both legacy and extended APIs and all required passes.
+- [ ] Run the full typed correctness matrix on the device against preserved
+  references, starting small before larger/resource-boundary cases. Software
+  Vulkan results do not establish Adreno behavior, including precision and
+  subnormal handling.
+- [ ] Probe device limits/capabilities before dispatch. Verify unsupported GPU
+  features, type routes, memory/descriptor/dispatch limits and CPU Vulkan devices
+  fail explicitly; Android production must reject software-test overrides.
+- [ ] Measure preparation/pipeline compilation, upload, execution and readback
+  separately. Use warmups, randomized paired comparisons and repeated sessions;
+  measure cold preparation separately from resident repeated execution. No speedup
+  follows from compilation, an operator count or a software-driver timing.
+- [ ] Test sustained OpenXR coexistence, cancellation/focus changes, telemetry,
+  memory/resource growth, thermal behavior and recovery. Apply the applicable
+  device/performance/XR gates above before making those claims.
+
+### xrBench extended-operator integration — separate gate
+
+The existing `xrgpu_vulkan` fixture lane covers legacy Add/Relu/MatMul. It does
+not prove all 221 operators are selectable or executable in xrBench.
+
+- [ ] Add/validate the extended native adapter and separate typed fixture suite:
+  attributes, logical/storage types, optional inputs, multiple outputs, dynamic
+  shapes and cache/state outputs must survive the host/Android interface.
+- [ ] Verify backend selection and explicit capability skips in the existing
+  controls, cancellation and OpenXR measurement flow. Preserve current suites,
+  model qualification and their independent acceptance policies.
+- [ ] Embed/link the verified libraries and every required shader pass. Rebuild
+  affected APKs, verify embedded hashes/provenance, and reject stale APKs.
+- [ ] Check reports carry operator/contract identity, package revision, tensor
+  descriptors, correctness, actual shader hashes, skip reasons and separately
+  measured preparation, transfer/readback and execution costs. Run offline.
+
+### Rerun and evidence requirements
+
+- [ ] For the next revision, run working-tree host regressions covering native
+  operators, half/unary routines, package provenance, Int64/storage conversion,
+  quantized caches, spatial/complex references and frozen fixture validation.
+  Run the planner/framework tests with `python -m operators.build --plan-only`.
+- [ ] Build and validate every mapped SPIR-V dependency and both Android arm64
+  libraries from an immutable source inventory. A runner built from the live
+  checkout cannot qualify a different packaged snapshot.
+- [ ] Rerun `operators.verify_local` and the extended tensor/spatial/complex
+  representatives, core/dynamic-capacity, GQA, SparseAttention and Unique suites
+  against the delivered bytes. Broaden frozen coverage with `verify_frozen`,
+  `verify_spatial_published` and `operators.verify_upstream`; inspect unsupported
+  and reference-conflict counts as well as the process exit code.
+- [ ] Execute packaged Python references from outside the checkout with
+  `PYTHONPATH=PACKAGE/source`, `PYTHONDONTWRITEBYTECODE=1` and `python -B`. Use a
+  native software Vulkan loader/ICD only in the explicitly marked test build.
+  Build host executables outside the package; keep Android production free of
+  the software-test override. See the linked API instructions for build flags.
+- [ ] Choose fresh evidence/output directories, preserve raw tensors and original
+  reports, and record package/source/runner/reference/shader hashes and versions.
+  Saved job JSON may point at old output paths; do not replay it unchanged.
+  Verify the full package inventory before and after execution.
+- [ ] Keep pass, failure, unsupported, oracle-conflict, timeout and unexecuted
+  statuses distinct. Never add transferred v2 checks to direct v3 counts or count
+  the 29 older rotary goldens as final-shader proof. Document every remaining gap.
+
 ## Record results and finish
 
 For each checked item, save test ID/configuration, pass/fail/blocked status,
@@ -274,5 +467,8 @@ hashes, seed/session, logs, raw report path, and relevant `Session.info()` outpu
   for every promoted rule; failed or skipped cases remain explicit.
 - [ ] Final production automatic selection, fallback, lifecycle, and recovery
   tests pass on the intended Quest.
+- [ ] A standalone full-parity claim has per-contract/case conformance evidence;
+  operator-identity smoke coverage is insufficient. Keep that status separate
+  from model-rule eligibility and physical/performance/XR qualification.
 - [ ] Preserve original reports, campaign, shortlist, final rules, qualification
   record, and exact installed artifact inventory. Mark remaining gaps explicitly.
