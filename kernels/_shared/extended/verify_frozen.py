@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import numpy as np
 from kernels._shared.verify_upstream import (
+    ReferenceConflict,
     UnsupportedFixture,
     materialize,
     compare,
@@ -60,6 +61,21 @@ def reference_for(family):
             return importlib.import_module("kernels._shared.extended." + family + "_reference").oracle
         except (ModuleNotFoundError, AttributeError):
             return None
+
+
+def _save_failure(destination, case, arrays, expected, actuals, independent):
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination / "case.json").write_text(json.dumps(safe_json(case), indent=2, allow_nan=False))
+    for name, value in arrays.items():
+        value.tofile(destination / (name + ".input.bin"))
+    for name, value in expected.items():
+        value.tofile(destination / (name + ".expected.bin"))
+    for name, value in actuals.items():
+        value.tofile(destination / (name + ".actual.bin"))
+    if independent is not None:
+        for name, value in independent.items():
+            np.asarray(value).tofile(destination / (name + ".independent.bin"))
+    return str(destination)
 
 
 def check(package, runner, output, family="tensor", maximum=1_000_000, selected=None, limit=None):
@@ -134,6 +150,26 @@ def check(package, runner, output, family="tensor", maximum=1_000_000, selected=
                     row["oracle"] = "independent_reference"
                 else:
                     raise UnsupportedFixture("No complete published or independent reference")
+                if independent is not None:
+                    conflicts = [
+                        dict(
+                            name=name,
+                            declared_shape=spec["shape"],
+                            independent_shape=list(np.asarray(independent[name]).shape),
+                        )
+                        for name, spec in declared.items()
+                        if list(np.asarray(independent[name]).shape) != spec["shape"]
+                    ]
+                    if conflicts:
+                        # A contradictory reference cannot supply a valid native output request.
+                        row["oracle_conflicts"] = conflicts
+                        row["failure_artifacts"] = _save_failure(
+                            failures / f"case-{len(rows):05d}",
+                            case, arrays, expected, {}, independent,
+                        )
+                        raise ReferenceConflict(
+                            "Independent oracle shape differs from declared contract"
+                        )
                 for name, array in expected.items():
                     if list(array.shape) != declared[name]["shape"]:
                         raise ValueError(
@@ -224,21 +260,12 @@ def check(package, runner, output, family="tensor", maximum=1_000_000, selected=
                     if conflicts:
                         row["oracle_conflicts"] = conflicts
                     if row["status"] != "passed":
-                        dest = failures / f"case-{len(rows):05d}"
-                        dest.mkdir(parents=True, exist_ok=True)
-                        (dest / "case.json").write_text(
-                            json.dumps(safe_json(case), indent=2, allow_nan=False)
+                        row["failure_artifacts"] = _save_failure(
+                            failures / f"case-{len(rows):05d}",
+                            case, arrays, expected, actuals, independent,
                         )
-                        for n, v in arrays.items():
-                            v.tofile(dest / (n + ".input.bin"))
-                        for n, v in expected.items():
-                            v.tofile(dest / (n + ".expected.bin"))
-                        for n, v in actuals.items():
-                            v.tofile(dest / (n + ".actual.bin"))
-                        if independent is not None:
-                            for n, v in independent.items():
-                                np.asarray(v).tofile(dest / (n + ".independent.bin"))
-                        row["failure_artifacts"] = str(dest)
+            except ReferenceConflict as error:
+                row.update(status="reference_conflict", reason=str(error))
             except UnsupportedFixture as error:
                 row["reason"] = str(error)
             except Exception as error:

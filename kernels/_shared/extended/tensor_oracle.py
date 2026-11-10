@@ -284,9 +284,21 @@ def oracle(operation, x, attrs=None, args=None, outputs=None):
             axes = x["axes"].flat if "axes" in x else range(x["starts"].size)
             steps = x["steps"].flat if "steps" in x else [1] * x["starts"].size
             for start, end, axis, step in zip(starts, ends, axes, steps):
-                end = int(end)
-                end = None if int(step) < 0 and (end <= -2147483648 or end >= 2147483647) else end
-                slices[int(axis)] = slice(int(start), end, int(step))
+                start, end, axis, step = map(int, (start, end, axis, step))
+                if step == 0:
+                    raise ValueError("Slice step is zero")
+                size = first.shape[axis]
+                start = start + size if start < 0 else start
+                end = end + size if end < 0 else end
+                # Normalize ONNX bounds before NumPy applies its own negative-index rules.
+                if step > 0:
+                    start = min(max(start, 0), size)
+                    end = min(max(end, 0), size)
+                else:
+                    start = min(max(start, 0), max(0, size - 1))
+                    end = min(max(end, -1), size - 1)
+                    end = None if end == -1 else end
+                slices[axis] = slice(start, end, step)
             return result(first[tuple(slices)])
         if name == "Gather":
             indices = values[1].astype(np.int64)
