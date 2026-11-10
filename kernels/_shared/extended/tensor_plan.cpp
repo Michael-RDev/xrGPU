@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "framework.h"
+#include "half_host.h"
 #include "tensor_specs.h"
 #include <cctype>
 #include <numeric>
@@ -11,8 +12,11 @@ namespace {
 std::vector<std::string> names(const char* text){std::vector<std::string> v;std::istringstream s(text);std::string n;while(std::getline(s,n,','))if(!n.empty())v.push_back(n);return v;}
 std::vector<int64_t> controls(const Tensor& t){std::vector<int64_t> v;for(size_t i=0;i<numel(t);++i)v.push_back(control_i(t,i));return v;}
 double scalar(const Tensor& t){
- if(t.dtype==DType::Float16){if(t.data.size()<2)throw std::invalid_argument("Missing half control");uint16_t b;std::memcpy(&b,t.data.data(),2);auto e=(b>>10)&31,m=b&1023;double x=e==0?std::ldexp(double(m),-24):e==31?(m?NAN:INFINITY):std::ldexp(double(m+1024),int(e)-25);return b&32768?-x:x;}
- return control_f(t);
+ const double value=control_f(t);
+ // Decode physical storage first, then apply the same logical half rounding as pack_plan.
+ return t.dtype==DType::Float16
+  ? double(half_host::xrgpuHalfToFloat(half_host::xrgpuFloatToHalf(float(value))))
+  : value;
 }
 DType onnx_type(int64_t t,DType fallback){switch(t){case 0:return fallback;case 1:return DType::Float32;case 2:return DType::UInt8;case 3:return DType::Int8;case 5:return DType::Int16;case 6:return DType::Int32;case 7:return DType::Int64;case 9:return DType::Bool;case 10:return DType::Float16;case 12:return DType::UInt32;default:throw std::invalid_argument("Unsupported native ONNX dtype");}}
 DType selected_type(const Request& r,const std::string& key,DType fallback){auto s=arg_s(r,key,"");if(!s.empty())return parse_dtype(s);return onnx_type(arg_i(r,key,0),fallback);}
@@ -71,7 +75,36 @@ bool plan_tensor(const Request& source,ExtendedPlan& p){
  case TX_EXPAND:{auto target=controls(need(1));emit(broadcast(need(0).shape,target),first_type());break;}
  case TX_TILE:{auto s=need(0).shape,repeats=controls(need(1));if(s.size()!=repeats.size())throw std::invalid_argument("Tile repeats rank mismatch");for(size_t i=0;i<s.size();++i){if(repeats[i]<0)throw std::invalid_argument("Negative Tile repeat");s[i]*=repeats[i];}emit(s,first_type());break;}
  case TX_PAD:{auto s=need(0).shape,pads=attr_is(r,"pads");if(pads.size()!=2*s.size())throw std::invalid_argument("Pad needs beginning and ending pads for every axis");for(size_t d=0;d<s.size();++d){s[d]+=pads[d]+pads[d+s.size()];if(s[d]<0)throw std::invalid_argument("Pad crops beyond tensor extent");}if(numel(s)>0)for(size_t d=0;d<s.size();++d)if(need(0).shape[d]+std::min<int64_t>(pads[d],0)+std::min<int64_t>(pads[d+s.size()],0)<0)throw std::invalid_argument("Pad crops beyond tensor extent");shape_args(p,32,pads);auto mode=attr_s(r,"mode","constant");p.args[1]=mode=="constant"?0:mode=="edge"?1:mode=="reflect"?2:mode=="wrap"?3:UINT32_MAX;if(p.args[1]==UINT32_MAX)throw std::invalid_argument("Unknown Pad mode");emit(s,first_type());break;}
- case TX_SLICE:{auto s=need(0).shape,starts=controls(need(1)),ends=controls(need(2));if(starts.size()!=ends.size())throw std::invalid_argument("Slice start/end counts differ");auto axes=present(3)?controls(need(3)):std::vector<int64_t>{};if(axes.empty())for(size_t i=0;i<starts.size();++i)axes.push_back(int64_t(i));auto steps=present(4)?controls(need(4)):std::vector<int64_t>(starts.size(),1);if(axes.size()!=starts.size()||steps.size()!=starts.size())throw std::invalid_argument("Slice control lengths differ");for(size_t d=0;d<s.size();++d){p.args[32+d]=0;p.args[48+d]=1;}axes=normalized_axes(axes,s.size());for(size_t i=0;i<axes.size();++i){size_t a=size_t(axes[i]);int64_t n=need(0).shape[a],step=steps[i],start=starts[i],end=ends[i];if(step==0)throw std::invalid_argument("Slice step is zero");if(start<0)start+=n;if(step<0&&(end>=INT32_MAX||end<=INT32_MIN))end=-1;else if(end<0)end+=n;if(step>0){start=std::clamp(start,int64_t(0),n);end=std::clamp(end,int64_t(0),n);s[a]=end<=start?0:(end-start+step-1)/step;}else{start=std::clamp(start,int64_t(-1),n-1);end=std::clamp(end,int64_t(-1),n-1);s[a]=start<=end?0:(start-end-step-1)/(-step);}p.args[32+a]=uint32_t(start);p.args[48+a]=uint32_t(step);}emit(s,first_type());break;}
+ case TX_SLICE:{
+  auto s=need(0).shape,starts=controls(need(1)),ends=controls(need(2));
+  if(starts.size()!=ends.size())throw std::invalid_argument("Slice start/end counts differ");
+  auto axes=present(3)?controls(need(3)):std::vector<int64_t>{};
+  if(axes.empty())for(size_t i=0;i<starts.size();++i)axes.push_back(int64_t(i));
+  auto steps=present(4)?controls(need(4)):std::vector<int64_t>(starts.size(),1);
+  if(axes.size()!=starts.size()||steps.size()!=starts.size())throw std::invalid_argument("Slice control lengths differ");
+  for(size_t d=0;d<s.size();++d){p.args[32+d]=0;p.args[48+d]=1;}
+  axes=normalized_axes(axes,s.size());
+  for(size_t i=0;i<axes.size();++i){
+   size_t a=size_t(axes[i]);
+   int64_t n=need(0).shape[a],step=steps[i],start=starts[i],end=ends[i];
+   if(step==0)throw std::invalid_argument("Slice step is zero");
+   if(start<0)start+=n;
+   if(end<0)end+=n;
+   if(step>0){
+    start=std::clamp(start,int64_t(0),n);
+    end=std::clamp(end,int64_t(0),n);
+    s[a]=end<=start?0:1+(end-start-1)/step;
+   }else{
+    start=std::clamp(start,int64_t(0),std::max(int64_t(0),n-1));
+    end=std::clamp(end,int64_t(-1),n-1);
+    // Unsigned magnitude also handles INT64_MIN without signed overflow.
+    uint64_t magnitude=uint64_t(-(step+1))+1;
+    s[a]=n==0||start<=end?0:int64_t(1+uint64_t(start-end-1)/magnitude);
+   }
+   p.args[32+a]=uint32_t(start);p.args[48+a]=uint32_t(step);
+  }
+  emit(s,first_type());break;
+ }
  case TX_GATHER:{auto s=need(0).shape;auto a=axis(attr_i(r,"axis",0),s.size());p.args[1]=uint32_t(a);std::vector<int64_t> out(s.begin(),s.begin()+a);out.insert(out.end(),need(1).shape.begin(),need(1).shape.end());out.insert(out.end(),s.begin()+a+1,s.end());emit(out,first_type());break;}
  case TX_GATHER_ELEMENTS:{auto a=axis(attr_i(r,"axis",0),need(0).shape.size());if(need(0).shape.size()!=need(1).shape.size())throw std::invalid_argument("GatherElements input ranks differ");p.args[1]=uint32_t(a);emit(need(1).shape,first_type());break;}
  case TX_GATHER_N_D:{auto data=need(0).shape,indices=need(1).shape;if(indices.empty())throw std::invalid_argument("GatherND indices need a tuple dimension");auto b=attr_i(r,"batch_dims",0),k=indices.back();if(b<0||k<0||b+k>int64_t(data.size())||b>=int64_t(indices.size()))throw std::invalid_argument("Invalid GatherND batch/tuple dimensions");for(int64_t i=0;i<b;++i)if(data[size_t(i)]!=indices[size_t(i)])throw std::invalid_argument("GatherND batch shapes differ");std::vector<int64_t> out(indices.begin(),indices.end()-1);out.insert(out.end(),data.begin()+b+k,data.end());p.args[1]=uint32_t(b);p.args[2]=uint32_t(k);emit(out,first_type());break;}
@@ -84,7 +117,7 @@ bool plan_tensor(const Request& source,ExtendedPlan& p){
  if(parts.empty()&&!r.requested_outputs.empty()){for(const auto& t:r.requested_outputs){auto shape=t.shape;if(remove_axis){if(shape.size()+1!=s.size())throw std::invalid_argument("SplitToSequence output rank mismatch");shape.insert(shape.begin()+a,1);}if(shape.size()!=s.size())throw std::invalid_argument("Split output rank mismatch");for(size_t d=0;d<s.size();++d)if(d!=size_t(a)&&shape[d]!=s[d])throw std::invalid_argument("Split output non-axis shape mismatch");parts.push_back(shape[size_t(a)]);}}
  if(parts.empty()){if(sequence)n=s[size_t(a)];if(n<=0||n>int64_t(onames.size()))throw std::invalid_argument("Unsupported split output count");for(int64_t i=0;i<n;++i){int64_t width=sequence?1:(s[size_t(a)]+n-1)/n;parts.push_back(std::max<int64_t>(0,std::min(width,s[size_t(a)]-i*width)));}}
  if(sequence&&!r.requested_outputs.empty()&&parts.size()>r.requested_outputs.size())parts.resize(r.requested_outputs.size());auto sum=std::accumulate(parts.begin(),parts.end(),int64_t(0));if(parts.size()>onames.size()||(!sequence&&sum!=s[size_t(a)])||(sequence&&sum>s[size_t(a)]))throw std::invalid_argument("Split lengths exceed the axis");p.args[1]=uint32_t(a);uint32_t offset=0;for(size_t i=0;i<parts.size();++i){if(parts[i]<0)throw std::invalid_argument("Negative split extent");auto out=s;out[size_t(a)]=parts[i];if(remove_axis){if(parts[i]!=1)throw std::invalid_argument("Removing split axis requires singleton pieces");out.erase(out.begin()+a);}p.args[32+i]=offset;offset+=uint32_t(parts[i]);emit(out,first_type(),i);}p.args[2]=remove_axis;break;}
- case TX_COMPRESS:{auto s=need(0).shape;bool has_axis=r.attrs.integers.count("axis");auto a=has_axis?axis(attr_i(r,"axis"),s.size()):0;p.args[1]=uint32_t(a);p.args[2]=has_axis;if(!has_axis)s={int64_t(numel(need(0)))};auto capacity=std::min(uint64_t(s[size_t(a)]),numel(need(1)));s[size_t(a)]=int64_t(capacity);emit(s,first_type());dynamic(p,0,uint32_t(a),0);break;}
+ case TX_COMPRESS:{auto s=need(0).shape;bool has_axis=r.attrs.integers.count("axis")||r.attrs.numbers.count("axis");auto a=has_axis?axis(attr_i(r,"axis"),s.size()):0;p.args[1]=uint32_t(a);p.args[2]=has_axis;if(!has_axis)s={int64_t(numel(need(0)))};auto capacity=std::min(uint64_t(s[size_t(a)]),numel(need(1)));s[size_t(a)]=int64_t(capacity);emit(s,first_type());dynamic(p,0,uint32_t(a),0);break;}
  case TX_NON_ZERO:{auto n=numel(need(0));emit({int64_t(need(0).shape.size()),int64_t(n)},DType::Int64);dynamic(p,0,1,0);break;}
  case TX_UNIQUE:{auto s=need(0).shape;bool has_axis=r.attrs.integers.count("axis")||r.attrs.numbers.count("axis");auto a=has_axis?axis(attr_i(r,"axis"),s.size()):0;p.args[1]=uint32_t(a);p.args[2]=has_axis;p.args[3]=uint32_t(attr_i(r,"sorted",1));uint64_t n=has_axis?uint64_t(s[size_t(a)]):numel(need(0));if(!has_axis)s={int64_t(n)};emit(s,first_type());dynamic(p,0,uint32_t(a),0);for(size_t role=1;role<4;++role)p.args[8+role]=UINT32_MAX;p.args[8]=0;for(size_t requested=1;requested<r.requested_outputs.size();++requested){auto it=std::find(onames.begin(),onames.end(),r.requested_outputs[requested].name);if(it==onames.end()||it==onames.begin())throw std::invalid_argument("Unknown Unique output");size_t role=size_t(it-onames.begin());p.args[8+role]=uint32_t(p.outputs.size());add_output(p,onames[role],{int64_t(n)},DType::Int64);if(role!=2)dynamic(p,uint32_t(p.outputs.size()-1),0,0);}if(n>(UINT32_MAX-1u)/5u)throw std::invalid_argument("Unique workspace exceeds uint32 address range");p.scratch_words=uint32_t(1+3*n);
  if(n>512){auto unique_shader=[](uint32_t phase){return "tensor_unique_"+std::to_string(phase)+".spv";};p.scratch_words=uint32_t(1+5*n);auto args=p.args;uint32_t source=uint32_t(1+2*n),dest=uint32_t(1+3*n);args[20]=1;args[21]=source;p.passes.push_back({unique_shader(args[20]),args,uint32_t(n)});
