@@ -104,6 +104,10 @@ reports and the immutable campaign/shortlist. Synthetic protocol tests, host CPU
 execution, missing stages, stale package hashes and mixed devices cannot produce
 a production qualification record.
 
+To retrieve committed benchmark reports for an exact measured package, use
+[xrGPU's read-only database pull](benchmark-results.md). It caches reports and
+database provenance locally; qualification remains a separate release input.
+
 ## Build and use the qualified library
 
 Copy the qualification record to an explicit local release input, then build in

@@ -41,6 +41,22 @@ def test_atomic_cache_idempotence_conflict_and_preserved_report(tmp_path, envelo
     assert len(list(tmp_path.iterdir())) == 1
 
 
+@pytest.mark.parametrize("database_first", [False, True])
+def test_same_report_can_be_retried_from_another_source(tmp_path, envelope, database_first):
+    database = copy.deepcopy(envelope)
+    database["receipt"].update(
+        storage="postgresql", canonicalization="python", received_at="2026-11-10T00:00:00+00:00"
+    )
+    sources = [(envelope, "http://localhost:8766"), (database, "postgresql:xrgpu_benchmarks")]
+    if database_first:
+        sources.reverse()
+    assert import_result(sources[0][0], tmp_path, sources[0][1])["status"] == "imported"
+    target = tmp_path / envelope["report"]["run_id"]
+    original = {path.name: path.read_bytes() for path in target.iterdir()}
+    assert import_result(sources[1][0], tmp_path, sources[1][1])["status"] == "already imported"
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+
+
 @pytest.mark.parametrize("change", ["hash", "id", "status", "schema", "backend", "nan", "missing"])
 def test_invalid_evidence_never_written(tmp_path, envelope, change):
     if change == "hash":

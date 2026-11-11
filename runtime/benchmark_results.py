@@ -16,6 +16,7 @@ from pathlib import Path
 RUN_ID = re.compile(r"run-[0-9a-f]{32}\Z")
 DEFAULT_CACHE = Path(__file__).resolve().parents[1] / "artifacts/benchmarks"
 MAX_REPORT_BYTES = 128 * 1024 * 1024
+SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def import_archive(path, cache=DEFAULT_CACHE):
@@ -88,21 +89,87 @@ def digest(value):
     return hashlib.sha256(canonical(value)).hexdigest()
 
 
+def report_digest(report, algorithm="python"):
+    if algorithm == "python":
+        return digest(report)
+    if algorithm != "rfc8785":
+        raise ValueError("Unknown report canonicalization")
+    try:
+        import rfc8785
+    except ImportError:
+        raise RuntimeError(
+            "Install database support with `uv sync --extra database --inexact`."
+        ) from None
+
+    def javascript_numbers(value):
+        # JSONB expands exponents: JS's 1e20 arrives from psycopg as a Python
+        # integer. Restore JSON.parse's binary64 number semantics for hashing,
+        # while leaving the stored/cached report itself unchanged.
+        if type(value) is int and abs(value) > 2**53 - 1:
+            try:
+                return float(value)
+            except OverflowError:
+                raise ValueError("Report number exceeds the ECMAScript range") from None
+        if isinstance(value, dict):
+            return {key: javascript_numbers(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [javascript_numbers(item) for item in value]
+        return value
+
+    return hashlib.sha256(rfc8785.dumps(javascript_numbers(report))).hexdigest()
+
+
+def package_digest(report):
+    """Return the measured package identity, never the current checkout's version."""
+    config = report.get("configuration", {})
+    if report.get("schema_version") == 3:
+        value = report.get("native_package_sha256")
+        if value != config.get("native_package_sha256"):
+            raise ValueError("Native package identity disagrees with configuration")
+    else:
+        package = config.get("kernel_package", {})
+        value = package.get("content_sha256") if isinstance(package, dict) else None
+    if not isinstance(value, str) or not SHA256.fullmatch(value):
+        raise ValueError("Missing immutable benchmark package digest")
+    return value
+
+
 def verify(envelope, run_id):
-    if not RUN_ID.fullmatch(run_id) or not isinstance(envelope, dict):
+    if (
+        not isinstance(run_id, str)
+        or not RUN_ID.fullmatch(run_id)
+        or not isinstance(envelope, dict)
+    ):
         raise ValueError("Invalid run identity or result envelope")
     report, receipt = envelope.get("report"), envelope.get("receipt")
     if not isinstance(report, dict) or not isinstance(receipt, dict):
         raise ValueError("A complete report and database receipt are required")
-    if report.get("schema_version") != 2 or report.get("run_id") != run_id:
-        raise ValueError("Expected this run's native benchmark schema version 2 report")
+    schema = report.get("schema_version")
+    if type(schema) is not int or schema not in {2, 3} or report.get("run_id") != run_id:
+        raise ValueError("Expected this run's native benchmark schema version 2 or 3 report")
     if report.get("status") not in {"complete", "failed", "canceled"}:
         raise ValueError("Only terminal reports can be imported")
-    if report.get("execution_location") != "headset" or report.get("backend") != "executorch_vulkan":
-        raise ValueError("Expected native headset Vulkan evidence")
-    if not isinstance(report.get("results"), list) or not isinstance(report.get("configuration"), dict) or not isinstance(report.get("device"), dict):
+    backends = {2: {"executorch_cpu", "executorch_vulkan", "vulkan_resident"}, 3: {"xrgpu_vulkan"}}
+    if (
+        report.get("execution_location")
+        not in {"headset", "phone", "glasses", "compute_puck", "unknown"}
+        or report.get("backend") not in backends[schema]
+    ):
+        raise ValueError("Expected native device benchmark evidence")
+    if (
+        not isinstance(report.get("results"), list)
+        or not isinstance(report.get("configuration"), dict)
+        or not isinstance(report.get("device"), dict)
+    ):
         raise ValueError("Incomplete native report")
-    if receipt.get("stored") is not True or receipt.get("run_id") != run_id or receipt.get("sha256") != digest(report):
+    if schema == 3:
+        package_digest(report)
+    canonical(report)  # Reject non-finite values under either hash format.
+    if (
+        receipt.get("stored") is not True
+        or receipt.get("run_id") != run_id
+        or receipt.get("sha256") != report_digest(report, receipt.get("canonicalization", "python"))
+    ):
         raise ValueError("Database receipt does not match this exact report")
     return report, receipt
 
@@ -172,7 +239,9 @@ class Client:
 
 
 def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766"):
-    run_id = envelope.get("report", {}).get("run_id", "")
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("report"), dict):
+        raise ValueError("A complete report and database receipt are required")
+    run_id = envelope["report"].get("run_id", "")
     report, receipt = verify(envelope, run_id)
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
@@ -180,19 +249,40 @@ def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766")
 
     def existing():
         try:
-            old = {name: json.loads((target / (name + ".json")).read_text()) for name in ("report", "receipt")}
-            _, previous = verify(old, run_id)
+            old = {
+                name: json.loads((target / (name + ".json")).read_text())
+                for name in ("report", "receipt")
+            }
+            previous_report, previous = verify(old, run_id)
+            if not isinstance(json.loads((target / "source.json").read_text()), dict):
+                raise ValueError("Missing source provenance")
         except (OSError, ValueError) as error:
-            raise FileExistsError("Existing cached evidence is incomplete or corrupt; refusing to overwrite") from error
-        if previous != receipt:
+            raise FileExistsError(
+                "Existing cached evidence is incomplete or corrupt; refusing to overwrite"
+            ) from error
+        if previous["sha256"] != receipt["sha256"] or canonical(previous_report) != canonical(report):
             raise FileExistsError("Run ID already has different cached evidence")
-        return dict(run_id=run_id, sha256=receipt["sha256"], path=str(target), status="already imported")
+        return dict(
+            run_id=run_id, sha256=receipt["sha256"], path=str(target), status="already imported"
+        )
 
     if target.exists():
         return existing()
     temporary = Path(tempfile.mkdtemp(prefix="." + run_id + "-", dir=cache))
     try:
-        values = dict(report=report, receipt=receipt, source=dict(origin=source, imported_at=datetime.now(timezone.utc).isoformat(), kind="native_layer_baseline"))
+        provenance = dict(
+            origin=source,
+            imported_at=datetime.now(timezone.utc).isoformat(),
+            kind="native_benchmark_evidence",
+            backend=report["backend"],
+            execution_location=report["execution_location"],
+            verification="stored report integrity; hardware not attested",
+        )
+        try:
+            provenance["package_sha256"] = package_digest(report)
+        except ValueError:
+            pass  # Older baseline reports did not record a package identity.
+        values = dict(report=report, receipt=receipt, source=provenance)
         for name, value in values.items():
             with (temporary / (name + ".json")).open("wb") as stream:
                 stream.write(canonical(value))
@@ -211,7 +301,9 @@ def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import committed xrBench baseline evidence without running benchmarks.")
+    parser = argparse.ArgumentParser(
+        description="Import committed xrBench baseline evidence without running benchmarks."
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     listing = commands.add_parser("list", help="List committed runs")
     importing = commands.add_parser("import", help="Verify and cache reports and database receipts")
@@ -222,8 +314,45 @@ def main():
     selection.add_argument("--all", action="store_true")
     selection.add_argument("--archive", type=Path)
     importing.add_argument("--output", type=Path, default=DEFAULT_CACHE)
+    pulling = commands.add_parser(
+        "pull", help="Pull an exact package version from PostgreSQL (read only)"
+    )
+    pulling.add_argument(
+        "--package-sha256", required=True, help="Measured native package or benchmark-source digest"
+    )
+    pulling.add_argument(
+        "--run-id", help="Pull only this run, still requiring the exact package digest"
+    )
+    pulling.add_argument(
+        "--database-env",
+        default="XRGPU_DATABASE_URL",
+        help="Environment variable holding the private PostgreSQL DSN",
+    )
+    pulling.add_argument("--output", type=Path, default=DEFAULT_CACHE)
     args = parser.parse_args()
     try:
+        if args.command == "pull":
+            from runtime.benchmark_database import PostgresClient
+
+            dsn = os.environ.get(args.database_env)
+            if not dsn:
+                raise ValueError(
+                    "Set the selected database environment variable to a PostgreSQL DSN"
+                )
+            client = PostgresClient(dsn)
+            count = 0
+            for envelope in client.results(args.package_sha256, args.run_id):
+                print(
+                    json.dumps(
+                        import_result(envelope, args.output, source="postgresql:xrgpu_benchmarks")
+                    )
+                )
+                count += 1
+            if not count:
+                if args.run_id:
+                    raise ValueError("No committed run matches this run ID and package digest")
+                print("No committed xrBench runs match this package digest.")
+            return
         if args.command == "import" and args.archive:
             print(json.dumps(import_archive(args.archive, args.output), indent=2))
             return
@@ -239,8 +368,10 @@ def main():
             print(json.dumps(import_result(envelope, args.output, client.url)))
         if not rows:
             print("No committed xrBench runs to import.")
-    except (OSError, ValueError, KeyError, TypeError) as error:
-        raise SystemExit(f"xrBench import failed: {error}. Existing cached evidence is preserved.") from error
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+        raise SystemExit(
+            f"xrBench import failed: {error}. Existing cached evidence is preserved."
+        ) from error
 
 
 if __name__ == "__main__":
