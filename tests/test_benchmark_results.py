@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from runtime.benchmark_results import Client, NoRedirect, digest, import_result
+from runtime.benchmark_results import Client, NoRedirect, digest, import_result, report_digest
 
 
 @pytest.fixture
@@ -54,6 +54,74 @@ def test_same_report_can_be_retried_from_another_source(tmp_path, envelope, data
     target = tmp_path / envelope["report"]["run_id"]
     original = {path.name: path.read_bytes() for path in target.iterdir()}
     assert import_result(sources[1][0], tmp_path, sources[1][1])["status"] == "already imported"
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+
+
+@pytest.mark.parametrize("database_first", [False, True])
+def test_hosted_report_retries_allow_jsonb_number_normalization(
+    tmp_path, envelope, database_first
+):
+    pytest.importorskip("rfc8785")
+    envelope["report"]["device"]["readings"] = [1e20, -0.0]
+    envelope["receipt"].update(
+        sha256=report_digest(envelope["report"], "rfc8785"), canonicalization="rfc8785"
+    )
+    database = copy.deepcopy(envelope)
+    database["report"]["device"]["readings"] = [10**20, 0]
+    sources = [envelope, database]
+    if database_first:
+        sources.reverse()
+    assert import_result(sources[0], tmp_path)["status"] == "imported"
+    target = tmp_path / envelope["report"]["run_id"]
+    original = {path.name: path.read_bytes() for path in target.iterdir()}
+    assert import_result(sources[1], tmp_path)["status"] == "already imported"
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+    changed = copy.deepcopy(database)
+    changed["report"]["device"]["readings"][1] = 1
+    changed["receipt"]["sha256"] = report_digest(changed["report"], "rfc8785")
+    with pytest.raises(FileExistsError):
+        import_result(changed, tmp_path)
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {},
+        {"origin": ""},
+        {"imported_at": "invalid"},
+        {"imported_at": "2026-11-10T00:00:00"},
+        {"kind": "local_archive"},
+        {"backend": "executorch_cpu"},
+        {"execution_location": "phone"},
+        {"package_sha256": "b" * 64},
+    ],
+)
+def test_corrupt_source_provenance_is_rejected_without_changing_cache(tmp_path, envelope, change):
+    envelope["report"]["configuration"]["kernel_package"] = dict(content_sha256="a" * 64)
+    envelope["receipt"]["sha256"] = digest(envelope["report"])
+    import_result(envelope, tmp_path)
+    target = tmp_path / envelope["report"]["run_id"]
+    source = target / "source.json"
+    provenance = json.loads(source.read_text())
+    source.write_text(json.dumps(dict(provenance, **change) if change else {}))
+    original = {path.name: path.read_bytes() for path in target.iterdir()}
+    with pytest.raises(FileExistsError, match="incomplete or corrupt"):
+        import_result(envelope, tmp_path)
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+
+
+def test_legacy_source_provenance_can_still_be_retried(tmp_path, envelope):
+    envelope["report"]["configuration"]["kernel_package"] = dict(content_sha256="a" * 64)
+    envelope["receipt"]["sha256"] = digest(envelope["report"])
+    import_result(envelope, tmp_path)
+    target = tmp_path / envelope["report"]["run_id"]
+    (target / "source.json").write_text(json.dumps(dict(
+        origin="http://localhost:8766", imported_at="2026-10-26T00:00:00+00:00",
+        kind="native_layer_baseline",
+    )))
+    original = {path.name: path.read_bytes() for path in target.iterdir()}
+    assert import_result(envelope, tmp_path)["status"] == "already imported"
     assert {path.name: path.read_bytes() for path in target.iterdir()} == original
 
 

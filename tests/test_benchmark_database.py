@@ -353,6 +353,28 @@ def test_hosted_exponent_hash_survives_jsonb_number_expansion(store, native_repo
 
 
 @pytest.mark.parametrize("value", [1e20, -0.0])
+@pytest.mark.parametrize("database_first", [False, True])
+def test_hosted_report_retries_preserve_cache_across_sources(
+    store, native_report, tmp_path, value, database_first
+):
+    native_report["device"]["reading"] = value
+    seed(store, native_report, "rfc8785")
+    database_envelope = next(database.PostgresClient(store).results("a" * 64))
+    http = dict(report=native_report, receipt=dict(
+        stored=True, run_id=native_report["run_id"],
+        sha256=report_digest(native_report, "rfc8785"), canonicalization="rfc8785",
+    ))
+    sources = [http, database_envelope]
+    if database_first:
+        sources.reverse()
+    assert import_result(sources[0], tmp_path)["status"] == "imported"
+    target = tmp_path / native_report["run_id"]
+    original = {path.name: path.read_bytes() for path in target.iterdir()}
+    assert import_result(sources[1], tmp_path)["status"] == "already imported"
+    assert {path.name: path.read_bytes() for path in target.iterdir()} == original
+
+
+@pytest.mark.parametrize("value", [1e20, -0.0])
 def test_python_canonical_report_preserves_numbers_across_sources(
     canonical_store, native_report, tmp_path, value
 ):

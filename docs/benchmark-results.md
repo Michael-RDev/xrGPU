@@ -72,9 +72,14 @@ preserves numeric representations that JSONB discards. `receipt.json` records th
 hash encoding, committed receipt time and database run identity. `source.json`
 records import time, package digest, backend and execution location without the
 DSN. Identical retries across HTTP imports and database pulls leave the original
-cached report, receipt, and source files intact. Conflicting or incomplete
-cached evidence is never overwritten. If a later run fails, earlier verified
-runs remain cached and can be reused on retry.
+cached report, receipt, and source files intact. Retries compare reports using
+each receipt's hash encoding, so JSONB's normalization of exponent notation and
+signed zero does not create a false conflict for hosted JCS reports. Cached
+source provenance must contain a valid origin and import time, and its recorded
+package, backend and execution location must agree with the report. Older
+`native_layer_baseline` provenance remains supported. Conflicting or incomplete
+cached evidence is never overwritten. If a later run fails, earlier verified runs
+remain cached and can be reused on retry.
 
 Complete, failed and canceled native runs are retained with their existing
 statuses, including CPU and resident backend evidence. Importing proves stored

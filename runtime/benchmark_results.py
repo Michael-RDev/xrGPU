@@ -89,9 +89,9 @@ def digest(value):
     return hashlib.sha256(canonical(value)).hexdigest()
 
 
-def report_digest(report, algorithm="python"):
+def _report_payload(report, algorithm="python"):
     if algorithm == "python":
-        return digest(report)
+        return canonical(report)
     if algorithm != "rfc8785":
         raise ValueError("Unknown report canonicalization")
     try:
@@ -116,7 +116,11 @@ def report_digest(report, algorithm="python"):
             return [javascript_numbers(item) for item in value]
         return value
 
-    return hashlib.sha256(rfc8785.dumps(javascript_numbers(report))).hexdigest()
+    return rfc8785.dumps(javascript_numbers(report))
+
+
+def report_digest(report, algorithm="python"):
+    return hashlib.sha256(_report_payload(report, algorithm)).hexdigest()
 
 
 def package_digest(report):
@@ -132,6 +136,29 @@ def package_digest(report):
     if not isinstance(value, str) or not SHA256.fullmatch(value):
         raise ValueError("Missing immutable benchmark package digest")
     return value
+
+
+def _verify_source(source, report):
+    if (
+        not isinstance(source, dict)
+        or source.get("kind") not in ("native_layer_baseline", "native_benchmark_evidence")
+        or not isinstance(source.get("origin"), str)
+        or not source["origin"].strip()
+        or not isinstance(source.get("imported_at"), str)
+    ):
+        raise ValueError("Missing source provenance")
+    if datetime.fromisoformat(source["imported_at"]).tzinfo is None:
+        raise ValueError("Source import time requires a timezone")
+    current = source["kind"] == "native_benchmark_evidence"
+    for key in ("backend", "execution_location"):
+        if (current or key in source) and source.get(key) != report[key]:
+            raise ValueError("Source provenance disagrees with the report")
+    try:
+        package = package_digest(report)
+    except ValueError:
+        package = None  # Older baseline reports did not record a package identity.
+    if (current or "package_sha256" in source) and source.get("package_sha256") != package:
+        raise ValueError("Source package identity disagrees with the report")
 
 
 def verify(envelope, run_id):
@@ -243,6 +270,8 @@ def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766")
         raise ValueError("A complete report and database receipt are required")
     run_id = envelope["report"].get("run_id", "")
     report, receipt = verify(envelope, run_id)
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError("A source origin is required")
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
     target = cache / run_id
@@ -254,13 +283,16 @@ def import_result(envelope, cache=DEFAULT_CACHE, source="http://localhost:8766")
                 for name in ("report", "receipt")
             }
             previous_report, previous = verify(old, run_id)
-            if not isinstance(json.loads((target / "source.json").read_text()), dict):
-                raise ValueError("Missing source provenance")
+            _verify_source(json.loads((target / "source.json").read_text()), previous_report)
         except (OSError, ValueError) as error:
             raise FileExistsError(
                 "Existing cached evidence is incomplete or corrupt; refusing to overwrite"
             ) from error
-        if previous["sha256"] != receipt["sha256"] or canonical(previous_report) != canonical(report):
+        # JSONB normalizes exponent notation and signed zero. Compare the bytes
+        # authenticated by each receipt, retaining the first source's exact files.
+        if previous["sha256"] != receipt["sha256"] or _report_payload(
+            previous_report, previous.get("canonicalization", "python")
+        ) != _report_payload(report, receipt.get("canonicalization", "python")):
             raise FileExistsError("Run ID already has different cached evidence")
         return dict(
             run_id=run_id, sha256=receipt["sha256"], path=str(target), status="already imported"
