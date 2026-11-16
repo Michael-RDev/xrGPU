@@ -176,7 +176,10 @@ def verify(envelope, run_id):
         raise ValueError("Expected this run's native benchmark schema version 2 or 3 report")
     if report.get("status") not in {"complete", "failed", "canceled"}:
         raise ValueError("Only terminal reports can be imported")
-    backends = {2: {"executorch_cpu", "executorch_vulkan", "vulkan_resident"}, 3: {"xrgpu_vulkan"}}
+    backends = {
+        2: {"executorch_cpu", "cpu_resident", "executorch_vulkan", "vulkan_resident"},
+        3: {"xrgpu_vulkan"},
+    }
     if (
         report.get("execution_location")
         not in {"headset", "phone", "glasses", "compute_puck", "unknown"}

@@ -41,6 +41,28 @@ def test_atomic_cache_idempotence_conflict_and_preserved_report(tmp_path, envelo
     assert len(list(tmp_path.iterdir())) == 1
 
 
+@pytest.mark.parametrize("status", ["complete", "failed", "canceled"])
+def test_cpu_resident_reports_can_be_cached_and_retried(tmp_path, envelope, status):
+    report = envelope["report"]
+    report.update(backend="cpu_resident", status=status)
+    report["configuration"] = dict(
+        backend="cpu_resident", mode="isolated", preset="smoke",
+        kernel_package=dict(content_sha256="a" * 64),
+    )
+    report["results"] = [dict(
+        case="matmul", operation="matmul", phase="isolated", trial=0,
+        status="passed", correctness=dict(passed=True), samples=[dict(execution_ms=1.0)],
+    )]
+    envelope["receipt"]["sha256"] = digest(report)
+    assert import_result(envelope, tmp_path)["status"] == "imported"
+    assert import_result(envelope, tmp_path)["status"] == "already imported"
+    target = tmp_path / report["run_id"]
+    assert json.loads((target / "report.json").read_text()) == report
+    source = json.loads((target / "source.json").read_text())
+    assert source["backend"] == "cpu_resident"
+    assert source["package_sha256"] == "a" * 64
+
+
 @pytest.mark.parametrize("database_first", [False, True])
 def test_same_report_can_be_retried_from_another_source(tmp_path, envelope, database_first):
     database = copy.deepcopy(envelope)

@@ -175,6 +175,33 @@ def store():
             )
 
 
+@pytest.mark.parametrize("algorithm", ["python", "rfc8785"])
+def test_cpu_resident_database_envelope_without_live_database(native_report, algorithm):
+    report = native_report
+    report.update(schema_version=2, backend="cpu_resident")
+    report.pop("native_package_sha256")
+    report.pop("native_catalog_sha256")
+    config = report["configuration"]
+    config.pop("native_package_sha256")
+    config.update(backend="cpu_resident", kernel_package=dict(content_sha256="a" * 64))
+    report["results"][0].update(
+        case="matmul", operation="matmul", samples=[dict(execution_ms=1.0)]
+    )
+    row = [report["run_id"], report, report_digest(report, algorithm), datetime.now(timezone.utc)]
+    row += [report[k] for k in (
+        "schema_version", "suite_revision", "runtime_revision", "backend", "status", "device"
+    )]
+    row += [config, config["mode"], config["preset"]]
+    row += [datetime.fromisoformat(report[k].replace("Z", "+00:00"))
+            for k in ("started_at", "finished_at")]
+    envelope = database._envelope(row, "a" * 64)
+    assert envelope["report"] == report
+    assert envelope["receipt"]["sha256"] == report_digest(report, algorithm)
+    assert envelope["receipt"]["canonicalization"] == algorithm
+    with pytest.raises(ValueError, match="package digest"):
+        database._envelope(row, "b" * 64)
+
+
 @pytest.fixture
 def canonical_store(store):
     with psycopg.connect(store) as connection:
@@ -244,6 +271,8 @@ def seed(dsn, report, algorithm="python", preserve_canonical=False):
         (2, "executorch_vulkan", "python"),
         (2, "executorch_cpu", "rfc8785"),
         (2, "vulkan_resident", "python"),
+        (2, "cpu_resident", "python"),
+        (2, "cpu_resident", "rfc8785"),
     ],
 )
 def test_pull_exact_version_preserves_original_and_retries(
@@ -253,6 +282,11 @@ def test_pull_exact_version_preserves_original_and_retries(
     report.update(schema_version=schema, backend=backend, status="failed")
     if schema == 2:
         report["configuration"]["kernel_package"] = dict(content_sha256="a" * 64)
+    if backend == "cpu_resident":
+        report["configuration"]["backend"] = backend
+        report["results"][0].update(
+            case="matmul", operation="matmul", samples=[dict(execution_ms=1.0)]
+        )
     original = copy.deepcopy(report)
     seed(store, report, algorithm)
     other = copy.deepcopy(report)
